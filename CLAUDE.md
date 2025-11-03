@@ -26,6 +26,22 @@ All commands use `uv`:
 ## Repository Structure
 
 - `src/` - All source code
+  - `src/main.py` - Application entry point, includes routers and health endpoint
+  - `src/routers/` - API route handlers (FastAPI routers)
+  - `src/utils/` - Reusable utility functions and helpers
 - `tests/` - All test files (pytest)
 - `.Dockerfile` - Docker configuration
 - `.env.example` - Environment variable template
+
+## Architecture Guidelines
+
+### Single Responsibility Principle (SRP)
+
+Always follow the Single Responsibility Principle when writing code:
+
+- **Create separate components** for identifiable pieces of functionality
+- **Extract utilities** when logic can be reused (e.g., URL validation, data transformation)
+- **Use routers** to organize endpoints by domain/feature area
+- **Keep main.py minimal** - only application setup and health checks
+
+When adding new functionality, ask: "Does this belong in a separate module/utility?" If a function does more than one thing, split it into focused, single-purpose components.
