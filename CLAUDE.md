@@ -16,12 +16,24 @@ This is a FastAPI service that proposes prompts for businesses. The main functio
 
 ## Development Commands
 
-All commands use `uv`:
+### Local Development (with uv)
 
 - Run the application: `uv run uvicorn src.main:app --reload`
 - Run tests: `uv run pytest`
 - Run a single test: `uv run pytest tests/path/to/test_file.py::test_function_name`
 - Add dependencies: `uv add <package-name>`
+
+### Docker
+
+- Build image: `docker build -t prompts-volume:latest .`
+- Run container: `docker run -p 8000:8000 prompts-volume:latest`
+- Run in detached mode: `docker run -d -p 8000:8000 --name prompts-volume prompts-volume:latest`
+
+### API Documentation
+
+When the application is running:
+- Swagger UI: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
 
 ## Repository Structure
 
@@ -30,7 +42,7 @@ All commands use `uv`:
   - `src/routers/` - API route handlers (FastAPI routers)
   - `src/utils/` - Reusable utility functions and helpers
 - `tests/` - All test files (pytest)
-- `.Dockerfile` - Docker configuration
+- `Dockerfile` - Docker configuration
 - `.env.example` - Environment variable template
 
 ## Architecture Guidelines
