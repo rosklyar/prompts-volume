@@ -11,6 +11,31 @@ from src.utils.url_validator import validate_and_normalize_url
 router = APIRouter(prefix="/prompts/api/v1", tags=["prompts"])
 
 
+def _validate_and_get_location_name(iso_code: Optional[str]) -> Optional[str]:
+    """
+    Validate ISO country code and return corresponding location name.
+
+    Args:
+        iso_code: Optional ISO country code (e.g., 'US', 'GB', 'ua')
+
+    Returns:
+        Location name if valid ISO code provided, None if no iso_code
+
+    Raises:
+        HTTPException: If ISO code is invalid (400 error)
+    """
+    if not iso_code:
+        return None
+
+    location_name = get_location_name(iso_code.upper())
+    if not location_name:
+        raise HTTPException(
+            status_code=400, detail=f"Invalid ISO country code: {iso_code}"
+        )
+
+    return location_name
+
+
 @router.get("/topics")
 async def get_topics(
     url: str = Query(..., description="URL of the domain to analyze"),
@@ -33,14 +58,8 @@ async def get_topics(
     # Validate and normalize the URL
     validated_url = await validate_and_normalize_url(url)
 
-    # Map ISO code to location name if provided
-    location_name = None
-    if iso_code:
-        location_name = get_location_name(iso_code.upper())
-        if not location_name:
-            raise HTTPException(
-                status_code=400, detail=f"Invalid ISO country code: {iso_code}"
-            )
+    # Validate ISO code and get location name
+    location_name = _validate_and_get_location_name(iso_code)
 
     # Call DataForSEO service (injected singleton)
     keywords = await service.get_keywords_for_site(validated_url, location_name)
