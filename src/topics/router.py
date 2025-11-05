@@ -1,14 +1,14 @@
-"""Router for prompts-related endpoints."""
+"""Router for topics-related endpoints."""
 
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.config.countries import get_location_name
-from src.services.dataforseo_service import DataForSEOService, get_dataforseo_service
+from src.topics.service import DataForSEOService, get_dataforseo_service
 from src.utils.url_validator import validate_and_normalize_url
 
-router = APIRouter(prefix="/prompts/api/v1", tags=["prompts"])
+router = APIRouter(prefix="/prompts/api/v1", tags=["topics"])
 
 
 def _validate_and_get_location_name(iso_code: Optional[str]) -> Optional[str]:

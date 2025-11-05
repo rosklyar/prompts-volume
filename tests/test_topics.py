@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 from fastapi.testclient import TestClient
 
 from src.main import app
-from src.services.dataforseo_service import DataForSEOService, get_dataforseo_service
+from src.topics.service import DataForSEOService, get_dataforseo_service
 
 client = TestClient(app)
 
