@@ -1,9 +1,8 @@
-"""DataForSEO API service for fetching keywords."""
+"""DataForSEO API service for fetching ranked keywords."""
 
 import base64
-from datetime import datetime, timedelta
 from functools import lru_cache
-from typing import List, Optional
+from typing import List
 
 import httpx
 from fastapi import HTTPException
@@ -12,9 +11,9 @@ from src.config.settings import settings
 
 
 class DataForSEOService:
-    """Service for interacting with DataForSEO Keywords API."""
+    """Service for interacting with DataForSEO Labs Ranked Keywords API."""
 
-    BASE_URL = "https://api.dataforseo.com/v3/keywords_data/google_ads/keywords_for_site/live"
+    BASE_URL = "https://api.dataforseo.com/v3/dataforseo_labs/google/ranked_keywords/live"
 
     def __init__(self):
         """Initialize DataForSEO service with credentials."""
@@ -32,55 +31,42 @@ class DataForSEOService:
         encoded = base64.b64encode(credentials.encode()).decode()
         return f"Basic {encoded}"
 
-    def _get_last_month_dates(self) -> tuple[str, str]:
-        """
-        Calculate date range for last full month.
-
-        Returns:
-            Tuple of (date_from, date_to) in YYYY-MM-DD format
-        """
-        today = datetime.now()
-        first_day_this_month = today.replace(day=1)
-        last_day_last_month = first_day_this_month - timedelta(days=1)
-        first_day_last_month = last_day_last_month.replace(day=1)
-
-        date_from = first_day_last_month.strftime("%Y-%m-%d")
-        date_to = last_day_last_month.strftime("%Y-%m-%d")
-
-        return date_from, date_to
-
     async def get_keywords_for_site(
-        self, target_url: str, location_name: Optional[str] = None
+        self,
+        target_domain: str,
+        location_name: str,
+        language: str,
+        limit: int = 1000
     ) -> List[str]:
         """
-        Fetch keywords for a given URL from DataForSEO API.
+        Fetch keywords where the domain currently ranks in Google organic search.
+
+        Uses DataForSEO Labs Ranked Keywords API to get actual ranking keywords.
 
         Args:
-            target_url: The website URL to analyze (already validated)
+            target_domain: Bare domain to analyze (e.g., "moyo.ua", "example.com")
             location_name: Optional location name for geo-targeted results
+            language: Optional language name for language-specific results
 
         Returns:
-            List of keywords sorted by search volume (descending)
+            List of keywords where the domain ranks in organic search
 
         Raises:
             HTTPException: If API call fails
         """
-        date_from, date_to = self._get_last_month_dates()
 
-        # Build request payload
+        # Build request payload for ranked_keywords API
         payload = [
             {
-                "target": target_url,
-                "date_from": date_from,
-                "date_to": date_to,
-                "sort_by": "search_volume",
+                "target": target_domain,
+                "location_name": location_name,
+                "language_name": language,
+                "ignore_synonyms": True,
+                "item_types": ["organic"],
+                "limit": limit 
             }
         ]
-
-        # Add location_name if provided
-        if location_name:
-            payload[0]["location_name"] = location_name
-
+        
         # Prepare headers
         headers = {
             "Authorization": self._get_auth_header(),
@@ -113,16 +99,21 @@ class DataForSEOService:
                 # Parse response
                 data = response.json()
 
-                # Extract keywords from response
+                # Extract keywords from ranked_keywords response structure
+                # Structure: tasks[0].result[0].items[].keyword_data.keyword
                 keywords = []
                 if (
                     data.get("tasks")
                     and len(data["tasks"]) > 0
                     and data["tasks"][0].get("result")
+                    and len(data["tasks"][0]["result"]) > 0
+                    and data["tasks"][0]["result"][0].get("items")
                 ):
-                    for item in data["tasks"][0]["result"]:
-                        if item.get("keyword"):
-                            keywords.append(item["keyword"])
+                    for item in data["tasks"][0]["result"][0]["items"]:
+                        keyword_data = item.get("keyword_data", {})
+                        keyword = keyword_data.get("keyword")
+                        if keyword:
+                            keywords.append(keyword)
 
                 return keywords
 

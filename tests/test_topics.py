@@ -7,34 +7,6 @@ from src.topics.service import DataForSEOService, get_dataforseo_service
 
 client = TestClient(app)
 
-
-def test_get_topics_without_iso_code():
-    """Test topics endpoint without ISO code (no location filtering)."""
-    # Create mock service
-    mock_service = DataForSEOService()
-    mock_service.get_keywords_for_site = AsyncMock(
-        return_value=["seo", "analytics", "marketing"]
-    )
-
-    # Override the dependency
-    app.dependency_overrides[get_dataforseo_service] = lambda: mock_service
-
-    try:
-        response = client.get("/prompts/api/v1/topics?url=tryprofound.com")
-
-        assert response.status_code == 200
-        assert response.json() == ["seo", "analytics", "marketing"]
-
-        # Verify service was called with correct parameters
-        mock_service.get_keywords_for_site.assert_called_once()
-        call_args = mock_service.get_keywords_for_site.call_args
-        assert "tryprofound.com" in call_args[0][0] or "https://tryprofound.com" in call_args[0][0]
-        assert call_args[0][1] is None  # No location_name
-    finally:
-        # Clean up override
-        app.dependency_overrides.clear()
-
-
 def test_get_topics_with_valid_iso_code():
     """Test topics endpoint with valid ISO code."""
     # Create mock service
@@ -50,12 +22,14 @@ def test_get_topics_with_valid_iso_code():
         response = client.get("/prompts/api/v1/topics?url=tryprofound.com&iso_code=US")
 
         assert response.status_code == 200
-        assert response.json() == ["us keyword 1", "us keyword 2"]
+        keywords = response.json()
+        assert keywords == ["us keyword 1", "us keyword 2"]
 
-        # Verify service was called with United States as location
+        # Verify service was called with United States as location and English as language
         mock_service.get_keywords_for_site.assert_called_once()
         call_args = mock_service.get_keywords_for_site.call_args
         assert call_args[0][1] == "United States"
+        assert call_args[0][2] == "English"  # First preferred language for US
     finally:
         # Clean up override
         app.dependency_overrides.clear()
@@ -76,9 +50,13 @@ def test_get_topics_with_lowercase_iso_code():
         response = client.get("/prompts/api/v1/topics?url=tryprofound.com&iso_code=ua")
 
         assert response.status_code == 200
-        # Verify Ukraine location was used
+        keywords = response.json()
+        assert keywords == ["ukraine keyword"]
+
+        # Verify Ukraine location and Ukrainian language were used
         call_args = mock_service.get_keywords_for_site.call_args
         assert call_args[0][1] == "Ukraine"
+        assert call_args[0][2] == "Ukrainian"  # First preferred language for Ukraine
     finally:
         # Clean up override
         app.dependency_overrides.clear()

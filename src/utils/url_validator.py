@@ -5,7 +5,39 @@ from fastapi import HTTPException
 from urllib.parse import urlparse
 
 
-async def validate_and_normalize_url(url: str) -> str:
+def extract_domain(url: str) -> str:
+    """
+    Extract bare domain from URL (without protocol, www, or path).
+
+    Args:
+        url: The URL to extract domain from (can include or exclude scheme)
+
+    Returns:
+        Bare domain (e.g., "example.com", "moyo.ua")
+
+    Examples:
+        >>> extract_domain("https://www.example.com/path")
+        "example.com"
+        >>> extract_domain("moyo.ua")
+        "moyo.ua"
+        >>> extract_domain("https://subdomain.example.com")
+        "subdomain.example.com"
+    """
+    # Add scheme if missing for urlparse to work correctly
+    if not url.startswith(("http://", "https://")):
+        url = f"https://{url}"
+
+    parsed = urlparse(url)
+    domain = parsed.netloc or parsed.path
+
+    # Remove www. prefix if present
+    if domain.startswith("www."):
+        domain = domain[4:]
+
+    return domain
+
+
+async def validate_url(url: str) -> str:
     """
     Validate and normalize a URL.
 
@@ -44,4 +76,4 @@ async def validate_and_normalize_url(url: str) -> str:
     except Exception:
         raise HTTPException(status_code=400, detail="Failed to validate domain")
 
-    return normalized_url
+    return url

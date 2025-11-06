@@ -7,9 +7,7 @@ from src.main import app
 
 client = TestClient(app)
 
-@pytest.mark.skip(
-    reason="Integration test - uncomment to run manually with real OpenAI API"
-)
+@pytest.mark.skip(reason="Integration test - uncomment to run manually with real OpenAI API")
 def test_generate_prompts_real_openai():
     """
     Integration test that calls real OpenAI API.
