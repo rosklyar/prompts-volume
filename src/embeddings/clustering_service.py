@@ -1,13 +1,11 @@
-"""Service for clustering keyword embeddings using multiple algorithms."""
+"""Service for clustering keyword embeddings using HDBSCAN algorithm."""
 
 import logging
-from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import List, Protocol
+from typing import Dict, List
 
 import hdbscan
 import numpy as np
-from sklearn.cluster import AgglomerativeClustering, KMeans
 from sklearn.metrics import (
     calinski_harabasz_score,
     davies_bouldin_score,
@@ -19,13 +17,13 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ClusteringResult:
-    """Result from a clustering algorithm."""
+    """Result from HDBSCAN clustering."""
 
-    algorithm_name: str
-    labels: np.ndarray  # Cluster assignment for each keyword (-1 for noise in HDBSCAN)
+    labels: np.ndarray  # Cluster assignment for each keyword (-1 for noise)
     n_clusters: int  # Number of clusters found (excluding noise)
-    noise_count: int  # Number of points classified as noise (0 for non-density-based)
-    config: dict  # Configuration used for this run
+    clusters: Dict[int, List[str]]  # cluster_id -> list of keywords
+    noise: List[str]  # Keywords marked as noise
+    keyword_embeddings: Dict[str, np.ndarray]  # keyword -> embedding vector
 
 
 @dataclass
@@ -37,135 +35,141 @@ class ClusterMetrics:
     calinski_harabasz: float  # 0+, higher is better (variance ratio)
 
 
-class ClusteringStrategy(Protocol):
-    """Protocol for clustering strategies."""
-
-    @abstractmethod
-    def cluster(self, embeddings: np.ndarray) -> ClusteringResult:
-        """Apply clustering algorithm to embeddings."""
-        ...
-
-
-class KMeansClusteringStrategy:
+class ClusteringService:
     """
-    K-Means clustering with automatic k selection.
-
-    Tests k from min_k to max_k and selects optimal using silhouette score.
-    Good for spherical, evenly-sized clusters.
+    Service for clustering keyword embeddings using HDBSCAN.
     """
 
-    def __init__(
+    def _subcluster_large_clusters(
         self,
-        min_k: int = 5,
-        max_k: int = 20,
-        random_state: int = 42,
-    ):
+        clusters: Dict[int, List[str]],
+        keyword_embeddings: Dict[str, np.ndarray],
+        min_cluster_size: int,
+        min_samples: int,
+        cluster_selection_epsilon: float,
+    ) -> Dict[int, List[str]]:
         """
-        Initialize K-Means strategy.
+        Split large clusters into subclusters using recursive HDBSCAN.
 
         Args:
-            min_k: Minimum number of clusters to test
-            max_k: Maximum number of clusters to test
-            random_state: Random seed for reproducibility
-        """
-        self.min_k = min_k
-        self.max_k = max_k
-        self.random_state = random_state
-
-    def cluster(self, embeddings: np.ndarray) -> ClusteringResult:
-        """
-        Cluster embeddings using K-Means with optimal k selection.
-
-        Args:
-            embeddings: Array of shape (n_samples, n_features)
+            clusters: Initial cluster assignments
+            keyword_embeddings: Mapping of keyword to embedding vector
+            min_cluster_size: Original min_cluster_size parameter
+            min_samples: Original min_samples parameter
+            cluster_selection_epsilon: Original cluster_selection_epsilon parameter
 
         Returns:
-            ClusteringResult with optimal k selection
+            Flattened dictionary with renumbered clusters
         """
-        n_samples = embeddings.shape[0]
-        actual_max_k = min(self.max_k, n_samples - 1)
+        threshold = 5 * min_cluster_size
+        new_clusters: Dict[int, List[str]] = {}
+        next_cluster_id = 0
 
-        logger.info(f"Testing K-Means with k={self.min_k} to k={actual_max_k}")
+        for cluster_id, keywords_in_cluster in clusters.items():
+            cluster_size = len(keywords_in_cluster)
 
-        best_k = self.min_k
-        best_score = -1
-        best_labels = None
+            # Keep small clusters as-is
+            if cluster_size < threshold:
+                new_clusters[next_cluster_id] = keywords_in_cluster
+                next_cluster_id += 1
+                continue
 
-        for k in range(self.min_k, actual_max_k + 1):
-            kmeans = KMeans(n_clusters=k, random_state=self.random_state, n_init=10)
-            labels = kmeans.fit_predict(embeddings)
+            # Try to split large clusters
+            logger.info(
+                f"Attempting to split large cluster {cluster_id} "
+                f"with {cluster_size} keywords (threshold={threshold})"
+            )
 
-            # Calculate silhouette score for this k
-            score = silhouette_score(embeddings, labels)
+            # Extract embeddings for this cluster
+            cluster_keywords = keywords_in_cluster
+            cluster_embeddings = np.array(
+                [keyword_embeddings[kw] for kw in cluster_keywords]
+            )
 
-            logger.debug(f"  k={k}: silhouette={score:.4f}")
+            # Run HDBSCAN with reduced parameters for finer granularity
+            sub_min_cluster_size = max(2, min_cluster_size // 2)
+            sub_min_samples = max(1, min_samples // 2)
 
-            if score > best_score:
-                best_score = score
-                best_k = k
-                best_labels = labels
+            sub_clusterer = hdbscan.HDBSCAN(
+                min_cluster_size=sub_min_cluster_size,
+                min_samples=sub_min_samples,
+                cluster_selection_epsilon=cluster_selection_epsilon,
+                metric="euclidean",
+            )
 
-        logger.info(f"Selected optimal k={best_k} (silhouette={best_score:.4f})")
+            sub_labels = sub_clusterer.fit_predict(cluster_embeddings)
+            sub_n_clusters = len(set(sub_labels)) - (1 if -1 in sub_labels else 0)
 
-        return ClusteringResult(
-            algorithm_name="K-Means",
-            labels=best_labels,
-            n_clusters=best_k,
-            noise_count=0,
-            config={
-                "optimal_k": best_k,
-                "tested_range": f"{self.min_k}-{actual_max_k}",
-                "best_silhouette": round(best_score, 4),
-                "random_state": self.random_state,
-            },
-        )
+            # If we found meaningful subclusters, use them
+            if sub_n_clusters > 1:
+                logger.info(
+                    f"Split cluster {cluster_id} into {sub_n_clusters} subclusters"
+                )
 
+                # Organize subclusters
+                for keyword, sub_label in zip(cluster_keywords, sub_labels):
+                    # Treat noise as a separate subcluster (keep original cluster)
+                    if sub_label == -1:
+                        # Add to a "remaining" cluster
+                        if next_cluster_id not in new_clusters:
+                            new_clusters[next_cluster_id] = []
+                        new_clusters[next_cluster_id].append(keyword)
+                    else:
+                        # Map sub_label to global cluster ID
+                        global_cluster_id = next_cluster_id + sub_label + 1
+                        if global_cluster_id not in new_clusters:
+                            new_clusters[global_cluster_id] = []
+                        new_clusters[global_cluster_id].append(keyword)
 
-class HDBSCANClusteringStrategy:
-    """
-    HDBSCAN density-based clustering.
+                # Update next_cluster_id to account for all subclusters
+                next_cluster_id += sub_n_clusters + 1  # +1 for noise/"remaining"
+            else:
+                # No meaningful split, keep original cluster
+                logger.info(
+                    f"Could not split cluster {cluster_id}, keeping as single cluster"
+                )
+                new_clusters[next_cluster_id] = keywords_in_cluster
+                next_cluster_id += 1
 
-    Automatically discovers number of clusters and handles noise/outliers.
-    Good for irregularly-shaped clusters and varying densities.
-    """
+        return new_clusters
 
-    def __init__(
+    def cluster(
         self,
-        min_cluster_size: int = 15,
+        keywords: List[str],
+        embeddings: np.ndarray,
+        min_cluster_size: int = 5,
         min_samples: int = 5,
         cluster_selection_epsilon: float = 0.0,
-    ):
+    ) -> ClusteringResult:
         """
-        Initialize HDBSCAN strategy.
+        Cluster keywords using HDBSCAN algorithm.
 
         Args:
+            keywords: List of keywords corresponding to embeddings
+            embeddings: Array of shape (n_keywords, n_features)
             min_cluster_size: Minimum size of a cluster (smaller = more granular)
             min_samples: Minimum samples in neighborhood (higher = more conservative)
             cluster_selection_epsilon: Distance threshold for cluster merging
-        """
-        self.min_cluster_size = min_cluster_size
-        self.min_samples = min_samples
-        self.cluster_selection_epsilon = cluster_selection_epsilon
-
-    def cluster(self, embeddings: np.ndarray) -> ClusteringResult:
-        """
-        Cluster embeddings using HDBSCAN.
-
-        Args:
-            embeddings: Array of shape (n_samples, n_features)
 
         Returns:
-            ClusteringResult with noise detection
+            ClusteringResult with organized clusters and noise
+
+        Example:
+            >>> service = ClusteringService()
+            >>> result = service.cluster(keywords, embeddings, min_cluster_size=5)
+            >>> print(f"Found {result.n_clusters} clusters")
+            >>> print(f"Cluster 0 has {len(result.clusters[0])} keywords")
         """
         logger.info(
-            f"Running HDBSCAN with min_cluster_size={self.min_cluster_size}, "
-            f"min_samples={self.min_samples}"
+            f"Running HDBSCAN clustering on {len(keywords)} keywords "
+            f"(min_cluster_size={min_cluster_size}, min_samples={min_samples})"
         )
 
+        # Run HDBSCAN clustering
         clusterer = hdbscan.HDBSCAN(
-            min_cluster_size=self.min_cluster_size,
-            min_samples=self.min_samples,
-            cluster_selection_epsilon=self.cluster_selection_epsilon,
+            min_cluster_size=min_cluster_size,
+            min_samples=min_samples,
+            cluster_selection_epsilon=cluster_selection_epsilon,
             metric="euclidean",
         )
 
@@ -175,90 +179,45 @@ class HDBSCANClusteringStrategy:
         n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
         noise_count = np.sum(labels == -1)
 
+        # Build keyword embeddings dict (needed for subclustering)
+        keyword_embeddings = {kw: emb for kw, emb in zip(keywords, embeddings)}
+
+        # Organize keywords by cluster
+        clusters: Dict[int, List[str]] = {}
+        noise: List[str] = []
+
+        for keyword, label in zip(keywords, labels):
+            if label == -1:
+                noise.append(keyword)
+            else:
+                if label not in clusters:
+                    clusters[label] = []
+                clusters[label].append(keyword)
+
         logger.info(
             f"Found {n_clusters} clusters with {noise_count} noise points "
             f"({noise_count / len(labels) * 100:.1f}%)"
         )
 
-        return ClusteringResult(
-            algorithm_name="HDBSCAN",
-            labels=labels,
-            n_clusters=n_clusters,
-            noise_count=noise_count,
-            config={
-                "min_cluster_size": self.min_cluster_size,
-                "min_samples": self.min_samples,
-                "cluster_selection_epsilon": self.cluster_selection_epsilon,
-                "noise_percentage": round(noise_count / len(labels) * 100, 2),
-            },
-        )
-
-
-class AgglomerativeClusteringStrategy:
-    """
-    Agglomerative (hierarchical) clustering.
-
-    Builds hierarchy bottom-up, can specify number of clusters.
-    Good for hierarchical relationships and dendrograms.
-    """
-
-    def __init__(
-        self,
-        n_clusters: int | None = None,
-        linkage: str = "ward",
-    ):
-        """
-        Initialize Agglomerative strategy.
-
-        Args:
-            n_clusters: Number of clusters (if None, will be set to optimal k from dataset)
-            linkage: Linkage criterion ('ward', 'complete', 'average', 'single')
-        """
-        self.n_clusters = n_clusters
-        self.linkage = linkage
-
-    def cluster(self, embeddings: np.ndarray) -> ClusteringResult:
-        """
-        Cluster embeddings using Agglomerative Clustering.
-
-        Args:
-            embeddings: Array of shape (n_samples, n_features)
-
-        Returns:
-            ClusteringResult
-        """
-        # If n_clusters not specified, use heuristic (sqrt of samples)
-        if self.n_clusters is None:
-            n_clusters = max(5, int(np.sqrt(embeddings.shape[0] / 2)))
-        else:
-            n_clusters = self.n_clusters
-
-        logger.info(
-            f"Running Agglomerative Clustering with "
-            f"n_clusters={n_clusters}, linkage={self.linkage}"
-        )
-
-        clusterer = AgglomerativeClustering(n_clusters=n_clusters, linkage=self.linkage)
-        labels = clusterer.fit_predict(embeddings)
-
-        logger.info(f"Created {n_clusters} clusters")
+        # Apply subclustering to large clusters
+        if clusters:
+            clusters = self._subcluster_large_clusters(
+                clusters=clusters,
+                keyword_embeddings=keyword_embeddings,
+                min_cluster_size=min_cluster_size,
+                min_samples=min_samples,
+                cluster_selection_epsilon=cluster_selection_epsilon,
+            )
+            n_clusters = len(clusters)
+            logger.info(f"After subclustering: {n_clusters} total clusters")
 
         return ClusteringResult(
-            algorithm_name="Agglomerative",
             labels=labels,
             n_clusters=n_clusters,
-            noise_count=0,
-            config={
-                "n_clusters": n_clusters,
-                "linkage": self.linkage,
-            },
+            clusters=clusters,
+            noise=noise,
+            keyword_embeddings=keyword_embeddings,
         )
-
-
-class ClusteringService:
-    """
-    Service for clustering keyword embeddings and comparing algorithms.
-    """
 
     @staticmethod
     def calculate_metrics(
@@ -298,106 +257,3 @@ class ClusteringService:
         except Exception as e:
             logger.error(f"Error calculating metrics: {e}")
             return None
-
-    @staticmethod
-    def get_cluster_samples(
-        labels: np.ndarray,
-        keywords: List[str],
-        samples_per_cluster: int = 5,
-        max_clusters: int = 5,
-    ) -> dict:
-        """
-        Get sample keywords from each cluster.
-
-        Args:
-            labels: Cluster labels
-            keywords: Original keywords
-            samples_per_cluster: Number of sample keywords per cluster
-            max_clusters: Maximum number of clusters to include
-
-        Returns:
-            Dictionary mapping cluster_id -> list of sample keywords
-        """
-        cluster_samples = {}
-
-        # Get unique clusters (excluding noise -1)
-        unique_clusters = [c for c in set(labels) if c != -1]
-
-        # Sort by cluster size (largest first)
-        cluster_sizes = [(c, np.sum(labels == c)) for c in unique_clusters]
-        cluster_sizes.sort(key=lambda x: x[1], reverse=True)
-
-        # Get samples from top clusters
-        for cluster_id, size in cluster_sizes[:max_clusters]:
-            # Get indices of keywords in this cluster
-            cluster_indices = np.where(labels == cluster_id)[0]
-
-            # Sample keywords (take first N, could randomize if needed)
-            sample_indices = cluster_indices[:samples_per_cluster]
-            sample_keywords = [keywords[i] for i in sample_indices]
-
-            cluster_samples[cluster_id] = {
-                "size": size,
-                "samples": sample_keywords,
-            }
-
-        return cluster_samples
-
-    @staticmethod
-    def format_comparison_report(
-        results: List[tuple[ClusteringResult, ClusterMetrics | None, dict]],
-        keywords: List[str],
-    ) -> str:
-        """
-        Format clustering comparison results as a readable report.
-
-        Args:
-            results: List of (ClusteringResult, ClusterMetrics, cluster_samples) tuples
-            keywords: Original keywords
-
-        Returns:
-            Formatted string report
-        """
-        lines = [
-            "\n" + "=" * 70,
-            "🎯 CLUSTERING COMPARISON REPORT",
-            "=" * 70,
-            f"\nDataset: {len(keywords)} keywords, 384-dimensional embeddings\n",
-        ]
-
-        for result, metrics, cluster_samples in results:
-            lines.append(f"\n{'─' * 70}")
-            lines.append(f"Algorithm: {result.algorithm_name}")
-            lines.append(f"{'─' * 70}")
-
-            # Configuration
-            lines.append("\n📋 Configuration:")
-            for key, value in result.config.items():
-                lines.append(f"   {key}: {value}")
-
-            # Cluster summary
-            lines.append(f"\n📊 Clusters Found: {result.n_clusters}")
-            if result.noise_count > 0:
-                noise_pct = result.noise_count / len(result.labels) * 100
-                lines.append(f"   Noise points: {result.noise_count} ({noise_pct:.1f}%)")
-
-            # Quality metrics
-            if metrics:
-                lines.append("\n📈 Quality Metrics:")
-                lines.append(f"   Silhouette Score: {metrics.silhouette:.4f} {'⭐' if metrics.silhouette > 0.3 else ''}")
-                lines.append(f"   Davies-Bouldin Index: {metrics.davies_bouldin:.4f} (lower is better)")
-                lines.append(f"   Calinski-Harabasz Score: {metrics.calinski_harabasz:.2f} {'⭐' if metrics.calinski_harabasz > 100 else ''}")
-            else:
-                lines.append("\n📈 Quality Metrics: Unable to calculate")
-
-            # Sample clusters
-            if cluster_samples:
-                lines.append("\n🔍 Top Clusters (by size):")
-                for cluster_id, data in cluster_samples.items():
-                    lines.append(f"\n   Cluster {cluster_id} ({data['size']} keywords):")
-                    for kw in data["samples"]:
-                        lines.append(f"      • {kw}")
-
-        lines.append("\n" + "=" * 70 + "\n")
-
-        return "\n".join(lines)

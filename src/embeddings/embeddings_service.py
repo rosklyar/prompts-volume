@@ -1,6 +1,7 @@
 """Service for generating keyword embeddings using sentence transformers."""
 
 import logging
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import List
 
@@ -8,6 +9,14 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class KeywordEmbedding:
+    """Keyword paired with its embedding vector."""
+
+    keyword: str
+    embedding: np.ndarray
 
 
 class EmbeddingsService:
@@ -36,7 +45,7 @@ class EmbeddingsService:
         keywords: List[str],
         batch_size: int = 32,
         show_progress: bool = False
-    ) -> np.ndarray:
+    ) -> List[KeywordEmbedding]:
         """
         Generate 384-dimensional embeddings for keywords.
 
@@ -46,13 +55,17 @@ class EmbeddingsService:
             show_progress: Show progress bar (default: False)
 
         Returns:
-            numpy array of shape (len(keywords), 384)
+            List of KeywordEmbedding objects pairing each keyword with its embedding
 
         Example:
             >>> service = EmbeddingsService()
-            >>> embeddings = service.encode_keywords(["телевізор", "ноутбук"])
-            >>> embeddings.shape
-            (2, 384)
+            >>> keyword_embeddings = service.encode_keywords(["телевізор", "ноутбук"])
+            >>> len(keyword_embeddings)
+            2
+            >>> keyword_embeddings[0].keyword
+            'телевізор'
+            >>> keyword_embeddings[0].embedding.shape
+            (384,)
         """
         embeddings = self.model.encode(
             keywords,
@@ -61,7 +74,10 @@ class EmbeddingsService:
             convert_to_numpy=True,
         )
 
-        return embeddings
+        return [
+            KeywordEmbedding(keyword=kw, embedding=emb)
+            for kw, emb in zip(keywords, embeddings)
+        ]
 
 
 @lru_cache()
