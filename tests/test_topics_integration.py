@@ -8,7 +8,7 @@ from src.main import app
 client = TestClient(app)
 
 
-@pytest.mark.skip(reason="Integration test - uncomment to run manually with real DataForSEO API")
+#@pytest.mark.skip(reason="Integration test - uncomment to run manually with real DataForSEO API")
 def test_get_topics_real_dataforseo():
     """
     Integration test that calls real DataForSEO API.
