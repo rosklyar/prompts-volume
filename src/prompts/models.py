@@ -2,10 +2,22 @@ from typing import List
 from pydantic import BaseModel, Field
 
 
+class ClusterPrompts(BaseModel):
+    """Prompts generated for a specific keyword cluster."""
+
+    cluster_id: int = Field(..., description="Cluster ID")
+    keywords: List[str] = Field(..., description="Keywords from cluster used to generate prompts")
+    prompts: List[str] = Field(..., description="E-commerce product search prompts for this cluster")
+
+
 class Topic(BaseModel):
-    topic: str = Field(..., description="Topic")
-    prompts: List[str] = Field(..., description="List of prompts for this topic")
+    """Topic with associated cluster prompts."""
+
+    topic: str = Field(..., description="Topic name")
+    clusters: List[ClusterPrompts] = Field(..., description="List of cluster prompts for this topic")
 
 
 class GeneratedPrompts(BaseModel):
-    topics: List[Topic] = Field(..., description="List of topics with prompts")
+    """Complete response with all topics and their cluster prompts."""
+
+    topics: List[Topic] = Field(..., description="List of topics with cluster prompts")
