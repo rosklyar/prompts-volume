@@ -4,9 +4,15 @@ import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.config.countries import get_country_by_code
-from src.embeddings.clustering_service import ClusteringService
+from src.embeddings.clustering_service import (
+    ClusteringService,
+    get_clustering_service,
+)
 from src.embeddings.embeddings_service import EmbeddingsService, get_embeddings_service
-from src.embeddings.topic_relevance_filter_service import TopicRelevanceFilterService
+from src.embeddings.topic_relevance_filter_service import (
+    TopicRelevanceFilterService,
+    get_topic_relevance_filter_service,
+)
 from src.prompts.company_meta_info_service import (
     CompanyMetaInfoService,
     get_company_meta_info_service,
@@ -38,6 +44,10 @@ async def generate_prompts(
     embeddings_service: EmbeddingsService = Depends(get_embeddings_service),
     meta_service: CompanyMetaInfoService = Depends(get_company_meta_info_service),
     prompts_service: PromptsGeneratorService = Depends(get_prompts_generator_service),
+    clustering_service: ClusteringService = Depends(get_clustering_service),
+    topic_filter_service: TopicRelevanceFilterService = Depends(
+        get_topic_relevance_filter_service
+    ),
 ):
     """
     Generate e-commerce product search prompts from company URL and country.
@@ -122,7 +132,6 @@ async def generate_prompts(
         )
 
         # 7. Cluster with HDBSCAN
-        clustering_service = ClusteringService()
         embeddings_array = np.array([ke.embedding for ke in keyword_embeddings])
 
         clustering_result = clustering_service.cluster(
@@ -134,8 +143,7 @@ async def generate_prompts(
         )
 
         # 8. Filter clusters by topic relevance
-        topic_filter = TopicRelevanceFilterService(embeddings_service)
-        filtered_by_topic = topic_filter.filter_by_topics(
+        filtered_by_topic = topic_filter_service.filter_by_topics(
             clustering_result=clustering_result,
             topics=meta_info.top_topics,
             similarity_threshold=0.7,

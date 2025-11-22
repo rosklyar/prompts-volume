@@ -2,6 +2,7 @@
 
 import logging
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Dict, List
 
 import hdbscan
@@ -257,3 +258,13 @@ class ClusteringService:
         except Exception as e:
             logger.error(f"Error calculating metrics: {e}")
             return None
+
+
+@lru_cache()
+def get_clustering_service() -> ClusteringService:
+    """
+    Get singleton instance of ClusteringService.
+
+    Returns the same instance on subsequent calls.
+    """
+    return ClusteringService()
