@@ -26,7 +26,6 @@ from src.utils.url_validator import extract_domain, validate_url
 
 router = APIRouter(prefix="/prompts/api/v1", tags=["prompts"])
 
-
 @router.get("/generate", response_model=GeneratedPrompts)
 async def generate_prompts(
     company_url: str = Query(
@@ -103,7 +102,7 @@ async def generate_prompts(
             )
 
         # 4. Get company metadata (topics, brand variations)
-        meta_info = meta_service.get_meta_info(domain)
+        meta_info = await meta_service.get_meta_info(domain)
 
         # 5. Filter keywords
         filtered_keywords = filter_by_word_count(keywords, min_words=3)
@@ -138,7 +137,7 @@ async def generate_prompts(
         topic_filter = TopicRelevanceFilterService(embeddings_service)
         filtered_by_topic = topic_filter.filter_by_topics(
             clustering_result=clustering_result,
-            topics=meta_info.topics,
+            topics=meta_info.top_topics,
             similarity_threshold=0.7,
             min_relevant_ratio=0.5,
         )
