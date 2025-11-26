@@ -1,5 +1,10 @@
+"""Pydantic models for API requests and responses."""
+
 from typing import List
+
 from pydantic import BaseModel, Field
+
+from src.prompts.models.business_domain import BusinessDomain
 
 
 class ClusterPrompts(BaseModel):
@@ -21,3 +26,15 @@ class GeneratedPrompts(BaseModel):
     """Complete response with all topics and their cluster prompts."""
 
     topics: List[Topic] = Field(..., description="List of topics with cluster prompts")
+
+
+class CompanyMetaInfoResponse(BaseModel):
+    """Response model for company meta information endpoint."""
+
+    business_domain: BusinessDomain = Field(..., description="Business domain classification")
+    top_topics: List[str] = Field(
+        ..., description="Top 10 topics/categories (sales categories for e-commerce)"
+    )
+    brand_variations: List[str] = Field(
+        ..., description="Brand name variations to filter out from prompts"
+    )

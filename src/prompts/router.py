@@ -13,14 +13,13 @@ from src.embeddings.topic_relevance_filter_service import (
     TopicRelevanceFilterService,
     get_topic_relevance_filter_service,
 )
-from src.prompts.company_meta_info_service import (
+from src.prompts.models import BusinessDomain, CompanyMetaInfoResponse, GeneratedPrompts
+from src.prompts.services import (
     CompanyMetaInfoService,
-    get_company_meta_info_service,
-)
-from src.prompts.data_for_seo_service import DataForSEOService, get_dataforseo_service
-from src.prompts.models import GeneratedPrompts
-from src.prompts.prompts_generator_service import (
+    DataForSEOService,
     PromptsGeneratorService,
+    get_company_meta_info_service,
+    get_dataforseo_service,
     get_prompts_generator_service,
 )
 from src.utils.keyword_filters import (
@@ -32,22 +31,92 @@ from src.utils.url_validator import extract_domain, validate_url
 
 router = APIRouter(prefix="/prompts/api/v1", tags=["prompts"])
 
-@router.get("/generate", response_model=GeneratedPrompts)
-async def generate_prompts(
+
+@router.get("/meta-info", response_model=CompanyMetaInfoResponse)
+async def get_company_meta_info(
     company_url: str = Query(
         ..., description="Company website URL (e.g., 'moyo.ua', 'https://example.com')"
     ),
-    iso_country_code: str = Query(
-        ..., description="ISO 3166-1 alpha-2 country code (e.g., 'UA', 'US')"
-    ),
+    iso_country_code: str = Query(..., description="ISO 3166-1 alpha-2 country code (e.g., 'UA', 'US')"),
+    meta_service: CompanyMetaInfoService = Depends(get_company_meta_info_service),
+):
+    """
+    Get company metadata including business domain, topics, and brand variations.
+
+    Uses a 2-call approach to OpenAI:
+    1. Detect business domain and language-specific brand variations
+    2. Generate domain-specific topics
+
+    Args:
+        company_url: Company website URL
+        iso_country_code: ISO country code to determine languages for brand variations
+
+    Returns:
+        CompanyMetaInfoResponse with:
+        - business_domain: E_COMMERCE or NOT_SUPPORTED
+        - top_topics: List of 10 topics/categories (empty if NOT_SUPPORTED)
+        - brand_variations: List of brand name variations in country-specific languages
+
+    Raises:
+        HTTPException 400: Invalid URL or ISO code
+        HTTPException 500: Service errors
+
+    Example:
+        GET /prompts/api/v1/meta-info?company_url=moyo.ua&iso_country_code=UA
+
+        Response for e-commerce:
+        {
+            "business_domain": "E_COMMERCE",
+            "top_topics": ["Смартфони", "Ноутбуки", ...],
+            "brand_variations": ["moyo", "мойо", "MOYO", "Мойо"]
+        }
+
+        Response for non-supported:
+        {
+            "business_domain": "NOT_SUPPORTED",
+            "top_topics": [],
+            "brand_variations": ["brandname", "БрендНейм"]
+        }
+    """
+    try:
+        # Validate URL and extract domain
+        await validate_url(company_url)
+        domain = extract_domain(company_url)
+
+        # Validate country code
+        country = get_country_by_code(iso_country_code)
+        if not country:
+            raise HTTPException(
+                status_code=400, detail=f"Invalid ISO country code: {iso_country_code}"
+            )
+
+        # Get company metadata
+        meta_info = await meta_service.get_meta_info(domain, iso_country_code)
+
+        # Convert to response model
+        return CompanyMetaInfoResponse(
+            business_domain=meta_info.business_domain,
+            top_topics=meta_info.top_topics,
+            brand_variations=meta_info.brand_variations,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get company meta info: {str(e)}"
+        )
+
+@router.get("/generate", response_model=GeneratedPrompts)
+async def generate_prompts(
+    company_url: str = Query(..., description="Company website URL (e.g., 'moyo.ua', 'https://example.com')"),
+    iso_country_code: str = Query(..., description="ISO 3166-1 alpha-2 country code (e.g., 'UA', 'US')"),
     dataforseo_service: DataForSEOService = Depends(get_dataforseo_service),
     embeddings_service: EmbeddingsService = Depends(get_embeddings_service),
     meta_service: CompanyMetaInfoService = Depends(get_company_meta_info_service),
     prompts_service: PromptsGeneratorService = Depends(get_prompts_generator_service),
     clustering_service: ClusteringService = Depends(get_clustering_service),
-    topic_filter_service: TopicRelevanceFilterService = Depends(
-        get_topic_relevance_filter_service
-    ),
+    topic_filter_service: TopicRelevanceFilterService = Depends(get_topic_relevance_filter_service),
 ):
     """
     Generate e-commerce product search prompts from company URL and country.
@@ -113,6 +182,13 @@ async def generate_prompts(
 
         # 4. Get company metadata (topics, brand variations)
         meta_info = await meta_service.get_meta_info(domain)
+
+        # Check if business domain is supported
+        if meta_info.business_domain != BusinessDomain.E_COMMERCE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Business domain '{meta_info.business_domain.value}' is not supported for prompt generation. Only E_COMMERCE is currently supported."
+            )
 
         # 5. Filter keywords
         filtered_keywords = filter_by_word_count(keywords, min_words=3)

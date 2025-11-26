@@ -1,42 +1,33 @@
-"""Integration tests for CompanyMetaInfoService with real OpenAI API calls."""
+"""Integration tests for /meta-info endpoint with real OpenAI API calls."""
 
 import os
 
 import pytest
 from dotenv import load_dotenv
+from fastapi.testclient import TestClient
 
-from src.prompts.company_meta_info_service import (
-    CompanyMetaInfo,
-    CompanyMetaInfoService,
-)
+from src.main import app
+from src.prompts.models import BusinessDomain
 
-# Load environment variables from .env file
 load_dotenv()
 
+
 @pytest.mark.skip(reason="Integration test - requires OpenAI API key. Run manually.")
-@pytest.mark.asyncio
-async def test_single_company_detailed():
-    """
-    Detailed integration test for a single company - useful for debugging.
+def test_meta_info_endpoint():
+    """Test /meta-info endpoint with real API call and language-specific brand variations.
 
-    To run manually:
-        uv run pytest tests/test_company_meta_info_integration.py::test_single_company_detailed -v -s
-
-    Requires:
-        - OPENAI_API_KEY environment variable set in .env
+    To run: uv run pytest tests/test_company_meta_info_integration.py::test_meta_info_endpoint -v -s
     """
-    # Get API key from environment
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        pytest.skip("OPENAI_API_KEY not set in environment")
+        pytest.skip("OPENAI_API_KEY not set")
 
-    # Initialize service
-    service = CompanyMetaInfoService(api_key=api_key, model="gpt-4o-mini")
+    client = TestClient(app)
+    response = client.get("/prompts/api/v1/meta-info?company_url=comfy.ua&iso_country_code=UA")
 
-    # Test domain (change this to test different companies)
-    test_domain = "comfy.ua"
+    assert response.status_code == 200
+    data = response.json()
 
-    # Call the service
-    meta_info: CompanyMetaInfo = await service.get_meta_info(test_domain)
-
-    assert meta_info.is_ecommerce
+    assert data["business_domain"] == BusinessDomain.E_COMMERCE.value
+    assert len(data["top_topics"]) == 10
+    assert len(data["brand_variations"]) > 0
