@@ -1,5 +1,7 @@
 """Router for prompts generation endpoints."""
 
+from typing import List
+
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -13,7 +15,7 @@ from src.embeddings.topic_relevance_filter_service import (
     TopicRelevanceFilterService,
     get_topic_relevance_filter_service,
 )
-from src.prompts.models import BusinessDomain, CompanyMetaInfoResponse, GeneratedPrompts
+from src.prompts.models import CompanyMetaInfoResponse, GeneratedPrompts
 from src.prompts.services import (
     CompanyMetaInfoService,
     DataForSEOService,
@@ -111,21 +113,22 @@ async def get_company_meta_info(
 async def generate_prompts(
     company_url: str = Query(..., description="Company website URL (e.g., 'moyo.ua', 'https://example.com')"),
     iso_country_code: str = Query(..., description="ISO 3166-1 alpha-2 country code (e.g., 'UA', 'US')"),
+    topics: List[str] = Query(..., description="List of topics/categories (from /meta-info)"),
+    brand_variations: List[str] = Query(..., description="List of brand variations (from /meta-info)"),
     dataforseo_service: DataForSEOService = Depends(get_dataforseo_service),
     embeddings_service: EmbeddingsService = Depends(get_embeddings_service),
-    meta_service: CompanyMetaInfoService = Depends(get_company_meta_info_service),
     prompts_service: PromptsGeneratorService = Depends(get_prompts_generator_service),
     clustering_service: ClusteringService = Depends(get_clustering_service),
     topic_filter_service: TopicRelevanceFilterService = Depends(get_topic_relevance_filter_service),
 ):
     """
-    Generate e-commerce product search prompts from company URL and country.
+    Generate e-commerce product search prompts from company URL, country, and selected topics.
 
     Complete automated pipeline:
     1. Validate URL and extract domain
-    2. Get country info (location, language)
-    3. Fetch ALL keywords from DataForSEO (paginated, up to 10k)
-    4. Get company metadata (topics, brand variations)
+    2. Validate topics and brand variations
+    3. Get country info (location, language)
+    4. Fetch ALL keywords from DataForSEO (paginated, up to 10k)
     5. Filter keywords (word count ≥3, brand exclusion, dedupe)
     6. Generate embeddings for keywords
     7. Cluster keywords with HDBSCAN
@@ -135,24 +138,36 @@ async def generate_prompts(
     Args:
         company_url: Company website URL
         iso_country_code: ISO country code for targeting
+        topics: List of topics/categories (from /meta-info endpoint)
+        brand_variations: List of brand variations (from /meta-info endpoint)
 
     Returns:
         GeneratedPrompts with topics, clusters, and their prompts
 
     Raises:
-        HTTPException 400: Invalid URL or ISO code
+        HTTPException 400: Invalid URL, ISO code, or empty topics/brand_variations
         HTTPException 404: No keywords found
         HTTPException 500: Pipeline errors
 
     Example:
-        GET /prompts/api/v1/generate?company_url=moyo.ua&iso_country_code=UA
+        GET /prompts/api/v1/generate?company_url=moyo.ua&iso_country_code=UA&topics=Смартфони&topics=Ноутбуки&brand_variations=moyo&brand_variations=мойо
     """
     try:
         # 1. Validate URL and extract domain
         await validate_url(company_url)
         domain = extract_domain(company_url)
 
-        # 2. Get country info
+        # 2. Validate topics and brand variations
+        if not topics:
+            raise HTTPException(
+                status_code=400, detail="At least one topic must be provided"
+            )
+        if not brand_variations:
+            raise HTTPException(
+                status_code=400, detail="At least one brand variation must be provided"
+            )
+
+        # 3. Get country info
         country = get_country_by_code(iso_country_code)
         if not country:
             raise HTTPException(
@@ -166,7 +181,7 @@ async def generate_prompts(
             else "English"
         )
 
-        # 3. Fetch ALL keywords with pagination
+        # 4. Fetch ALL keywords with pagination
         keywords = await dataforseo_service.get_all_keywords_for_site(
             target_domain=domain,
             location_name=location_name,
@@ -180,20 +195,10 @@ async def generate_prompts(
                 status_code=404, detail=f"No keywords found for domain: {domain}"
             )
 
-        # 4. Get company metadata (topics, brand variations)
-        meta_info = await meta_service.get_meta_info(domain)
-
-        # Check if business domain is supported
-        if meta_info.business_domain != BusinessDomain.E_COMMERCE:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Business domain '{meta_info.business_domain.value}' is not supported for prompt generation. Only E_COMMERCE is currently supported."
-            )
-
         # 5. Filter keywords
         filtered_keywords = filter_by_word_count(keywords, min_words=3)
         filtered_keywords = filter_by_brand_exclusion(
-            filtered_keywords, meta_info.brand_variations
+            filtered_keywords, brand_variations
         )
         filtered_keywords = deduplicate_keywords(filtered_keywords)
 
@@ -221,7 +226,7 @@ async def generate_prompts(
         # 8. Filter clusters by topic relevance
         filtered_by_topic = topic_filter_service.filter_by_topics(
             clustering_result=clustering_result,
-            topics=meta_info.top_topics,
+            topics=topics,
             similarity_threshold=0.7,
             min_relevant_ratio=0.5,
         )

@@ -3,6 +3,7 @@
 from src.prompts.models.api_models import (
     ClusterPrompts,
     CompanyMetaInfoResponse,
+    GeneratePromptsRequest,
     GeneratedPrompts,
     Topic,
 )
@@ -15,5 +16,6 @@ __all__ = [
     "ClusterPrompts",
     "Topic",
     "GeneratedPrompts",
+    "GeneratePromptsRequest",
     "CompanyMetaInfoResponse",
 ]
