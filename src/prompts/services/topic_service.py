@@ -68,6 +68,29 @@ class TopicService:
         )
         return list(result.scalars().all())
 
+    async def get_by_business_domain_and_country(
+        self, business_domain_id: int, country_id: int
+    ) -> List[Topic]:
+        """
+        Get all topics for specific business domain and country combination.
+
+        Args:
+            business_domain_id: Business domain ID
+            country_id: Country ID
+
+        Returns:
+            List of Topic objects matching both criteria
+        """
+        result = await self.session.execute(
+            select(Topic)
+            .where(
+                Topic.business_domain_id == business_domain_id,
+                Topic.country_id == country_id
+            )
+            .order_by(Topic.title)
+        )
+        return list(result.scalars().all())
+
     async def get_all(self) -> List[Topic]:
         """
         Get all topics from the database.

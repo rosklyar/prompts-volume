@@ -21,7 +21,7 @@ from src.prompts.services.prompts_generator_service import (
     get_prompts_generator_service,
 )
 from src.prompts.services.topic_service import TopicService, get_topic_service
-from src.prompts.services.topics_generation_service import TopicsGenerationService
+from src.prompts.services.topics_provider import TopicsProvider, get_topics_provider
 
 __all__ = [
     "BusinessDomainDetectionService",
@@ -37,5 +37,6 @@ __all__ = [
     "get_prompts_generator_service",
     "TopicService",
     "get_topic_service",
-    "TopicsGenerationService",
+    "TopicsProvider",
+    "get_topics_provider",
 ]

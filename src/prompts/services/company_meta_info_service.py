@@ -11,9 +11,9 @@ from src.prompts.services.business_domain_detection_service import (
     BusinessDomainDetectionService,
     get_business_domain_detection_service,
 )
-from src.prompts.services.topics_generation_service import (
-    TopicsGenerationService,
-    get_topics_generation_service,
+from src.prompts.services.topics_provider import (
+    TopicsProvider,
+    get_topics_provider,
 )
 
 logger = logging.getLogger(__name__)
@@ -25,11 +25,11 @@ class CompanyMetaInfoService:
     def __init__(
         self,
         domain_detection_service: BusinessDomainDetectionService,
-        topics_generation_service: TopicsGenerationService,
+        topics_provider: TopicsProvider,
     ):
         # Wire high-level service delegates in __init__ (not created in business methods)
         self.domain_detection_service = domain_detection_service
-        self.topics_generation_service = topics_generation_service
+        self.topics_provider = topics_provider
 
     async def get_meta_info(self, domain: str, country: Country) -> CompanyMetaInfo:
         """Get company metadata based on domain and country.
@@ -48,7 +48,7 @@ class CompanyMetaInfoService:
         business_domain, brand_variations = await self.domain_detection_service.detect(domain, languages)
         logger.info(f"Detected {business_domain} for {domain}")
 
-        # Generate topics if supported (business_domain is not None)
+        # Provide topics if supported (business_domain is not None)
         if business_domain is None:
             return CompanyMetaInfo(
                 business_domain=None,
@@ -56,39 +56,40 @@ class CompanyMetaInfoService:
                 brand_variations=brand_variations
             )
 
-        # Get primary language (first in list, fallback to English)
-        primary_language = languages[0] if languages else "English"
-
-        topics = await self.topics_generation_service.generate_topics(
-            domain, business_domain, primary_language
+        # Use TopicsProvider to get matched and unmatched topics
+        match_result = await self.topics_provider.provide(
+            domain, business_domain, country
         )
+
+        # Convert to List[str] for backward compatibility with CompanyMetaInfo
+        topic_titles = match_result.all_topic_titles()
 
         return CompanyMetaInfo(
             business_domain=business_domain,
-            top_topics=topics,
+            top_topics=topic_titles,
             brand_variations=brand_variations
         )
 
 
 def get_company_meta_info_service(
     domain_detection_service: BusinessDomainDetectionService = Depends(get_business_domain_detection_service),
-    topics_generation_service: TopicsGenerationService = Depends(get_topics_generation_service),
+    topics_provider: TopicsProvider = Depends(get_topics_provider),
 ) -> CompanyMetaInfoService:
     """
     Dependency injection function for CompanyMetaInfoService.
 
     Creates a new CompanyMetaInfoService instance per request with injected high-level service delegates.
     Note: This service is request-scoped (not a global singleton) because it depends
-    on session-scoped services (via BusinessDomainDetectionService).
+    on session-scoped services (via BusinessDomainDetectionService and TopicsProvider).
 
     Args:
         domain_detection_service: BusinessDomainDetectionService with wired BusinessDomainService
-        topics_generation_service: TopicsGenerationService for generating topic suggestions
+        topics_provider: TopicsProvider for providing topics with DB matching
 
     Returns:
         CompanyMetaInfoService instance for this request with high-level delegates wired
     """
     return CompanyMetaInfoService(
         domain_detection_service=domain_detection_service,
-        topics_generation_service=topics_generation_service,
+        topics_provider=topics_provider,
     )
