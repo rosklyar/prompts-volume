@@ -2,11 +2,12 @@
 
 import json
 import logging
+import os
 from typing import List
 
 from openai import AsyncOpenAI
 
-from src.prompts.models import BusinessDomain
+from src.database import BusinessDomain
 
 logger = logging.getLogger(__name__)
 
@@ -33,10 +34,11 @@ class TopicsGenerationService:
             business_domain: Business domain type
             primary_language: Primary language for topics (default: "English")
         """
-        if business_domain == BusinessDomain.E_COMMERCE:
+        # Route to appropriate prompt based on business domain name
+        if business_domain.name == "e-comm":
             prompt = self._create_ecommerce_prompt(domain, primary_language)
         else:
-            raise ValueError(f"Unsupported business domain: {business_domain}")
+            raise ValueError(f"Unsupported business domain: {business_domain.name}")
 
         response = await self.client.responses.create(
             model=self.model,
@@ -98,3 +100,21 @@ Return ONLY valid JSON:
 }}
 
 Use web search to gather accurate information."""
+
+
+def get_topics_generation_service() -> TopicsGenerationService:
+    """
+    Dependency injection function for TopicsGenerationService.
+
+    Creates instance with API key and model from environment variables.
+
+    Returns:
+        TopicsGenerationService instance
+    """
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY environment variable is required")
+
+    model = os.getenv("TOPICS_GENERATION_MODEL", "gpt-4o-mini")
+
+    return TopicsGenerationService(api_key=api_key, model=model)

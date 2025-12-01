@@ -11,6 +11,7 @@ from src.database import Base, get_async_session, seed_initial_data
 from src.main import app
 from src.prompts.services.business_domain_service import BusinessDomainService
 from src.prompts.services.country_service import CountryService
+from src.prompts.services.language_service import LanguageService
 from src.prompts.services.topic_service import TopicService
 
 
@@ -125,6 +126,14 @@ def business_domain_service(test_session):
     Fixture that provides a BusinessDomainService instance for testing.
     """
     return BusinessDomainService(test_session)
+
+
+@pytest.fixture(scope="function")
+def language_service(test_session):
+    """
+    Fixture that provides a LanguageService instance for testing.
+    """
+    return LanguageService(test_session)
 
 
 @pytest.fixture(scope="function")

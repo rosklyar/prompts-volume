@@ -1,6 +1,5 @@
 """Business domain service for database operations."""
 
-from functools import lru_cache
 from typing import List, Optional
 
 from fastapi import Depends
@@ -85,20 +84,18 @@ class BusinessDomainService:
         return business_domain
 
 
-@lru_cache()
 def get_business_domain_service(
     session: AsyncSession = Depends(get_async_session),
 ) -> BusinessDomainService:
     """
     Dependency injection function for BusinessDomainService.
 
-    Uses lru_cache to create a singleton instance - the same instance
-    is returned on every call, avoiding unnecessary instantiation.
+    Creates a new BusinessDomainService instance per request with the request-scoped session.
 
     Args:
-        session: AsyncSession injected by FastAPI
+        session: AsyncSession injected by FastAPI (new session per request)
 
     Returns:
-        Singleton instance of BusinessDomainService
+        BusinessDomainService instance for this request
     """
     return BusinessDomainService(session)

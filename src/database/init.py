@@ -3,7 +3,7 @@
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.database.models import BusinessDomain, Country, Topic
+from src.database.models import BusinessDomain, Country, CountryLanguage, Language, Topic
 
 
 async def seed_initial_data(session: AsyncSession) -> None:
@@ -14,16 +14,43 @@ async def seed_initial_data(session: AsyncSession) -> None:
     Args:
         session: AsyncSession to use for database operations
     """
-    # 1. Seed Countries
+    # 1. Seed Languages
+    await _seed_languages(session)
+
+    # 2. Seed Countries
     await _seed_countries(session)
 
-    # 2. Seed Business Domains
+    # 3. Seed Country-Language mappings
+    await _seed_country_languages(session)
+
+    # 4. Seed Business Domains
     await _seed_business_domains(session)
 
-    # 3. Seed Topics (requires countries and business domains)
+    # 5. Seed Topics (requires countries and business domains)
     await _seed_topics(session)
 
     await session.commit()
+
+
+async def _seed_languages(session: AsyncSession) -> None:
+    """Seed initial languages (Ukrainian, Russian, English)."""
+    # Check if languages already exist
+    result = await session.execute(select(Language).where(Language.id.in_([1, 2, 3])))
+    existing_languages = result.scalars().all()
+
+    if len(existing_languages) == 0:
+        languages = [
+            Language(id=1, name="Ukrainian", code="uk"),
+            Language(id=2, name="Russian", code="ru"),
+            Language(id=3, name="English", code="en"),
+        ]
+        session.add_all(languages)
+        await session.flush()
+
+        # Reset sequence to continue from the highest ID
+        await session.execute(
+            text("SELECT setval('languages_id_seq', (SELECT MAX(id) FROM languages))")
+        )
 
 
 async def _seed_countries(session: AsyncSession) -> None:
@@ -45,6 +72,23 @@ async def _seed_countries(session: AsyncSession) -> None:
         await session.execute(
             text("SELECT setval('countries_id_seq', (SELECT MAX(id) FROM countries))")
         )
+
+
+async def _seed_country_languages(session: AsyncSession) -> None:
+    """Seed country-language mappings (Ukraine -> Ukrainian, Russian)."""
+    # Check if mappings already exist
+    result = await session.execute(
+        select(CountryLanguage).where(CountryLanguage.country_id == 1)
+    )
+    existing_mappings = result.scalars().all()
+
+    if len(existing_mappings) == 0:
+        mappings = [
+            CountryLanguage(country_id=1, language_id=1, order=0),  # Ukraine -> Ukrainian (primary)
+            CountryLanguage(country_id=1, language_id=2, order=1),  # Ukraine -> Russian (secondary)
+        ]
+        session.add_all(mappings)
+        await session.flush()
 
 
 async def _seed_business_domains(session: AsyncSession) -> None:
@@ -86,7 +130,6 @@ async def _seed_topics(session: AsyncSession) -> None:
             description="Пошук і покупка телефонів і смартфонів в інтернеті",
             business_domain_id=1,
             country_id=1,
-            embedding=None,  # Will be populated later
         )
 
         # Topic 2: Laptops and PCs
@@ -96,7 +139,6 @@ async def _seed_topics(session: AsyncSession) -> None:
             description="Пошук і покупка ноутбуків та персональні комп'ютерів в інтернеті",
             business_domain_id=1,
             country_id=1,
-            embedding=None,  # Will be populated later
         )
 
         session.add_all([topic1, topic2])

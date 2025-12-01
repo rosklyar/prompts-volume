@@ -5,7 +5,7 @@ import os
 import pytest
 from dotenv import load_dotenv
 
-from src.prompts.models import BusinessDomain
+from src.database import BusinessDomain
 from src.prompts.services.topics_generation_service import TopicsGenerationService
 
 load_dotenv()

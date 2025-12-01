@@ -1,13 +1,13 @@
 """Country service for database operations."""
 
-from functools import lru_cache
 from typing import List, Optional
 
 from fastapi import Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from src.database import Country, get_async_session
+from src.database import Country, CountryLanguage, get_async_session
 
 
 class CountryService:
@@ -24,7 +24,7 @@ class CountryService:
 
     async def get_by_iso_code(self, iso_code: str) -> Optional[Country]:
         """
-        Get a country by its ISO code.
+        Get a country by its ISO code with eager-loaded languages.
 
         Args:
             iso_code: ISO 3166-1 alpha-2 country code (e.g., 'UA', 'US')
@@ -33,7 +33,11 @@ class CountryService:
             Country object if found, None otherwise
         """
         result = await self.session.execute(
-            select(Country).where(Country.iso_code == iso_code.upper())
+            select(Country)
+            .where(Country.iso_code == iso_code.upper())
+            .options(
+                selectinload(Country.country_languages).selectinload(CountryLanguage.language)
+            )
         )
         return result.scalar_one_or_none()
 
@@ -83,20 +87,20 @@ class CountryService:
         return country
 
 
-@lru_cache()
 def get_country_service(
     session: AsyncSession = Depends(get_async_session),
 ) -> CountryService:
     """
     Dependency injection function for CountryService.
 
-    Uses lru_cache to create a singleton instance - the same instance
-    is returned on every call, avoiding unnecessary instantiation.
+    Creates a new CountryService instance per request with the request-scoped session.
+    Note: @lru_cache is not used because each request gets a new session object,
+    making caching ineffective and unnecessary.
 
     Args:
-        session: AsyncSession injected by FastAPI
+        session: AsyncSession injected by FastAPI (new session per request)
 
     Returns:
-        Singleton instance of CountryService
+        CountryService instance for this request
     """
     return CountryService(session)

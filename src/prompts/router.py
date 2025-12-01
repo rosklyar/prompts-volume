@@ -5,7 +5,7 @@ from typing import List
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from src.config.countries import get_country_by_code
+from src.prompts.services.country_service import CountryService, get_country_service
 from src.embeddings.clustering_service import (
     ClusteringService,
     get_clustering_service,
@@ -41,6 +41,7 @@ async def get_company_meta_info(
     ),
     iso_country_code: str = Query(..., description="ISO 3166-1 alpha-2 country code (e.g., 'UA', 'US')"),
     meta_service: CompanyMetaInfoService = Depends(get_company_meta_info_service),
+    country_service: CountryService = Depends(get_country_service),
 ):
     """
     Get company metadata including business domain, topics, and brand variations.
@@ -86,14 +87,14 @@ async def get_company_meta_info(
         domain = extract_domain(company_url)
 
         # Validate country code
-        country = get_country_by_code(iso_country_code)
+        country = await country_service.get_by_iso_code(iso_country_code)
         if not country:
             raise HTTPException(
                 status_code=400, detail=f"Invalid ISO country code: {iso_country_code}"
             )
 
-        # Get company metadata
-        meta_info = await meta_service.get_meta_info(domain, iso_country_code)
+        # Get company metadata (pass Country object to avoid redundant query)
+        meta_info = await meta_service.get_meta_info(domain, country)
 
         # Convert to response model
         return CompanyMetaInfoResponse(
@@ -120,6 +121,7 @@ async def generate_prompts(
     prompts_service: PromptsGeneratorService = Depends(get_prompts_generator_service),
     clustering_service: ClusteringService = Depends(get_clustering_service),
     topic_filter_service: TopicRelevanceFilterService = Depends(get_topic_relevance_filter_service),
+    country_service: CountryService = Depends(get_country_service),
 ):
     """
     Generate e-commerce product search prompts from company URL, country, and selected topics.
@@ -168,18 +170,14 @@ async def generate_prompts(
             )
 
         # 3. Get country info
-        country = get_country_by_code(iso_country_code)
+        country = await country_service.get_by_iso_code(iso_country_code)
         if not country:
             raise HTTPException(
                 status_code=400, detail=f"Invalid ISO country code: {iso_country_code}"
             )
 
         location_name = country.name
-        language = (
-            country.preferred_languages[0].name
-            if country.preferred_languages
-            else "English"
-        )
+        language = country.languages[0].name if country.languages else "English"
 
         # 4. Fetch ALL keywords with pagination
         keywords = await dataforseo_service.get_all_keywords_for_site(

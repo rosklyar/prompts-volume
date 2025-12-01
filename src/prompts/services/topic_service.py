@@ -1,10 +1,9 @@
 """Topic service for database operations."""
 
-from functools import lru_cache
 from typing import List, Optional
 
 from fastapi import Depends
-from sqlalchemy import func, select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database import Topic, get_async_session
@@ -85,7 +84,6 @@ class TopicService:
         description: str,
         business_domain_id: int,
         country_id: int,
-        embedding: Optional[List[float]] = None,
     ) -> Topic:
         """
         Create a new topic.
@@ -95,7 +93,6 @@ class TopicService:
             description: Topic description
             business_domain_id: Business domain ID
             country_id: Country ID
-            embedding: Optional vector embedding (384 dimensions)
 
         Returns:
             Created Topic object
@@ -105,51 +102,25 @@ class TopicService:
             description=description,
             business_domain_id=business_domain_id,
             country_id=country_id,
-            embedding=embedding,
         )
         self.session.add(topic)
         await self.session.flush()
         await self.session.refresh(topic)
         return topic
 
-    async def search_by_embedding(
-        self, embedding: List[float], limit: int = 10
-    ) -> List[Topic]:
-        """
-        Search for similar topics using vector similarity (pgvector).
 
-        Args:
-            embedding: Query vector (384 dimensions)
-            limit: Maximum number of results to return
-
-        Returns:
-            List of Topic objects ordered by similarity (most similar first)
-        """
-        # Use pgvector's <-> operator for cosine distance
-        # Lower distance = more similar
-        result = await self.session.execute(
-            select(Topic)
-            .filter(Topic.embedding.isnot(None))
-            .order_by(Topic.embedding.cosine_distance(embedding))
-            .limit(limit)
-        )
-        return list(result.scalars().all())
-
-
-@lru_cache()
 def get_topic_service(
     session: AsyncSession = Depends(get_async_session),
 ) -> TopicService:
     """
     Dependency injection function for TopicService.
 
-    Uses lru_cache to create a singleton instance - the same instance
-    is returned on every call, avoiding unnecessary instantiation.
+    Creates a new TopicService instance per request with the request-scoped session.
 
     Args:
-        session: AsyncSession injected by FastAPI
+        session: AsyncSession injected by FastAPI (new session per request)
 
     Returns:
-        Singleton instance of TopicService
+        TopicService instance for this request
     """
     return TopicService(session)

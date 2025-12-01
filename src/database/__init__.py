@@ -1,7 +1,7 @@
 """Database package for PostgreSQL with pgvector support."""
 
 from src.database.init import seed_initial_data
-from src.database.models import BusinessDomain, Country, Topic
+from src.database.models import BusinessDomain, Country, CountryLanguage, Language, Topic
 from src.database.session import (
     Base,
     close_db,
@@ -21,6 +21,8 @@ __all__ = [
     "close_db",
     # Models
     "Country",
+    "Language",
+    "CountryLanguage",
     "BusinessDomain",
     "Topic",
     # Initialization

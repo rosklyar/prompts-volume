@@ -4,6 +4,7 @@ import pytest
 
 from src.prompts.services.business_domain_service import BusinessDomainService
 from src.prompts.services.country_service import CountryService
+from src.prompts.services.language_service import LanguageService
 from src.prompts.services.topic_service import TopicService
 
 
@@ -40,6 +41,56 @@ async def test_country_service_create(country_service: CountryService):
     retrieved = await country_service.get_by_iso_code("US")
     assert retrieved is not None
     assert retrieved.name == "United States"
+
+
+@pytest.mark.asyncio
+async def test_language_service_get_by_code(language_service: LanguageService):
+    """Test that we can get a language by ISO code using LanguageService."""
+    ukrainian = await language_service.get_by_code("uk")
+
+    assert ukrainian is not None, "Ukrainian should be seeded"
+    assert ukrainian.id == 1
+    assert ukrainian.name == "Ukrainian"
+    assert ukrainian.code == "uk"
+
+
+@pytest.mark.asyncio
+async def test_language_service_get_all(language_service: LanguageService):
+    """Test that we can get all languages using LanguageService."""
+    languages = await language_service.get_all()
+
+    assert len(languages) >= 3, "Should have at least 3 languages (Ukrainian, Russian, English)"
+    codes = [lang.code for lang in languages]
+    assert "uk" in codes
+    assert "ru" in codes
+    assert "en" in codes
+
+
+@pytest.mark.asyncio
+async def test_language_service_create(language_service: LanguageService):
+    """Test creating a new language using LanguageService."""
+    new_language = await language_service.create(name="Spanish", code="es")
+
+    assert new_language.id is not None
+    assert new_language.name == "Spanish"
+    assert new_language.code == "es"
+
+    # Verify it was saved
+    retrieved = await language_service.get_by_code("es")
+    assert retrieved is not None
+    assert retrieved.name == "Spanish"
+
+
+@pytest.mark.asyncio
+async def test_country_with_ordered_languages(country_service: CountryService):
+    """Test that Country returns languages in correct order."""
+    ukraine = await country_service.get_by_iso_code("UA")
+
+    assert ukraine is not None
+    languages = ukraine.languages
+    assert len(languages) == 2, "Ukraine should have 2 languages"
+    assert languages[0].name == "Ukrainian", "First language should be Ukrainian (order=0)"
+    assert languages[1].name == "Russian", "Second language should be Russian (order=1)"
 
 
 @pytest.mark.asyncio
@@ -154,70 +205,11 @@ async def test_topic_service_create(topic_service: TopicService):
     assert new_topic.description == "Тестовий опис теми"
     assert new_topic.business_domain_id == 1
     assert new_topic.country_id == 1
-    assert new_topic.embedding is None
 
     # Verify it was saved
     retrieved = await topic_service.get_by_id(new_topic.id)
     assert retrieved is not None
     assert retrieved.title == "Тестова тема"
-
-
-@pytest.mark.asyncio
-async def test_topic_service_create_with_embedding(topic_service: TopicService):
-    """Test creating a topic with an embedding vector using TopicService."""
-    # Create a dummy 384-dimensional embedding
-    dummy_embedding = [0.1] * 384
-
-    new_topic = await topic_service.create(
-        title="Topic with embedding",
-        description="This topic has a vector embedding",
-        business_domain_id=1,
-        country_id=1,
-        embedding=dummy_embedding,
-    )
-
-    assert new_topic.id is not None
-    assert new_topic.embedding is not None
-
-    # Verify it was saved with the embedding
-    retrieved = await topic_service.get_by_id(new_topic.id)
-    assert retrieved is not None
-    assert retrieved.embedding is not None
-
-
-@pytest.mark.asyncio
-async def test_topic_service_search_by_embedding(topic_service: TopicService):
-    """Test pgvector similarity search using TopicService."""
-    # First, create topics with embeddings
-    embedding1 = [0.1] * 384
-    embedding2 = [0.9] * 384
-
-    topic1 = await topic_service.create(
-        title="Similar topic 1",
-        description="First similar topic",
-        business_domain_id=1,
-        country_id=1,
-        embedding=embedding1,
-    )
-
-    topic2 = await topic_service.create(
-        title="Similar topic 2",
-        description="Second similar topic",
-        business_domain_id=1,
-        country_id=1,
-        embedding=embedding2,
-    )
-
-    # Search with a query embedding similar to embedding1
-    query_embedding = [0.15] * 384
-    similar_topics = await topic_service.search_by_embedding(
-        query_embedding, limit=5
-    )
-
-    # Should return topics with embeddings, ordered by similarity
-    assert len(similar_topics) >= 2
-    # The first result should be more similar to query_embedding
-    assert similar_topics[0].embedding is not None
 
 
 @pytest.mark.asyncio

@@ -7,7 +7,6 @@ from dotenv import load_dotenv
 from fastapi.testclient import TestClient
 
 from src.main import app
-from src.prompts.models import BusinessDomain
 
 load_dotenv()
 
@@ -28,6 +27,6 @@ def test_meta_info_endpoint():
     assert response.status_code == 200
     data = response.json()
 
-    assert data["business_domain"] == BusinessDomain.E_COMMERCE.value
+    assert data["business_domain"] == "e-comm"
     assert len(data["top_topics"]) == 10
     assert len(data["brand_variations"]) > 0
