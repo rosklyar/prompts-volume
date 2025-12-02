@@ -12,8 +12,13 @@ class Settings(BaseSettings):
         extra="ignore"
     )
 
+    # DataForSEO API credentials
     dataforseo_username: str = ""
     dataforseo_password: str = ""
+
+    # Database configuration
+    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/prompts"
+    database_echo: bool = False
 
 
 # Singleton settings instance

@@ -2,13 +2,14 @@
 
 import logging
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Dict, List
 
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
 from src.embeddings.clustering_service import ClusteringResult
-from src.embeddings.embeddings_service import EmbeddingsService
+from src.embeddings.embeddings_service import EmbeddingsService, get_embeddings_service
 
 logger = logging.getLogger(__name__)
 
@@ -145,3 +146,14 @@ class TopicRelevanceFilterService:
                 logger.info(f"  Topic '{topic}': {len(clusters)} clusters")
 
         return result
+
+
+@lru_cache()
+def get_topic_relevance_filter_service() -> TopicRelevanceFilterService:
+    """
+    Get singleton instance of TopicRelevanceFilterService.
+
+    Returns the same instance on subsequent calls.
+    Uses singleton EmbeddingsService instance.
+    """
+    return TopicRelevanceFilterService(embeddings_service=get_embeddings_service())

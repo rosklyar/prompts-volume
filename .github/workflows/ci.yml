@@ -42,7 +42,7 @@ jobs:
       run: uv sync
 
     - name: Pull PostgreSQL Docker image with pgvector
-      run: docker pull pgvector/pgvector:pg15
+      run: docker pull pgvector/pgvector:pg16
 
     - name: Run tests with testcontainers
       run: uv run pytest -v
