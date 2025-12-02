@@ -1,12 +1,11 @@
 """Service for retrieving company metadata (orchestrator)."""
 
 import logging
-import os
 
 from fastapi import Depends
 
 from src.database import Country
-from src.prompts.models import CompanyMetaInfo
+from src.prompts.models import CompanyMetaInfo, TopicMatchResult
 from src.prompts.services.business_domain_detection_service import (
     BusinessDomainDetectionService,
     get_business_domain_detection_service,
@@ -52,7 +51,7 @@ class CompanyMetaInfoService:
         if business_domain is None:
             return CompanyMetaInfo(
                 business_domain=None,
-                top_topics=[],
+                topics=TopicMatchResult(matched_topics=[], unmatched_topics=[]),
                 brand_variations=brand_variations
             )
 
@@ -61,12 +60,10 @@ class CompanyMetaInfoService:
             domain, business_domain, country
         )
 
-        # Convert to List[str] for backward compatibility with CompanyMetaInfo
-        topic_titles = match_result.all_topic_titles()
-
+        # Store TopicMatchResult directly (preserve matched vs unmatched distinction)
         return CompanyMetaInfo(
             business_domain=business_domain,
-            top_topics=topic_titles,
+            topics=match_result,
             brand_variations=brand_variations
         )
 

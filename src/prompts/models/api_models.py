@@ -28,6 +28,38 @@ class GeneratedPrompts(BaseModel):
     topics: List[Topic] = Field(..., description="List of topics with cluster prompts")
 
 
+class DBTopicResponse(BaseModel):
+    """DB topic with full metadata."""
+
+    model_config = {"from_attributes": True}
+
+    id: int = Field(..., description="Topic ID from database")
+    title: str = Field(..., description="Topic title")
+    description: str = Field(..., description="Topic description")
+    business_domain_id: int = Field(..., description="Business domain ID")
+    country_id: int = Field(..., description="Country ID")
+
+
+class GeneratedTopicResponse(BaseModel):
+    """Generated topic without DB match."""
+
+    title: str = Field(..., description="Generated topic title")
+    source: str = Field(default="generated", description="Source indicator")
+
+
+class TopicsResponse(BaseModel):
+    """Topics split into matched DB topics and generated topics."""
+
+    matched_topics: List[DBTopicResponse] = Field(
+        ...,
+        description="Topics matched from database (can be referenced by ID)"
+    )
+    unmatched_topics: List[GeneratedTopicResponse] = Field(
+        ...,
+        description="Topics generated on-the-fly (no DB match)"
+    )
+
+
 class CompanyMetaInfoResponse(BaseModel):
     """Response model for company meta information endpoint."""
 
@@ -36,8 +68,9 @@ class CompanyMetaInfoResponse(BaseModel):
     business_domain: Optional[BusinessDomain] = Field(
         None, description="Business domain (serialized as name), or null if not classified"
     )
-    top_topics: List[str] = Field(
-        ..., description="Top 10 topics/categories (sales categories for e-commerce)"
+    topics: TopicsResponse = Field(
+        ...,
+        description="Topics split into matched DB topics and generated topics"
     )
     brand_variations: List[str] = Field(
         ..., description="Brand name variations to filter out from prompts"

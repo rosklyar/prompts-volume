@@ -2,6 +2,8 @@
 
 import pytest
 import pytest_asyncio
+import src.database.session as db_session
+from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
@@ -96,17 +98,38 @@ def override_get_db(test_session):
 
 
 @pytest.fixture(scope="function")
-def client(override_get_db):
+def client(test_engine):
     """
     Fixture that provides a FastAPI TestClient with database dependency overridden.
-    """
-    from fastapi.testclient import TestClient
+    Also sets the global database engine to use the test engine.
 
-    # Override database dependency
-    app.dependency_overrides[get_async_session] = override_get_db
+    Note: This is a sync fixture that creates its own session for TestClient's event loop.
+    The test_session fixture is for async tests only.
+    """
+    # Store original engine and session maker
+    original_engine = db_session._engine
+    original_session_maker = db_session._async_session_maker
+
+    # Override global database engine and session maker BEFORE creating TestClient
+    # This ensures app lifespan uses test database
+    db_session._engine = test_engine
+    db_session._async_session_maker = async_sessionmaker(
+        bind=test_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autocommit=False,
+        autoflush=False,
+    )
+
+    # TestClient will use the overridden engine via get_async_session dependency
+    # No need to override get_async_session - it will use the overridden engine
 
     with TestClient(app) as test_client:
         yield test_client
+
+    # Restore original engine and session maker
+    db_session._engine = original_engine
+    db_session._async_session_maker = original_session_maker
 
     # Clear overrides
     app.dependency_overrides.clear()

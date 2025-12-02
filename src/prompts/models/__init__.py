@@ -3,9 +3,12 @@
 from src.prompts.models.api_models import (
     ClusterPrompts,
     CompanyMetaInfoResponse,
+    DBTopicResponse,
+    GeneratedTopicResponse,
     GeneratePromptsRequest,
     GeneratedPrompts,
     Topic,
+    TopicsResponse,
 )
 from src.prompts.models.company_meta_info import CompanyMetaInfo
 from src.prompts.models.generated_topic import GeneratedTopic
@@ -20,4 +23,7 @@ __all__ = [
     "CompanyMetaInfoResponse",
     "GeneratedTopic",
     "TopicMatchResult",
+    "DBTopicResponse",
+    "GeneratedTopicResponse",
+    "TopicsResponse",
 ]
