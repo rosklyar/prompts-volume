@@ -1,9 +1,13 @@
 """Database initialization and seeding logic."""
 
+import csv
+from pathlib import Path
+
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.database.models import BusinessDomain, Country, CountryLanguage, Language, Topic
+from src.database.models import BusinessDomain, Country, CountryLanguage, Language, Prompt, Topic
+from src.embeddings.embeddings_service import get_embeddings_service
 
 
 async def seed_initial_data(session: AsyncSession) -> None:
@@ -28,6 +32,9 @@ async def seed_initial_data(session: AsyncSession) -> None:
 
     # 5. Seed Topics (requires countries and business domains)
     await _seed_topics(session)
+
+    # 6. Seed Prompts (requires topics)
+    await _seed_prompts(session)
 
     await session.commit()
 
@@ -148,3 +155,67 @@ async def _seed_topics(session: AsyncSession) -> None:
         await session.execute(
             text("SELECT setval('topics_id_seq', (SELECT MAX(id) FROM topics))")
         )
+
+
+async def _seed_prompts(session: AsyncSession) -> None:
+    """
+    Seed prompts from CSV files with embeddings.
+
+    Loads prompts from:
+    - prompts_phones.csv -> topic_id=1 (Смартфони і телефони)
+    - prompts_laptops.csv -> topic_id=2 (Ноутбуки та персональні комп'ютери)
+    """
+    # Check if prompts already exist
+    result = await session.execute(select(Prompt).limit(1))
+    existing_prompt = result.scalar_one_or_none()
+
+    if existing_prompt is not None:
+        # Prompts already seeded, skip
+        return
+
+    # Get embeddings service
+    embeddings_service = get_embeddings_service()
+
+    # Base path for CSV files (src/data directory)
+    data_dir = Path(__file__).parent.parent / "data"
+
+    # Define CSV files and their corresponding topic IDs
+    csv_files = [
+        (data_dir / "prompts_phones.csv", 1),    # Smartphones
+        (data_dir / "prompts_laptops.csv", 2),   # Laptops
+    ]
+
+    all_prompts = []
+
+    for csv_path, topic_id in csv_files:
+        if not csv_path.exists():
+            continue
+
+        # Read prompts from CSV
+        with open(csv_path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            prompt_texts = [row["prompt"] for row in reader]
+
+        if not prompt_texts:
+            continue
+
+        # Generate embeddings in batch for all prompts of this topic
+        text_embeddings = embeddings_service.encode_texts(
+            prompt_texts,
+            batch_size=64,
+            show_progress=False
+        )
+
+        # Create Prompt objects
+        for te in text_embeddings:
+            prompt = Prompt(
+                prompt_text=te.text,
+                embedding=te.embedding.tolist(),
+                topic_id=topic_id,
+            )
+            all_prompts.append(prompt)
+
+    # Bulk insert all prompts
+    if all_prompts:
+        session.add_all(all_prompts)
+        await session.flush()

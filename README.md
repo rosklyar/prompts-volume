@@ -1,387 +1,216 @@
-# Prompts Volume - E-Commerce Prompt Generation Service
+# Prompts Volume
 
-AI-powered service that generates conversational, e-commerce product search prompts based on keyword analysis, semantic clustering, and LLM transformation.
-
----
-
-## Prompt Generation Algorithm
-
-### Overview
-
-The service implements a **9-step ML pipeline** that transforms a company website URL and target country into natural, conversational product search prompts in the local language (e.g., Ukrainian, English).
-
-**Input**: `company_url` + `iso_country_code`
-**Output**: Structured prompts organized by business topics and keyword clusters
-
-**Pipeline**: URL → Keywords → Embeddings → Clusters → Topics → Prompts
+AI-powered prompt generation service for e-commerce businesses.
 
 ---
 
-## Detailed Algorithm Steps
+## 1. Service Purpose
 
-### Step 1: URL Validation & Domain Extraction
+**What it does:**
+- Provides conversational search prompts for AI shopping assistants
+- Helps businesses understand customer search intent
+- Supports multilingual prompts (Ukrainian, Russian, English)
 
-**Purpose**: Validate and normalize the input URL
+**Two modes of operation:**
 
-**Process**:
-1. Validate URL format and accessibility
-2. Extract bare domain (remove `www.`, protocol, paths)
-3. Example: `https://www.moyo.ua/shop/` → `moyo.ua`
+1. **DB-first (fast, ~50ms)**: Retrieve pre-seeded, topic-specific prompts from PostgreSQL
+2. **Generation (on-demand, ~30-60s)**: Create custom prompts from search engine ranking data when DB has no data
 
-**Implementation**: `src/utils/url_validator.py`
+**Key Features:**
+- Pre-seeded prompts for common e-commerce topics (phones, laptops, etc.)
+- Custom prompt generation based on real search engine data
+- Semantic clustering and topic matching with ML
+- Vector similarity search with pgvector (384-dimensional embeddings)
 
 ---
 
-### Step 2: Country & Language Lookup
+## 2. Architecture
 
-**Purpose**: Determine target location and language for keyword fetching
+### High-Level Design
 
-**Process**:
-1. Map ISO country code (e.g., `UA`) to country name (`Ukraine`)
-2. Get preferred language(s) for the country (`Ukrainian`)
-3. Supports 94 countries with language mappings
-
-**Implementation**: `src/config/countries.py`
-
-**Example**:
 ```
-UA → Ukraine, Ukrainian
-US → United States, English
-```
-
----
-
-### Step 3: Keyword Fetching (DataForSEO API)
-
-**Purpose**: Fetch all keywords where the domain currently ranks in Google
-
-**Process** (Paginated):
-1. Call DataForSEO Ranked Keywords API with `offset` and `limit`
-2. **Batch size**: 1,000 keywords per request
-3. **Maximum total**: 10,000 keywords
-4. Loop until:
-   - Batch size < 1,000 (last page), OR
-   - Total keywords ≥ 10,000 (limit reached), OR
-   - Empty batch (no more keywords)
-
-**Implementation**: `src/prompts/data_for_seo_service.py` → `get_all_keywords_for_site()`
-
-**Example pagination**:
-```
-offset=0, limit=1000 → 1,000 keywords
-offset=1000, limit=1000 → 1,000 keywords
-offset=2000, limit=1000 → 734 keywords (stop)
-Total: 2,734 keywords
+┌─────────────────┐
+│   FastAPI App   │ ← REST API layer
+└────────┬────────┘
+         │
+    ┌────┴────┐
+    │         │
+┌───▼───┐ ┌──▼────────┐
+│  DB   │ │  External │
+│ Layer │ │    APIs   │
+└───┬───┘ └──┬────────┘
+    │        │
+    │        ├─ DataForSEO (keywords)
+    │        ├─ OpenAI (generation)
+    │        └─ ML Models (embeddings)
+    │
+┌───▼─────────────────────┐
+│  PostgreSQL + pgvector  │
+│  - Topics               │
+│  - Prompts + embeddings │
+│  - Countries/domains    │
+└─────────────────────────┘
 ```
 
----
+### Core Components
 
-### Step 4: Company Metadata Retrieval
+**1. Database Layer** (PostgreSQL + pgvector)
+- Stores pre-seeded prompts with 384-dim embeddings
+- Topics organized by country and business domain
+- Vector similarity search support (HNSW index)
 
-**Purpose**: Get business topics and brand name variations
+**2. Service Layer**
+- `PromptService`: DB CRUD operations for prompts
+- `TopicService`: Topic management and matching
+- `DataForSEOService`: Keyword fetching from search engines
+- `PromptsGeneratorService`: OpenAI-based prompt generation
+- `EmbeddingsService`: Multilingual text embeddings
 
-**Current Implementation** (Hardcoded for MVP):
-- **Topics**: 10 e-commerce categories
-  - `["Apple", "Смартфони і телефони", "Ноутбуки", "Планшети", "Персональні комп'ютери", "Телевізори", "Аудіотехніка", "Техніка для дому", "Техніка для кухні", "Ігрові консолі"]`
-- **Brand variations**: `["moyo", "мойо"]` (for filtering)
+**3. ML Pipeline** (when generating)
+- **Embeddings**: sentence-transformers (multilingual, 384-dim)
+- **Clustering**: HDBSCAN (semantic grouping with noise handling)
+- **Topic Matching**: Cosine similarity filtering (0.7 threshold)
+- **Generation**: GPT-4o-mini (conversational prompts in detected language)
 
-**Implementation**: `src/prompts/company_meta_info_service.py`
+### Data Flow
 
-**TODO**: Replace with database/API lookup based on domain analysis
+**Path 1 - DB Retrieval** (fast, ~50ms):
+```
+Request → Topic IDs → DB lookup → Return prompts
+```
 
----
-
-### Step 5: Keyword Filtering (3-Stage Filter)
-
-**Purpose**: Clean and reduce keyword set to high-quality candidates
-
-**Filter Chain**:
-
-#### Filter 1: Word Count ≥ 3
-- Keep only keywords with 3+ words
-- Removes single-word queries (too generic)
-- Example: `"tv"` → ❌, `"smart tv 4k"` → ✅
-
-#### Filter 2: Brand Exclusion
-- Remove keywords containing brand name variations (case-insensitive)
-- Prevents brand-focused queries (not useful for product search)
-- Example: `"moyo київ"` → ❌, `"телефон samsung"` → ✅
-
-#### Filter 3: Deduplication
-- Remove exact duplicates (case-sensitive)
-- Preserve first occurrence, maintain order
-- Example: `["laptop", "phone", "laptop"]` → `["laptop", "phone"]`
-
-**Implementation**: `src/utils/keyword_filters.py`
-
-**Typical reduction**: 10,000 → ~6,500 keywords
+**Path 2 - Generation** (slow, ~30-60s):
+```
+URL → Keywords (DataForSEO)
+    → Filter (word count, brand exclusion, dedupe)
+    → Embeddings (sentence-transformers)
+    → Clustering (HDBSCAN)
+    → Topic filtering (cosine similarity)
+    → Prompt generation (OpenAI)
+    → Response
+```
 
 ---
 
-### Step 6: Embedding Generation
+## 3. API Endpoints
 
-**Purpose**: Convert keywords to semantic vector representations
+**Base URL**: `http://localhost:8000`
 
-**Model**: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`
-- **Dimensions**: 384
-- **Languages**: 50+ (including Ukrainian, Russian, English)
-- **Training**: Paraphrase detection, multilingual
+### 3.1 Health Check
 
-**Process**:
-1. Batch keywords (64 per batch)
-2. Generate embeddings via sentence transformer
-3. Output: `keyword → 384-dimensional vector`
+```http
+GET /health
+```
 
-**Implementation**: `src/embeddings/embeddings_service.py`
+**Purpose**: Service health status
 
-**Why embeddings?**
-- Captures semantic meaning (not just word matching)
-- Enables clustering of similar concepts
-- Multilingual support for Ukrainian/Russian keywords
+**Response**:
+```json
+{"status": "UP"}
+```
 
 ---
 
-### Step 7: Clustering (HDBSCAN)
+### 3.2 Get Company Meta-Info
 
-**Purpose**: Group semantically similar keywords into clusters
+```http
+GET /prompts/api/v1/meta-info
+```
 
-**Algorithm**: HDBSCAN (Hierarchical Density-Based Spatial Clustering)
-- **Density-based**: Finds clusters of varying shapes/sizes
-- **Hierarchical**: Builds cluster hierarchy
-- **Noise handling**: Labels outliers as noise (-1)
+**Purpose**: Retrieve business domain and suggested topics for a company
 
 **Parameters**:
-- `min_cluster_size=5`: Minimum keywords per cluster
-- `min_samples=5`: Minimum core points for density
-- `cluster_selection_epsilon=0.0`: Cluster merging threshold
+- `company_url` (required): Company website URL (e.g., `moyo.ua`)
+- `iso_country_code` (required): ISO 3166-1 alpha-2 country code (e.g., `UA`)
 
-**Subclustering** (for large clusters):
-- If cluster size > 25 keywords (5× min_cluster_size)
-- Recursively apply HDBSCAN to split
-- Prevents oversized, heterogeneous clusters
+**Example**:
+```bash
+curl "http://localhost:8000/prompts/api/v1/meta-info?company_url=moyo.ua&iso_country_code=UA"
+```
 
-**Implementation**: `src/embeddings/clustering_service.py`
-
-**Output**:
-```python
+**Response**:
+```json
 {
-  0: ["смартфон samsung", "телефон galaxy", ...],  # 15 keywords
-  1: ["ноутбук lenovo", "laptop dell", ...],      # 12 keywords
-  -1: ["irrelevant query", ...]                    # noise
+  "business_domain": "e-comm",
+  "topics": {
+    "matched_topics": [
+      {"id": 1, "title": "Смартфони і телефони", "description": "..."},
+      {"id": 2, "title": "Ноутбуки та персональні комп'ютери", "description": "..."}
+    ],
+    "unmatched_topics": []
+  },
+  "brand_variations": ["moyo", "мойо"]
 }
 ```
 
-**Typical results**: 60-80 clusters, ~5% noise
+**Use Case**: First step in client flow - discover available topics for the business
 
 ---
 
-### Step 8: Topic Relevance Filtering
+### 3.3 Get Prompts from Database
 
-**Purpose**: Match clusters to business topics and filter by relevance
+```http
+GET /prompts/api/v1/prompts
+```
 
-**Algorithm**:
-
-1. **Generate topic embeddings**
-   - Embed each topic name (e.g., `"Смартфони і телефони"`)
-   - Output: 10 topic vectors (384-dim each)
-
-2. **For each cluster**:
-   - Calculate **cosine similarity** between:
-     - All keyword embeddings in cluster (N keywords)
-     - All topic embeddings (10 topics)
-   - Matrix: `N keywords × 10 topics`
-
-3. **Relevance scoring**:
-   - For each keyword: `max_similarity_to_any_topic`
-   - Count keywords with `max_similarity ≥ 0.7` (threshold)
-   - Calculate `relevance_score = relevant_count / total_keywords`
-
-4. **Filtering**:
-   - Keep cluster if `relevance_score ≥ 0.5` (50% keywords relevant)
-   - Assign cluster to **topic with highest average similarity**
-
-5. **Organization**:
-   - Group clusters by best-matching topic
-   - Output: `{topic_name: [ClusterWithRelevance, ...]}`
-
-**Implementation**: `src/embeddings/topic_relevance_filter_service.py`
+**Purpose**: Retrieve pre-seeded prompts for specified topics (fast, DB-first approach)
 
 **Parameters**:
-- `similarity_threshold=0.7`: Cosine similarity cutoff for relevance
-- `min_relevant_ratio=0.5`: Minimum 50% of keywords must be relevant
+- `topic_ids` (required, multi): List of topic IDs to retrieve prompts for
 
 **Example**:
-```python
-Cluster 42: ["смартфон samsung", "телефон galaxy", "phone iphone"]
-  → Similarity to "Смартфони і телефони": [0.82, 0.79, 0.75]
-  → Relevance: 3/3 = 100% (all above 0.7)
-  → Assigned to topic: "Смартфони і телефони"
+```bash
+curl "http://localhost:8000/prompts/api/v1/prompts?topic_ids=1&topic_ids=2"
 ```
 
-**Typical reduction**: 67 clusters → 45 relevant clusters across 8 topics
-
----
-
-### Step 9: Prompt Generation (OpenAI GPT-4o-mini)
-
-**Purpose**: Transform keyword clusters into natural, conversational e-commerce prompts
-
-**Process**:
-
-#### 9.1 Language Detection
-- Sample first 10 keywords from cluster
-- Count Cyrillic (`\u0400-\u04FF`) vs Latin (`a-z`) characters
-- Detect Ukrainian vs Russian (Ukrainian-specific: `і, ї, є, ґ`)
-- Output: `"Ukrainian"`, `"Russian"`, or `"English"`
-
-#### 9.2 Prompt Density Calculation
-- `num_prompts = len(keywords) // 5`
-- Generate **1 prompt per 5 keywords**
-- Example: 23 keywords → 4 prompts
-
-#### 9.3 LLM System Prompt Construction
-
-**Key instructions to GPT-4o-mini**:
-
-1. **Language**: Generate prompts in detected language (e.g., Ukrainian)
-2. **Style**: SHORT (5-15 words), casual, conversational
-3. **Examples** (Ukrainian e-commerce patterns):
-   ```
-   "Який телевізор краще купити до 10 000 грн?"
-   "OLED чи QLED – що вибрати?"
-   "Найкращий смартфон до 15 000 грн."
-   "iPhone чи Samsung – що краще у 2025?"
-   ```
-
-4. **Intent transformation**:
-   - **Direct searches** (`"лучший телефон"`)
-     → `"Найкращий телефон до 10 000?"`
-
-   - **How-to/tutorials** (`"як підключити джойстик до телефону"`)
-     → `"Який телефон найкращий для ігор з джойстиком?"`
-
-   - **Informational** (`"топ ноутбуків 2025"`)
-     → `"Топ-5 ноутбуків 2025?"`
-
-5. **Focus**: Product comparison, recommendations, budget constraints
-
-#### 9.4 LLM Call & Response Parsing
-- Call OpenAI API with `response_format={"type": "json_object"}`
-- Parse JSON: `{"prompts": ["prompt1", "prompt2", ...]}`
-- Validate: Correct count, non-empty strings
-
-**Implementation**: `src/prompts/prompts_generator_service.py`
-
-**Example transformation**:
-```python
-Keywords: ["інтересні ігри на телефон", "круті ігри на телефон",
-           "найкращі ігри без інтернету", "безкоштовні ігри андроїд"]
-
-Prompts: [
-  "Найкращий телефон для ігор до 15 000 грн?",
-  "Які безкоштовні ігри найкращі без інтернету?",
-  "Топ-5 мобільних ігор 2025?"
-]
-```
-
----
-
-## Complete Flow Example
-
-```
-INPUT:
-  company_url: moyo.ua
-  iso_country_code: UA
-
-STEP 1: Domain Extraction
-  → moyo.ua
-
-STEP 2: Country Lookup
-  → Ukraine, Ukrainian
-
-STEP 3: Keyword Fetching (DataForSEO)
-  Pagination:
-    offset=0    → 1,000 keywords
-    offset=1000 → 1,000 keywords
-    offset=2000 → 1,000 keywords
-    ...
-    offset=9000 → 1,000 keywords
-  → Total: 10,000 keywords
-
-STEP 4: Metadata Retrieval
-  → Topics: 10 categories
-  → Brand: ["moyo", "мойо"]
-
-STEP 5: Keyword Filtering
-  Filter 1 (word count ≥3):  10,000 → 8,234
-  Filter 2 (brand exclusion): 8,234 → 6,892
-  Filter 3 (deduplication):   6,892 → 6,521
-  → 6,521 keywords
-
-STEP 6: Embedding Generation
-  → 6,521 × 384-dimensional vectors
-
-STEP 7: Clustering (HDBSCAN)
-  → 67 clusters (189 noise keywords)
-  → Subclustering: 3 large clusters split
-  → Final: 72 clusters
-
-STEP 8: Topic Relevance Filtering
-  67 clusters evaluated:
-    - 45 clusters match topics (≥50% relevance)
-    - 22 clusters filtered out
-  → 8 topics with clusters:
-      Смартфони і телефони: 12 clusters
-      Ноутбуки: 5 clusters
-      Телевізори: 7 clusters
-      ...
-
-STEP 9: Prompt Generation (OpenAI)
-  45 clusters → 234 prompts
-  Language: Ukrainian (auto-detected)
-
-  Example cluster:
-    Cluster 114 (15 keywords about mobile games)
-    → 3 prompts:
-      1. "Найкращий телефон для ігор до 15 000 грн?"
-      2. "Які безкоштовні ігри найкращі без інтернету?"
-      3. "Топ-5 мобільних ігор 2025?"
-
-OUTPUT:
+**Response**:
+```json
 {
   "topics": [
     {
-      "topic": "Смартфони і телефони",
-      "clusters": [
-        {
-          "cluster_id": 114,
-          "keywords": ["інтересні ігри на телефон", ...],
-          "prompts": ["Найкращий телефон для ігор...", ...]
-        },
-        ...
+      "topic_id": 1,
+      "prompts": [
+        {"id": 1, "prompt_text": "Купити смартфон в Україні з швидкою доставкою"},
+        {"id": 2, "prompt_text": "Найкращий смартфон до 15 000 грн"}
       ]
     },
-    ...
+    {
+      "topic_id": 2,
+      "prompts": [
+        {"id": 51, "prompt_text": "Де купити ноутбук"},
+        {"id": 52, "prompt_text": "Кращі ноутбуки з екраном 15-16 дюймів"}
+      ]
+    }
   ]
 }
 ```
 
+**Use Case**: Primary method - retrieve prompts from DB (50 prompts for phones, 59 for laptops)
+
+**Performance**: ~50ms (database lookup only)
+
 ---
 
-## API Endpoint
-
-### Request
+### 3.4 Generate Custom Prompts
 
 ```http
-GET /prompts/api/v1/generate?company_url=moyo.ua&iso_country_code=UA
+GET /prompts/api/v1/generate
 ```
+
+**Purpose**: Generate custom prompts based on search engine data (fallback when DB has no data)
 
 **Parameters**:
 - `company_url` (required): Company website URL
 - `iso_country_code` (required): ISO 3166-1 alpha-2 country code
+- `topics` (required, multi): List of topic names from meta-info
+- `brand_variations` (required, multi): List of brand variations from meta-info
 
-### Response
+**Example**:
+```bash
+curl "http://localhost:8000/prompts/api/v1/generate?company_url=moyo.ua&iso_country_code=UA&topics=Смартфони+і+телефони&topics=Ноутбуки&brand_variations=moyo&brand_variations=мойо"
+```
 
+**Response**:
 ```json
 {
   "topics": [
@@ -389,15 +218,11 @@ GET /prompts/api/v1/generate?company_url=moyo.ua&iso_country_code=UA
       "topic": "Смартфони і телефони",
       "clusters": [
         {
-          "cluster_id": 114,
-          "keywords": [
-            "інтересні ігри на телефон",
-            "круті ігри на телефон",
-            "найкращі ігри без інтернету"
-          ],
+          "cluster_id": 42,
+          "keywords": ["смартфон samsung", "телефон galaxy", "phone iphone"],
           "prompts": [
-            "Найкращий телефон для ігор до 15 000 грн?",
-            "Які безкоштовні ігри найкращі без інтернету?"
+            "Найкращий смартфон до 15 000 грн?",
+            "Samsung Galaxy чи iPhone – що вибрати?"
           ]
         }
       ]
@@ -406,68 +231,215 @@ GET /prompts/api/v1/generate?company_url=moyo.ua&iso_country_code=UA
 }
 ```
 
+**Use Case**: Fallback when DB has no prompts for requested topics
+
+**Performance**: ~30-60 seconds (full ML pipeline + OpenAI)
+
+**Pipeline Steps**:
+1. Fetch keywords from DataForSEO (up to 10k)
+2. Filter keywords (word count ≥3, brand exclusion, dedupe)
+3. Generate embeddings (sentence-transformers, 384-dim)
+4. Cluster keywords (HDBSCAN, min_cluster_size=5)
+5. Filter by topic relevance (cosine similarity ≥0.7)
+6. Generate prompts (OpenAI GPT-4o-mini, ~5 keywords per prompt)
+
 ---
 
-## Key Technologies
+### 3.5 Complete Client Flow
+
+**Recommended Integration Pattern:**
+
+```
+┌──────────────────────────────────────────────────────┐
+│ Step 1: Get Meta-Info                                 │
+│ GET /meta-info?company_url=X&iso_country_code=Y      │
+│ → Returns: business_domain, topics, brand_variations │
+└─────────────────┬────────────────────────────────────┘
+                  │
+                  ▼
+┌──────────────────────────────────────────────────────┐
+│ Step 2: Try DB Retrieval (Fast)                      │
+│ GET /prompts?topic_ids=1&topic_ids=2                 │
+│ → Returns prompts if available in DB                 │
+└─────────────────┬────────────────────────────────────┘
+                  │
+        ┌─────────┴─────────┐
+        │                   │
+   ✓ Prompts          ✗ No Prompts
+   Found (50ms)       Found (404)
+        │                   │
+        │                   ▼
+        │      ┌────────────────────────────────────────┐
+        │      │ Step 3: Generate (Slow, Fallback)     │
+        │      │ GET /generate?company_url=X&...       │
+        │      │ → Generate custom prompts (30-60s)    │
+        │      └────────────────────────────────────────┘
+        │                   │
+        └─────────┬─────────┘
+                  │
+                  ▼
+         ┌─────────────────┐
+         │ Use Prompts     │
+         │ for AI Agent    │
+         └─────────────────┘
+```
+
+**Example Client Code** (Python):
+
+```python
+import httpx
+
+async def get_prompts_for_business(company_url: str, iso_country_code: str):
+    """Complete client flow for getting prompts."""
+    async with httpx.AsyncClient() as client:
+        # Step 1: Get meta-info (discover topics)
+        meta_response = await client.get(
+            "http://localhost:8000/prompts/api/v1/meta-info",
+            params={"company_url": company_url, "iso_country_code": iso_country_code}
+        )
+        meta = meta_response.json()
+
+        # Extract topic IDs and brand variations
+        topic_ids = [t["id"] for t in meta["topics"]["matched_topics"]]
+        brand_variations = meta["brand_variations"]
+        topic_names = [t["title"] for t in meta["topics"]["matched_topics"]]
+
+        # Step 2: Try DB retrieval (fast)
+        prompts_response = await client.get(
+            "http://localhost:8000/prompts/api/v1/prompts",
+            params={"topic_ids": topic_ids}
+        )
+
+        # Step 3: Fallback to generation if DB has no data
+        if prompts_response.status_code == 404:
+            print("No DB prompts, generating...")
+            gen_response = await client.get(
+                "http://localhost:8000/prompts/api/v1/generate",
+                params={
+                    "company_url": company_url,
+                    "iso_country_code": iso_country_code,
+                    "topics": topic_names,
+                    "brand_variations": brand_variations
+                },
+                timeout=120.0  # Generation takes 30-60s
+            )
+            return gen_response.json()
+
+        return prompts_response.json()
+```
+
+**Performance Comparison:**
+
+| Scenario | Endpoint | Response Time | Cost |
+|----------|----------|---------------|------|
+| **DB has data** | `/prompts` | ~50ms | Free |
+| **DB empty** | `/generate` | ~30-60s | ~$0.01-0.05 (OpenAI) |
+
+**Best Practice**: Always try `/prompts` first (fast, free), fallback to `/generate` only when needed.
+
+---
+
+## 4. Technologies
+
+### Stack Overview
 
 | Component | Technology | Purpose |
 |-----------|-----------|---------|
-| **Embeddings** | sentence-transformers<br/>`paraphrase-multilingual-MiniLM-L12-v2` | Semantic vector representation (384-dim) |
-| **Clustering** | HDBSCAN | Density-based clustering with noise handling |
-| **Similarity** | Cosine similarity | Topic relevance scoring |
-| **LLM** | OpenAI GPT-4o-mini | Ukrainian prompt generation |
-| **Language Detection** | Character analysis | Cyrillic vs Latin, Ukrainian vs Russian |
-| **Keyword Source** | DataForSEO API | Ranked keywords (paginated) |
+| **API Framework** | FastAPI 0.121+ | Async REST API with OpenAPI docs |
+| **Database** | PostgreSQL 16 + pgvector | Vector storage & similarity search |
+| **Language** | Python 3.12 | Modern async/await support |
+| **Container** | Docker + docker-compose | Isolated deployment |
+| **Dependencies** | uv | Fast Python package manager |
+
+### ML & AI
+
+| Component | Technology | Details |
+|-----------|-----------|---------|
+| **Text Embeddings** | sentence-transformers<br/>`paraphrase-multilingual-MiniLM-L12-v2` | 384-dim vectors<br/>50+ languages incl. Ukrainian |
+| **Clustering** | HDBSCAN 0.8+ | Density-based semantic grouping<br/>Handles noise automatically |
+| **Similarity** | scikit-learn<br/>cosine_similarity | Topic relevance scoring (0.7 threshold) |
+| **LLM Generation** | OpenAI GPT-4o-mini | Conversational prompt creation<br/>Language auto-detection |
+
+### External APIs
+
+- **DataForSEO API**: Keyword ranking data (paginated, up to 10k keywords)
+- **OpenAI API**: Prompt generation (JSON mode, ~$0.01-0.05 per request)
 
 ---
 
-## Configuration Parameters
+## 5. Quick Start with Docker Compose
 
-| Parameter | Value | Location | Description |
-|-----------|-------|----------|-------------|
-| **Max keywords** | 10,000 | DataForSEO | Pagination limit |
-| **Batch size** | 1,000 | DataForSEO | Keywords per API call |
-| **Min word count** | 3 | Filter | Exclude short keywords |
-| **Min cluster size** | 5 | HDBSCAN | Minimum keywords per cluster |
-| **Min samples** | 5 | HDBSCAN | Density parameter |
-| **Similarity threshold** | 0.7 | Topic filter | Cosine similarity cutoff |
-| **Min relevant ratio** | 0.5 | Topic filter | 50% keywords must match |
-| **Keywords per prompt** | 5 | OpenAI | Prompt generation density |
-| **Embedding batch** | 64 | Embeddings | Processing batch size |
+### Prerequisites
 
----
+- Docker & Docker Compose installed
+- API credentials:
+  - **DataForSEO**: https://app.dataforseo.com/
+  - **OpenAI**: https://platform.openai.com/api-keys
 
-## Testing
+### Setup
 
-**End-to-End Test**: `tests/test_generate_prompts.py`
-
-Mocks DataForSEO API with sample data (`samples/moyo_ukr_keyword.json`) and tests complete pipeline.
-
-**Run test**:
 ```bash
-# Remove @pytest.mark.skip decorator first
-uv run pytest tests/test_generate_prompts.py::test_prompts_generation -v -s
+# 1. Clone repository
+git clone <repo-url>
+cd prompts-volume
+
+# 2. Configure environment
+cp .env.example .env
+
+# 3. Edit .env and add your API keys:
+#    DATAFORSEO_USERNAME=your_username
+#    DATAFORSEO_PASSWORD=your_password
+#    OPENAI_API_KEY=sk-...
+
+# 4. Build and start services
+docker-compose up --build -d
+
+# 5. Check health
+curl http://localhost:8000/health
+# {"status": "UP"}
+
+# 6. View API documentation
+open http://localhost:8000/docs
 ```
 
-**Generate detailed report**:
+### Services
+
+- **app**: FastAPI service (port 8000)
+- **postgres**: PostgreSQL 16 + pgvector (port 5432)
+
+### Database Auto-Initialization
+
+On first startup, the service automatically:
+- Creates all database tables (topics, prompts, countries, etc.)
+- Enables pgvector extension
+- Creates HNSW vector index for similarity search
+- Seeds countries (Ukraine + others), business domains (e-comm)
+- Seeds topics (2 topics: "Смартфони і телефони", "Ноутбуки та персональні комп'ютери")
+- Loads sample prompts from CSV files (50 phone prompts + 59 laptop prompts)
+
+**Ready for requests in ~5 seconds**
+
+### Example API Calls
+
 ```bash
-WRITE_REPORT=true uv run pytest tests/test_generate_prompts.py::test_prompts_generation -v -s
+# Complete client flow
+
+# 1. Get meta-info
+curl "http://localhost:8000/prompts/api/v1/meta-info?company_url=moyo.ua&iso_country_code=UA"
+
+# 2. Get prompts from DB (fast, ~50ms)
+curl "http://localhost:8000/prompts/api/v1/prompts?topic_ids=1&topic_ids=2"
+
+# 3. Generate prompts if needed (slow, ~30-60s, requires OpenAI API key)
+curl "http://localhost:8000/prompts/api/v1/generate?company_url=moyo.ua&iso_country_code=UA&topics=Смартфони+і+телефони&brand_variations=moyo"
 ```
 
----
+### Stopping
 
-## Tech Stack
-
-- **Python 3.12**
-- **FastAPI** - REST API framework
-- **uv** - Dependency management and build tool
-- **Docker** - Containerization
-- **PostgreSQL** - State management (future)
-- **sentence-transformers** - Multilingual embeddings
-- **HDBSCAN** - Density-based clustering
-- **scikit-learn** - Cosine similarity
-- **OpenAI GPT-4o-mini** - Prompt generation
-- **DataForSEO API** - Keyword research
+```bash
+docker-compose down          # Stop services
+docker-compose down -v       # Stop + delete data volumes
+```
 
 ---
 
@@ -476,77 +448,54 @@ WRITE_REPORT=true uv run pytest tests/test_generate_prompts.py::test_prompts_gen
 ```
 prompts-volume/
 ├── src/
-│   ├── main.py                           # FastAPI app entry point
-│   ├── config/
-│   │   ├── countries.py                  # ISO → Country/Language mapping (94 countries)
-│   │   └── settings.py                   # Environment variables
+│   ├── main.py                      # FastAPI app + lifespan (DB init)
+│   ├── database/                    # SQLAlchemy models, init, seeding
+│   │   ├── models.py                # Topic, Prompt, Country models
+│   │   ├── init.py                  # Seeding logic
+│   │   └── session.py               # DB connection, vector index
 │   ├── prompts/
-│   │   ├── router.py                     # /generate endpoint (main pipeline)
-│   │   ├── models.py                     # Response models
-│   │   ├── prompts_generator_service.py  # Step 9: OpenAI prompt generation
-│   │   ├── data_for_seo_service.py       # Step 3: Keyword fetching
-│   │   └── company_meta_info_service.py  # Step 4: Metadata (hardcoded)
-│   ├── embeddings/
-│   │   ├── embeddings_service.py         # Step 6: Sentence transformers
-│   │   ├── clustering_service.py         # Step 7: HDBSCAN clustering
-│   │   └── topic_relevance_filter_service.py # Step 8: Topic filtering
-│   └── utils/
-│       ├── keyword_filters.py            # Step 5: Filtering functions
-│       └── url_validator.py              # Step 1: URL validation
-├── tests/
-│   └── test_generate_prompts.py          # End-to-end API test
-├── samples/
-│   └── moyo_ukr_keyword.json             # Sample keywords for testing
-├── Dockerfile                             # Container configuration
-├── .env.example                           # Environment variables template
-└── README.md                              # This file
+│   │   ├── router.py                # API endpoints
+│   │   ├── models/                  # Request/response models
+│   │   └── services/                # Business logic
+│   ├── embeddings/                  # ML pipeline
+│   │   ├── embeddings_service.py    # sentence-transformers
+│   │   ├── clustering_service.py    # HDBSCAN
+│   │   └── topic_relevance_filter_service.py
+│   ├── data/                        # CSV files
+│   │   ├── prompts_phones.csv       # 50 phone prompts
+│   │   └── prompts_laptops.csv      # 59 laptop prompts
+│   └── utils/                       # Helpers
+├── tests/                           # Integration tests
+├── docker-compose.yml               # Multi-container setup
+├── Dockerfile                       # App container
+└── README.md                        # This file
 ```
 
 ---
 
-## Environment Variables
-
-Required in `.env`:
+## Development
 
 ```bash
-# DataForSEO API credentials
-DATAFORSEO_USERNAME=your_username
-DATAFORSEO_PASSWORD=your_password
-
-# OpenAI API key
-OPENAI_API_KEY=sk-...
-
-# Optional: OpenAI model (default: gpt-4o-mini)
-PG_OPENAI_MODEL=gpt-4o-mini
-```
-
----
-
-## Running Locally
-
-```bash
-# 1. Setup environment
+# Local development (without Docker)
 cp .env.example .env
-# Add your API credentials to .env
+# Add DATABASE_URL to .env:
+#   DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/prompts
 
-# 2. Run application
+# Run PostgreSQL manually
+docker run -d -p 5432:5432 -e POSTGRES_DB=prompts -e POSTGRES_PASSWORD=postgres pgvector/pgvector:pg16
+
+# Start application
 uv run uvicorn src.main:app --reload
 
-# 3. Test endpoint
-curl "http://localhost:8000/prompts/api/v1/generate?company_url=moyo.ua&iso_country_code=UA"
+# Run tests
+uv run pytest tests/ -v
 
-# 4. View API docs
-open http://localhost:8000/docs
+# Run specific test
+uv run pytest tests/test_prompts_endpoint.py -v
 ```
 
 ---
 
-## Docker
+## License
 
-```bash
-# Build image
-docker build -t prompts-volume:latest .
-
-# Run container
-docker run -p 8000:8000 --env-file .env prompts-volume:latest
-```
+MIT

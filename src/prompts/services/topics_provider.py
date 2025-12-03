@@ -152,12 +152,12 @@ class TopicsProvider:
             TopicMatchResult with matched and unmatched topics
         """
         # Generate embeddings for generated titles
-        generated_embeddings_list = self.embeddings_service.encode_keywords(generated_titles)
+        generated_embeddings_list = self.embeddings_service.encode_texts(generated_titles)
         generated_embeddings = np.array([e.embedding for e in generated_embeddings_list])
 
         # Generate embeddings for DB topic titles
         db_titles = [t.title for t in db_topics]
-        db_embeddings_list = self.embeddings_service.encode_keywords(db_titles)
+        db_embeddings_list = self.embeddings_service.encode_texts(db_titles)
         db_embeddings = np.array([e.embedding for e in db_embeddings_list])
 
         # Calculate similarity matrix: (n_generated × n_db)

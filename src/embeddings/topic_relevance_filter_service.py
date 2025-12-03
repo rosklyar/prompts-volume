@@ -2,7 +2,6 @@
 
 import logging
 from dataclasses import dataclass
-from functools import lru_cache
 from typing import Dict, List
 
 import numpy as np
@@ -86,7 +85,7 @@ class TopicRelevanceFilterService:
         )
 
         # Generate topic embeddings
-        topic_embeddings_list = self.embeddings_service.encode_keywords(topics)
+        topic_embeddings_list = self.embeddings_service.encode_texts(topics)
         topic_embeddings = np.array([te.embedding for te in topic_embeddings_list])
 
         # Initialize result dict with empty lists for each topic
@@ -148,12 +147,23 @@ class TopicRelevanceFilterService:
         return result
 
 
-@lru_cache()
+# Global instance for dependency injection
+_topic_relevance_filter_service = None
+
+
 def get_topic_relevance_filter_service() -> TopicRelevanceFilterService:
     """
-    Get singleton instance of TopicRelevanceFilterService.
+    Get the global TopicRelevanceFilterService instance.
+    Creates one if it doesn't exist yet.
 
-    Returns the same instance on subsequent calls.
-    Uses singleton EmbeddingsService instance.
+    Uses the singleton EmbeddingsService instance.
+
+    Returns:
+        TopicRelevanceFilterService instance
     """
-    return TopicRelevanceFilterService(embeddings_service=get_embeddings_service())
+    global _topic_relevance_filter_service
+    if _topic_relevance_filter_service is None:
+        _topic_relevance_filter_service = TopicRelevanceFilterService(
+            embeddings_service=get_embeddings_service()
+        )
+    return _topic_relevance_filter_service

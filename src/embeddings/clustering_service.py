@@ -2,7 +2,6 @@
 
 import logging
 from dataclasses import dataclass
-from functools import lru_cache
 from typing import Dict, List
 
 import hdbscan
@@ -260,11 +259,21 @@ class ClusteringService:
             return None
 
 
-@lru_cache()
+# Global instance for dependency injection
+_clustering_service = None
+
+
 def get_clustering_service() -> ClusteringService:
     """
-    Get singleton instance of ClusteringService.
+    Get the global ClusteringService instance.
+    Creates one if it doesn't exist yet.
 
     Returns the same instance on subsequent calls.
+
+    Returns:
+        ClusteringService instance
     """
-    return ClusteringService()
+    global _clustering_service
+    if _clustering_service is None:
+        _clustering_service = ClusteringService()
+    return _clustering_service

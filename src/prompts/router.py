@@ -6,6 +6,7 @@ import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.prompts.services.country_service import CountryService, get_country_service
+from src.prompts.services.prompt_service import PromptService, get_prompt_service
 from src.embeddings.clustering_service import (
     ClusteringService,
     get_clustering_service,
@@ -20,6 +21,9 @@ from src.prompts.models import (
     DBTopicResponse,
     GeneratedPrompts,
     GeneratedTopicResponse,
+    PromptResponse,
+    PromptsListResponse,
+    TopicPromptsResponse,
     TopicsResponse,
 )
 from src.prompts.services import (
@@ -243,12 +247,12 @@ async def generate_prompts(
             )
 
         # 6. Generate embeddings
-        keyword_embeddings = embeddings_service.encode_keywords(
+        text_embeddings = embeddings_service.encode_texts(
             filtered_keywords, batch_size=64
         )
 
         # 7. Cluster with HDBSCAN
-        embeddings_array = np.array([ke.embedding for ke in keyword_embeddings])
+        embeddings_array = np.array([te.embedding for te in text_embeddings])
 
         clustering_result = clustering_service.cluster(
             keywords=filtered_keywords,
@@ -287,4 +291,94 @@ async def generate_prompts(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to generate prompts: {str(e)}"
+        )
+
+
+@router.get("/prompts", response_model=PromptsListResponse)
+async def get_prompts(
+    topic_ids: List[int] = Query(..., description="List of topic IDs to retrieve prompts for"),
+    prompt_service: PromptService = Depends(get_prompt_service),
+):
+    """
+    Get prompts from database for given topic IDs.
+
+    Retrieves pre-seeded prompts for the specified topics.
+    Prompts are grouped by topic_id for easy consumption.
+
+    Args:
+        topic_ids: List of topic IDs (from /meta-info endpoint)
+
+    Returns:
+        PromptsListResponse with prompts grouped by topic
+
+    Raises:
+        HTTPException 400: Empty topic_ids list
+        HTTPException 404: No prompts found for given topic IDs
+        HTTPException 500: Database errors
+
+    Example:
+        GET /prompts/api/v1/prompts?topic_ids=1&topic_ids=2
+
+        Response:
+        {
+            "topics": [
+                {
+                    "topic_id": 1,
+                    "prompts": [
+                        {
+                            "id": 1,
+                            "prompt_text": "Купити смартфон в Україні з швидкою доставкою"
+                        },
+                        ...
+                    ]
+                },
+                {
+                    "topic_id": 2,
+                    "prompts": [...]
+                }
+            ]
+        }
+    """
+    try:
+        # Validate topic_ids
+        if not topic_ids:
+            raise HTTPException(
+                status_code=400, detail="At least one topic_id must be provided"
+            )
+
+        # Fetch prompts from database
+        prompts = await prompt_service.get_by_topic_ids(topic_ids)
+
+        if not prompts:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No prompts found for topic IDs: {topic_ids}"
+            )
+
+        # Group prompts by topic_id
+        topics_map = {}
+        for prompt in prompts:
+            if prompt.topic_id not in topics_map:
+                topics_map[prompt.topic_id] = []
+
+            topics_map[prompt.topic_id].append(
+                PromptResponse(
+                    id=prompt.id,
+                    prompt_text=prompt.prompt_text,
+                )
+            )
+
+        # Build response
+        topics_list = [
+            TopicPromptsResponse(topic_id=topic_id, prompts=prompts_list)
+            for topic_id, prompts_list in sorted(topics_map.items())
+        ]
+
+        return PromptsListResponse(topics=topics_list)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve prompts: {str(e)}"
         )

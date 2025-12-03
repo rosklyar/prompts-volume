@@ -86,6 +86,15 @@ async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
+    # Create vector index for similarity search on prompts embeddings
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_prompt_embedding "
+                "ON prompts USING hnsw (embedding vector_cosine_ops)"
+            )
+        )
+
 
 async def close_db() -> None:
     """

@@ -7,7 +7,10 @@ from src.prompts.models.api_models import (
     GeneratedTopicResponse,
     GeneratePromptsRequest,
     GeneratedPrompts,
+    PromptResponse,
+    PromptsListResponse,
     Topic,
+    TopicPromptsResponse,
     TopicsResponse,
 )
 from src.prompts.models.company_meta_info import CompanyMetaInfo
@@ -26,4 +29,7 @@ __all__ = [
     "DBTopicResponse",
     "GeneratedTopicResponse",
     "TopicsResponse",
+    "PromptResponse",
+    "TopicPromptsResponse",
+    "PromptsListResponse",
 ]

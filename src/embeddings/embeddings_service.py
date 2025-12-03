@@ -1,8 +1,7 @@
-"""Service for generating keyword embeddings using sentence transformers."""
+"""Service for generating text embeddings using sentence transformers."""
 
 import logging
 from dataclasses import dataclass
-from functools import lru_cache
 from typing import List
 
 import numpy as np
@@ -12,16 +11,16 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class KeywordEmbedding:
-    """Keyword paired with its embedding vector."""
+class TextWithEmbedding:
+    """Text paired with its embedding vector."""
 
-    keyword: str
+    text: str
     embedding: np.ndarray
 
 
 class EmbeddingsService:
     """
-    Service for generating semantic embeddings from keywords.
+    Service for generating semantic embeddings from text.
 
     Uses paraphrase-multilingual-MiniLM-L12-v2 which generates
     384-dimensional vectors for 50+ languages including Ukrainian.
@@ -40,51 +39,61 @@ class EmbeddingsService:
         self.model = SentenceTransformer(self.MODEL_NAME)
         logger.info(f"Model loaded. Embedding dimension: {self.EMBEDDING_DIM}")
 
-    def encode_keywords(
+    def encode_texts(
         self,
-        keywords: List[str],
+        texts: List[str],
         batch_size: int = 32,
         show_progress: bool = False
-    ) -> List[KeywordEmbedding]:
+    ) -> List[TextWithEmbedding]:
         """
-        Generate 384-dimensional embeddings for keywords.
+        Generate 384-dimensional embeddings for texts.
 
         Args:
-            keywords: List of keywords to embed
+            texts: List of texts to embed
             batch_size: Batch size for encoding (default: 32, good for CPU)
             show_progress: Show progress bar (default: False)
 
         Returns:
-            List of KeywordEmbedding objects pairing each keyword with its embedding
+            List of TextWithEmbedding objects pairing each text with its embedding
 
         Example:
             >>> service = EmbeddingsService()
-            >>> keyword_embeddings = service.encode_keywords(["телевізор", "ноутбук"])
-            >>> len(keyword_embeddings)
+            >>> text_embeddings = service.encode_texts(["телевізор", "ноутбук"])
+            >>> len(text_embeddings)
             2
-            >>> keyword_embeddings[0].keyword
+            >>> text_embeddings[0].text
             'телевізор'
-            >>> keyword_embeddings[0].embedding.shape
+            >>> text_embeddings[0].embedding.shape
             (384,)
         """
         embeddings = self.model.encode(
-            keywords,
+            texts,
             batch_size=batch_size,
             show_progress_bar=show_progress,
             convert_to_numpy=True,
         )
 
         return [
-            KeywordEmbedding(keyword=kw, embedding=emb)
-            for kw, emb in zip(keywords, embeddings)
+            TextWithEmbedding(text=txt, embedding=emb)
+            for txt, emb in zip(texts, embeddings)
         ]
 
 
-@lru_cache()
+# Global instance for dependency injection
+_embeddings_service = None
+
+
 def get_embeddings_service() -> EmbeddingsService:
     """
-    Get singleton instance of EmbeddingsService.
+    Get the global EmbeddingsService instance.
+    Creates one if it doesn't exist yet.
 
-    Model loads once, subsequent calls reuse the same instance.
+    Model (~450MB) loads once on first call, subsequent calls reuse the instance.
+
+    Returns:
+        EmbeddingsService instance
     """
-    return EmbeddingsService()
+    global _embeddings_service
+    if _embeddings_service is None:
+        _embeddings_service = EmbeddingsService()
+    return _embeddings_service
