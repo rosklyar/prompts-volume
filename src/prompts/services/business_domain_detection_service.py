@@ -2,12 +2,12 @@
 
 import json
 import logging
-import os
 from typing import List, Optional
 
 from fastapi import Depends
 from openai import AsyncOpenAI
 
+from src.config.settings import settings
 from src.database import BusinessDomain
 from src.prompts.services.business_domain_service import BusinessDomainService, get_business_domain_service
 
@@ -174,14 +174,11 @@ def get_business_domain_detection_service(
     Returns:
         BusinessDomainDetectionService instance with delegate wired
     """
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
+    if not settings.openai_api_key:
         raise ValueError("OPENAI_API_KEY environment variable is required")
 
-    model = os.getenv("DOMAIN_DETECTION_MODEL", "gpt-4o-mini")
-
     return BusinessDomainDetectionService(
-        api_key=api_key,
+        api_key=settings.openai_api_key,
         business_domain_service=business_domain_service,
-        model=model
+        model=settings.domain_detection_model
     )

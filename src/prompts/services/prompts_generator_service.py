@@ -1,10 +1,12 @@
 import json
 import logging
-import os
 from typing import Dict, List
+
 from openai import AsyncOpenAI
-from src.prompts.models import ClusterPrompts, GeneratedPrompts, Topic
+
+from src.config.settings import settings
 from src.embeddings.topic_relevance_filter_service import ClusterWithRelevance
+from src.prompts.models import ClusterPrompts, GeneratedPrompts, Topic
 
 logger = logging.getLogger(__name__)
 
@@ -301,9 +303,10 @@ def get_prompts_generator_service() -> PromptsGeneratorService:
     """
     global _prompts_generator_service
     if _prompts_generator_service is None:
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
+        if not settings.openai_api_key:
             raise ValueError("OPENAI_API_KEY environment variable is required")
-        model = os.getenv("PG_OPENAI_MODEL", "gpt-4o-mini")
-        _prompts_generator_service = PromptsGeneratorService(api_key=api_key, model=model)
+        _prompts_generator_service = PromptsGeneratorService(
+            api_key=settings.openai_api_key,
+            model=settings.pg_openai_model
+        )
     return _prompts_generator_service

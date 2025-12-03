@@ -5,6 +5,7 @@ from typing import List
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from src.config.settings import settings
 from src.prompts.services.country_service import CountryService, get_country_service
 from src.prompts.services.prompt_service import PromptService, get_prompt_service
 from src.embeddings.clustering_service import (
@@ -225,8 +226,9 @@ async def generate_prompts(
             target_domain=domain,
             location_name=location_name,
             language=language,
-            batch_size=1000,
-            max_total=10000,
+            batch_size=settings.dataforseo_batch_size,
+            max_total=settings.dataforseo_max_total,
+            timeout=settings.dataforseo_timeout
         )
 
         if not keywords:
@@ -257,17 +259,17 @@ async def generate_prompts(
         clustering_result = clustering_service.cluster(
             keywords=filtered_keywords,
             embeddings=embeddings_array,
-            min_cluster_size=5,
-            min_samples=5,
-            cluster_selection_epsilon=0.0,
+            min_cluster_size=settings.clustering_min_cluster_size,
+            min_samples=settings.clustering_min_samples,
+            cluster_selection_epsilon=settings.clustering_cluster_selection_epsilon,
         )
 
         # 8. Filter clusters by topic relevance
         filtered_by_topic = topic_filter_service.filter_by_topics(
             clustering_result=clustering_result,
             topics=topics,
-            similarity_threshold=0.7,
-            min_relevant_ratio=0.5,
+            similarity_threshold=settings.topic_filter_similarity_threshold,
+            min_relevant_ratio=settings.topic_filter_min_relevant_ratio,
         )
 
         # 9. Remove empty topics and generate prompts

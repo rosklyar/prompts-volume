@@ -7,14 +7,14 @@ AI-powered prompt generation service for e-commerce businesses.
 ## 1. Service Purpose
 
 **What it does:**
-- Provides conversational search prompts for AI shopping assistants
+- Provides conversational search prompts for AI assistants
 - Helps businesses understand customer search intent
 - Supports multilingual prompts (Ukrainian, Russian, English)
 
-**Two modes of operation:**
+**Two sources of prompts:**
 
 1. **DB-first (fast, ~50ms)**: Retrieve pre-seeded, topic-specific prompts from PostgreSQL
-2. **Generation (on-demand, ~30-60s)**: Create custom prompts from search engine ranking data when DB has no data
+2. **Generation (on-demand, ~30-60s)**: Create custom prompts from search engine ranking data when DB has no data for needed topics
 
 **Key Features:**
 - Pre-seeded prompts for common e-commerce topics (phones, laptops, etc.)
@@ -29,27 +29,34 @@ AI-powered prompt generation service for e-commerce businesses.
 ### High-Level Design
 
 ```
-┌─────────────────┐
-│   FastAPI App   │ ← REST API layer
-└────────┬────────┘
+┌──────────────────────────────────────────────────┐
+│              FastAPI App                          │ ← REST API layer
+└────────┬─────────────────────────┬────────────────┘
+         │                         │
+    ┌────▼────┐              ┌─────▼─────────┐
+    │   DB    │              │  External     │
+    │  Layer  │              │    APIs       │
+    └────┬────┘              └─────┬─────────┘
+         │                         │
+         │                         ├─ DataForSEO (keywords)
+         │                         └─ OpenAI (prompt generation)
          │
-    ┌────┴────┐
-    │         │
-┌───▼───┐ ┌──▼────────┐
-│  DB   │ │  External │
-│ Layer │ │    APIs   │
-└───┬───┘ └──┬────────┘
-    │        │
-    │        ├─ DataForSEO (keywords)
-    │        ├─ OpenAI (generation)
-    │        └─ ML Models (embeddings)
-    │
-┌───▼─────────────────────┐
-│  PostgreSQL + pgvector  │
-│  - Topics               │
-│  - Prompts + embeddings │
-│  - Countries/domains    │
-└─────────────────────────┘
+         │                   ┌─────────────────────┐
+         │                   │  Local ML Models    │
+         │                   │  (in-process)       │
+         │                   └─────┬───────────────┘
+         │                         │
+         │                         └─ sentence-transformers
+         │                            (embeddings, 384-dim)
+         │                            HuggingFace model
+         │                            ~450MB cached locally
+         │
+┌────────▼───────────────────┐
+│  PostgreSQL + pgvector     │
+│  - Topics                  │
+│  - Prompts + embeddings    │
+│  - Countries/domains       │
+└────────────────────────────┘
 ```
 
 ### Core Components
@@ -62,15 +69,15 @@ AI-powered prompt generation service for e-commerce businesses.
 **2. Service Layer**
 - `PromptService`: DB CRUD operations for prompts
 - `TopicService`: Topic management and matching
-- `DataForSEOService`: Keyword fetching from search engines
-- `PromptsGeneratorService`: OpenAI-based prompt generation
-- `EmbeddingsService`: Multilingual text embeddings
+- `DataForSEOService`: Keyword fetching from search engines (external API)
+- `PromptsGeneratorService`: OpenAI-based prompt generation (external API)
+- `EmbeddingsService`: Local multilingual text embeddings (HuggingFace model, no API calls)
 
 **3. ML Pipeline** (when generating)
-- **Embeddings**: sentence-transformers (multilingual, 384-dim)
-- **Clustering**: HDBSCAN (semantic grouping with noise handling)
-- **Topic Matching**: Cosine similarity filtering (0.7 threshold)
-- **Generation**: GPT-4o-mini (conversational prompts in detected language)
+- **Embeddings**: sentence-transformers (local model, multilingual, 384-dim, runs in-process)
+- **Clustering**: HDBSCAN (local algorithm, semantic grouping with noise handling)
+- **Topic Matching**: Cosine similarity filtering (local computation, 0.7 threshold)
+- **Generation**: GPT-4o-mini (external API, conversational prompts in detected language)
 
 ### Data Flow
 
@@ -81,12 +88,12 @@ Request → Topic IDs → DB lookup → Return prompts
 
 **Path 2 - Generation** (slow, ~30-60s):
 ```
-URL → Keywords (DataForSEO)
-    → Filter (word count, brand exclusion, dedupe)
-    → Embeddings (sentence-transformers)
-    → Clustering (HDBSCAN)
-    → Topic filtering (cosine similarity)
-    → Prompt generation (OpenAI)
+URL → Keywords (DataForSEO API call)
+    → Filter (local: word count, brand exclusion, dedupe)
+    → Embeddings (local: sentence-transformers model)
+    → Clustering (local: HDBSCAN algorithm)
+    → Topic filtering (local: cosine similarity)
+    → Prompt generation (OpenAI API call)
     → Response
 ```
 
@@ -185,13 +192,11 @@ curl "http://localhost:8000/prompts/api/v1/prompts?topic_ids=1&topic_ids=2"
 }
 ```
 
-**Use Case**: Primary method - retrieve prompts from DB (50 prompts for phones, 59 for laptops)
-
-**Performance**: ~50ms (database lookup only)
+**Use Case**: Primary method - retrieve prompts from DB
 
 ---
 
-### 3.4 Generate Custom Prompts
+### 3.4 Generate Prompts
 
 ```http
 GET /prompts/api/v1/generate
@@ -230,14 +235,13 @@ curl "http://localhost:8000/prompts/api/v1/generate?company_url=moyo.ua&iso_coun
   ]
 }
 ```
-
-**Use Case**: Fallback when DB has no prompts for requested topics
+**Use Case**: if DB has no similar topic - we try to generate prompts using search engines data from data for seo
 
 **Performance**: ~30-60 seconds (full ML pipeline + OpenAI)
 
 **Pipeline Steps**:
 1. Fetch keywords from DataForSEO (up to 10k)
-2. Filter keywords (word count ≥3, brand exclusion, dedupe)
+2. Filter keywords (word count ≥3, direct brand name exclusion, dedupe)
 3. Generate embeddings (sentence-transformers, 384-dim)
 4. Cluster keywords (HDBSCAN, min_cluster_size=5)
 5. Filter by topic relevance (cosine similarity ≥0.7)
@@ -247,95 +251,139 @@ curl "http://localhost:8000/prompts/api/v1/generate?company_url=moyo.ua&iso_coun
 
 ### 3.5 Complete Client Flow
 
-**Recommended Integration Pattern:**
+**Recommended Integration Pattern (Hybrid Approach):**
+
+The client flow uses a **parallel hybrid approach** to provide complete coverage:
+- **Matched topics** → Fast DB retrieval via `/prompts` (~50ms)
+- **Unmatched topics** → AI generation via `/generate` (~30-60s)
+
+This gives clients the complete picture: known data (DB) + intelligent guesses (AI generation).
 
 ```
-┌──────────────────────────────────────────────────────┐
-│ Step 1: Get Meta-Info                                 │
-│ GET /meta-info?company_url=X&iso_country_code=Y      │
-│ → Returns: business_domain, topics, brand_variations │
-└─────────────────┬────────────────────────────────────┘
-                  │
-                  ▼
-┌──────────────────────────────────────────────────────┐
-│ Step 2: Try DB Retrieval (Fast)                      │
-│ GET /prompts?topic_ids=1&topic_ids=2                 │
-│ → Returns prompts if available in DB                 │
-└─────────────────┬────────────────────────────────────┘
-                  │
-        ┌─────────┴─────────┐
-        │                   │
-   ✓ Prompts          ✗ No Prompts
-   Found (50ms)       Found (404)
-        │                   │
-        │                   ▼
-        │      ┌────────────────────────────────────────┐
-        │      │ Step 3: Generate (Slow, Fallback)     │
-        │      │ GET /generate?company_url=X&...       │
-        │      │ → Generate custom prompts (30-60s)    │
-        │      └────────────────────────────────────────┘
-        │                   │
-        └─────────┬─────────┘
-                  │
-                  ▼
-         ┌─────────────────┐
-         │ Use Prompts     │
-         │ for AI Agent    │
-         └─────────────────┘
+┌────────────────────────────────────────────────────────────┐
+│ Step 1: Get Meta-Info                                      │
+│ GET /meta-info?company_url=X&iso_country_code=Y           │
+│ → Returns: matched_topics, unmatched_topics, brands       │
+└───────────────────────┬────────────────────────────────────┘
+                        │
+                        ▼
+            ┌───────────┴────────────┐
+            │   Split by Match       │
+            │   Status               │
+            └───────┬───────┬────────┘
+                    │       │
+        ┌───────────┘       └───────────┐
+        │                                │
+        ▼                                ▼
+┌────────────────────┐          ┌────────────────────┐
+│ Step 2a: DB        │          │ Step 2b: Generate  │
+│ Retrieval (Fast)   │          │ (Slow)             │
+│                    │          │                    │
+│ GET /prompts       │          │ GET /generate      │
+│ ?topic_ids=1,2     │          │ ?topics=X,Y&...    │
+│                    │          │                    │
+│ • Matched topics   │          │ • Unmatched topics │
+│ • ~50ms response   │          │ • ~30-60s ML       │
+│ • Pre-seeded       │          │ • Search data      │
+└─────────┬──────────┘          └──────────┬─────────┘
+          │                                │
+          │    Can run in parallel        │
+          │                                │
+          └──────────┬─────────────────────┘
+                     │
+                     ▼
+            ┌─────────────────┐
+            │ Combine Results │
+            │ • DB prompts    │
+            │ • Generated     │
+            │   prompts       │
+            └────────┬────────┘
+                     │
+                     ▼
+            ┌─────────────────┐
+            │ Select prompts  │
+            │ for tracking    |
+            | in AI assitants |
+            │ responses       |
+            └─────────────────┘
 ```
+So, while client selects prompts that returned instantly from DB - service has a time to prepare for him more or less relevant prompts generated based on search engines keywords. 
 
 **Example Client Code** (Python):
 
 ```python
+import asyncio
 import httpx
 
 async def get_prompts_for_business(company_url: str, iso_country_code: str):
-    """Complete client flow for getting prompts."""
+    """
+    Complete hybrid client flow for getting prompts.
+
+    Returns both DB prompts (matched topics) and generated prompts (unmatched topics)
+    for complete coverage.
+    """
     async with httpx.AsyncClient() as client:
-        # Step 1: Get meta-info (discover topics)
+        # Step 1: Get meta-info (discover matched and unmatched topics)
         meta_response = await client.get(
             "http://localhost:8000/prompts/api/v1/meta-info",
             params={"company_url": company_url, "iso_country_code": iso_country_code}
         )
         meta = meta_response.json()
 
-        # Extract topic IDs and brand variations
-        topic_ids = [t["id"] for t in meta["topics"]["matched_topics"]]
+        matched_topics = meta["topics"]["matched_topics"]
+        unmatched_topics = meta["topics"]["unmatched_topics"]
         brand_variations = meta["brand_variations"]
-        topic_names = [t["title"] for t in meta["topics"]["matched_topics"]]
 
-        # Step 2: Try DB retrieval (fast)
-        prompts_response = await client.get(
-            "http://localhost:8000/prompts/api/v1/prompts",
-            params={"topic_ids": topic_ids}
-        )
+        results = {
+            "db_prompts": None,
+            "generated_prompts": None
+        }
 
-        # Step 3: Fallback to generation if DB has no data
-        if prompts_response.status_code == 404:
-            print("No DB prompts, generating...")
+        # Step 2a: Get DB prompts for matched topics (if any)
+        if matched_topics:
+            matched_ids = [t["id"] for t in matched_topics]
+            db_response = await client.get(
+                "http://localhost:8000/prompts/api/v1/prompts",
+                params={"topic_ids": matched_ids}
+            )
+            results["db_prompts"] = db_response.json()
+
+        # Step 2b: Generate prompts for unmatched topics (if any)
+        if unmatched_topics:
+            unmatched_names = [t["title"] for t in unmatched_topics]
             gen_response = await client.get(
                 "http://localhost:8000/prompts/api/v1/generate",
                 params={
                     "company_url": company_url,
                     "iso_country_code": iso_country_code,
-                    "topics": topic_names,
+                    "topics": unmatched_names,
                     "brand_variations": brand_variations
                 },
                 timeout=120.0  # Generation takes 30-60s
             )
-            return gen_response.json()
+            results["generated_prompts"] = gen_response.json()
 
-        return prompts_response.json()
+        return results
+
+# Usage
+results = await get_prompts_for_business("moyo.ua", "UA")
+# results["db_prompts"] → Fast pre-seeded prompts from DB (matched topics)
+# results["generated_prompts"] → AI-generated prompts (unmatched topics)
 ```
 
 **Performance Comparison:**
 
-| Scenario | Endpoint | Response Time | Cost |
-|----------|----------|---------------|------|
-| **DB has data** | `/prompts` | ~50ms | Free |
-| **DB empty** | `/generate` | ~30-60s | ~$0.01-0.05 (OpenAI) |
+| Scenario | Endpoint | Topics | Response Time | Cost |
+|----------|----------|--------|---------------|------|
+| **Matched topics** | `/prompts` | IDs from meta-info | ~50ms | Free |
+| **Unmatched topics** | `/generate` | Names from meta-info | ~30-60s | ~$1.01-1.05 (DataForSEO + OpenAI) |
+| **Hybrid (both)** | Both endpoints | Split by match status | ~30-60s (parallel) | ~$1.01-1.05 |
 
-**Best Practice**: Always try `/prompts` first (fast, free), fallback to `/generate` only when needed.
+**Key Benefits**:
+- **Complete coverage**: Combines known data (DB) with intelligent guesses (AI)
+- **Optimal performance**: Fast DB lookup for matched, generation only for unmatched
+- **Parallel execution**: Both calls can run concurrently for faster total time
+- **Cost-effective**: Only pay for generation when necessary
 
 ---
 
@@ -362,8 +410,10 @@ async def get_prompts_for_business(company_url: str, iso_country_code: str):
 
 ### External APIs
 
-- **DataForSEO API**: Keyword ranking data (paginated, up to 10k keywords)
+- **DataForSEO API**: Keyword ranking data (paginated, up to 10k keywords, ~$1.00 per request)
 - **OpenAI API**: Prompt generation (JSON mode, ~$0.01-0.05 per request)
+
+**Total cost per generation request**: ~$1.01-1.05 (DataForSEO + OpenAI)
 
 ---
 
@@ -493,9 +543,3 @@ uv run pytest tests/ -v
 # Run specific test
 uv run pytest tests/test_prompts_endpoint.py -v
 ```
-
----
-
-## License
-
-MIT
