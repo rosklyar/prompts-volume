@@ -13,7 +13,17 @@ COPY pyproject.toml uv.lock ./
 # Install dependencies
 RUN uv sync --frozen
 
-# Copy source code
+# Set cache directory for transformers models
+# This ensures the model is cached in a known location within the image
+ENV TRANSFORMERS_CACHE=/app/.cache/transformers
+ENV SENTENCE_TRANSFORMERS_HOME=/app/.cache/transformers
+
+# Pre-download the embedding model (~450MB)
+# This layer will be cached and reused unless dependencies change
+COPY scripts/download_model.py ./scripts/
+RUN uv run python scripts/download_model.py
+
+# Copy source code (most frequently changed, should be last)
 COPY src/ ./src/
 
 # Expose port
