@@ -1,6 +1,6 @@
 # Prompts Volume
 
-AI-powered prompt generation service for e-commerce businesses.
+AI-powered prompts suggestion service for e-commerce businesses.
 
 ---
 
@@ -192,7 +192,7 @@ curl "http://localhost:8000/prompts/api/v1/prompts?topic_ids=1&topic_ids=2"
 }
 ```
 
-**Use Case**: Primary method - retrieve prompts from DB
+**Use Case**: Retrieve prompts from DB for known topics
 
 ---
 
@@ -235,7 +235,7 @@ curl "http://localhost:8000/prompts/api/v1/generate?company_url=moyo.ua&iso_coun
   ]
 }
 ```
-**Use Case**: if DB has no similar topic - we try to generate prompts using search engines data from data for seo
+**Use Case**: if DB has no similar topic - we try to generate prompts using search engines data from dataforseo
 
 **Performance**: ~30-60 seconds (full ML pipeline + OpenAI)
 
@@ -406,7 +406,7 @@ results = await get_prompts_for_business("moyo.ua", "UA")
 | **Text Embeddings** | sentence-transformers<br/>`paraphrase-multilingual-MiniLM-L12-v2` | 384-dim vectors<br/>50+ languages incl. Ukrainian |
 | **Clustering** | HDBSCAN 0.8+ | Density-based semantic grouping<br/>Handles noise automatically |
 | **Similarity** | scikit-learn<br/>cosine_similarity | Topic relevance scoring (0.7 threshold) |
-| **LLM Generation** | OpenAI GPT-4o-mini | Conversational prompt creation<br/>Language auto-detection |
+| **LLM Generation** | OpenAI GPT family | Conversational prompt creation<br/>Language auto-detection |
 
 ### External APIs
 
@@ -442,7 +442,7 @@ cp .env.example .env
 #    OPENAI_API_KEY=sk-...
 
 # 4. Build and start services
-docker-compose up --build -d
+docker-compose up -d
 
 # 5. Check health
 curl http://localhost:8000/health

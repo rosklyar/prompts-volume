@@ -140,7 +140,7 @@ async def get_company_meta_info(
         )
 
         return CompanyMetaInfoResponse(
-            business_domain=meta_info.business_domain,
+            business_domain=meta_info.business_domain.name if meta_info.business_domain else None,
             topics=topics_response,
             brand_variations=meta_info.brand_variations,
         )
