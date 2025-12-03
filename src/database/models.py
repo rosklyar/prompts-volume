@@ -2,6 +2,7 @@
 
 from typing import List
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -120,6 +121,30 @@ class Topic(Base):
     # Relationships
     business_domain: Mapped["BusinessDomain"] = relationship(back_populates="topics")
     country: Mapped["Country"] = relationship(back_populates="topics")
+    prompts: Mapped[List["Prompt"]] = relationship(back_populates="topic", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
         return f"<Topic(id={self.id}, title='{self.title}', business_domain_id={self.business_domain_id}, country_id={self.country_id})>"
+
+
+class Prompt(Base):
+    """Prompt model for storing pre-seeded search prompts with embeddings."""
+
+    __tablename__ = "prompts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    prompt_text: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[Vector] = mapped_column(Vector(384), nullable=False)
+
+    # Foreign keys
+    topic_id: Mapped[int] = mapped_column(
+        ForeignKey("topics.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # Relationships
+    topic: Mapped["Topic"] = relationship(back_populates="prompts")
+
+    def __repr__(self) -> str:
+        return f"<Prompt(id={self.id}, topic_id={self.topic_id}, prompt_text='{self.prompt_text[:50]}...')>"

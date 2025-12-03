@@ -2,7 +2,6 @@
 
 import base64
 import logging
-from functools import lru_cache
 from typing import List
 
 import httpx
@@ -284,15 +283,21 @@ class DataForSEOService:
         return all_keywords
 
 
-@lru_cache()
+# Global instance for dependency injection
+_dataforseo_service = None
+
+
 def get_dataforseo_service() -> DataForSEOService:
     """
-    Dependency injection function for DataForSEO service.
+    Get the global DataForSEOService instance.
+    Creates one if it doesn't exist yet.
 
-    Uses lru_cache to create a singleton instance - the same instance
-    is returned on every call, avoiding unnecessary instantiation.
+    Credentials are loaded from settings on first instantiation.
 
     Returns:
-        Singleton instance of DataForSEOService
+        DataForSEOService instance
     """
-    return DataForSEOService()
+    global _dataforseo_service
+    if _dataforseo_service is None:
+        _dataforseo_service = DataForSEOService()
+    return _dataforseo_service
