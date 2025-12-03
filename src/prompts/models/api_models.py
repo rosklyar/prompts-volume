@@ -2,9 +2,7 @@
 
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, field_serializer
-
-from src.database import BusinessDomain
+from pydantic import BaseModel, Field
 
 
 class ClusterPrompts(BaseModel):
@@ -63,10 +61,10 @@ class TopicsResponse(BaseModel):
 class CompanyMetaInfoResponse(BaseModel):
     """Response model for company meta information endpoint."""
 
-    model_config = {"from_attributes": True, "arbitrary_types_allowed": True}
+    model_config = {"from_attributes": True}
 
-    business_domain: Optional[BusinessDomain] = Field(
-        None, description="Business domain (serialized as name), or null if not classified"
+    business_domain: Optional[str] = Field(
+        None, description="Business domain name, or null if not classified"
     )
     topics: TopicsResponse = Field(
         ...,
@@ -75,11 +73,6 @@ class CompanyMetaInfoResponse(BaseModel):
     brand_variations: List[str] = Field(
         ..., description="Brand name variations to filter out from prompts"
     )
-
-    @field_serializer('business_domain')
-    def serialize_business_domain(self, value: Optional[BusinessDomain]) -> Optional[str]:
-        """Serialize BusinessDomain ORM object to string name for API response."""
-        return value.name if value else None
 
 
 class GeneratePromptsRequest(BaseModel):

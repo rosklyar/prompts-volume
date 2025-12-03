@@ -2,7 +2,6 @@
 
 import json
 import logging
-import os
 from typing import List
 
 import numpy as np
@@ -10,6 +9,7 @@ from fastapi import Depends
 from openai import AsyncOpenAI
 from sklearn.metrics.pairwise import cosine_similarity
 
+from src.config.settings import settings
 from src.database import BusinessDomain, Country, Topic
 from src.embeddings.embeddings_service import EmbeddingsService, get_embeddings_service
 from src.prompts.models.generated_topic import GeneratedTopic
@@ -27,7 +27,8 @@ class TopicsProvider:
         api_key: str,
         model: str,
         topic_service: TopicService,
-        embeddings_service: EmbeddingsService
+        embeddings_service: EmbeddingsService,
+        similarity_threshold: float = 0.9
     ):
         if not api_key:
             raise ValueError("API key is required")
@@ -35,6 +36,7 @@ class TopicsProvider:
         self.model = model
         self.topic_service = topic_service
         self.embeddings_service = embeddings_service
+        self.similarity_threshold = similarity_threshold
 
     async def provide(
         self,
@@ -83,7 +85,7 @@ class TopicsProvider:
 
         # Step 4: Match using embedding similarity
         match_result = await self._match_topics_by_embedding(
-            generated_titles, db_topics, similarity_threshold=0.9
+            generated_titles, db_topics, similarity_threshold=self.similarity_threshold
         )
 
         logger.info(
@@ -259,16 +261,15 @@ def get_topics_provider(
     Returns:
         TopicsProvider instance for this request
     """
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
+    if not settings.openai_api_key:
         raise ValueError("OPENAI_API_KEY environment variable is required")
 
-    model = os.getenv("TOPICS_GENERATION_MODEL", "gpt-4o-mini")
     embeddings_service = get_embeddings_service()  # Singleton (cached)
 
     return TopicsProvider(
-        api_key=api_key,
-        model=model,
+        api_key=settings.openai_api_key,
+        model=settings.topics_generation_model,
         topic_service=topic_service,
-        embeddings_service=embeddings_service
+        embeddings_service=embeddings_service,
+        similarity_threshold=settings.topics_provider_similarity_threshold
     )
