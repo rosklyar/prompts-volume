@@ -98,6 +98,7 @@ AI-powered prompts suggestion service for e-commerce businesses.
 ```
 Request → Topic IDs → DB lookup → Return prompts
 ```
+https://github.com/user-attachments/assets/ec8f09f0-8982-41e2-bbb5-68ae8bb4997b
 
 **Path 2 - Generation** (slow, ~30-60s):
 ```
@@ -109,6 +110,7 @@ URL → Keywords (DataForSEO API call)
     → Prompt generation (OpenAI API call)
     → Response
 ```
+https://github.com/user-attachments/assets/3018bcec-bc0e-40ad-a577-4dfbbb5e1758
 
 ---
 
