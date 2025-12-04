@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import List
 
 from src.database import Topic
-from src.prompts.models.generated_topic import GeneratedTopic
+from src.topics.models.generated_topic import GeneratedTopic
 
 
 @dataclass

@@ -5,8 +5,8 @@ from typing import Dict, List
 from openai import AsyncOpenAI
 
 from src.config.settings import settings
-from src.embeddings.topic_relevance_filter_service import ClusterWithRelevance
-from src.prompts.models import ClusterPrompts, GeneratedPrompts, Topic
+from src.topics.services.topic_relevance_filter_service import ClusterWithRelevance
+from src.prompts.models import ClusterPrompts, GeneratedPrompts, TopicWithClusters
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +89,7 @@ class PromptsGeneratorService:
         )
 
         # Build results for each topic
-        result_topics: List[Topic] = []
+        result_topics: List[TopicWithClusters] = []
 
         for topic_name, clusters in topics_with_clusters.items():
             if not clusters:
@@ -113,7 +113,7 @@ class PromptsGeneratorService:
                     prompts=prompts
                 ))
 
-            result_topics.append(Topic(
+            result_topics.append(TopicWithClusters(
                 topic=topic_name,
                 clusters=cluster_prompts_list
             ))

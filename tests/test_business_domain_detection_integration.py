@@ -5,7 +5,7 @@ import os
 import pytest
 from dotenv import load_dotenv
 
-from src.prompts.services.business_domain_detection_service import BusinessDomainDetectionService
+from src.businessdomain.services import BusinessDomainDetectionService
 
 load_dotenv()
 

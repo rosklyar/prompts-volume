@@ -1,35 +1,23 @@
 """Models and enums for the prompts service."""
 
-from src.prompts.models.api_models import (
+from src.prompts.models.cluster_prompts import (
     ClusterPrompts,
-    CompanyMetaInfoResponse,
-    DBTopicResponse,
-    GeneratedTopicResponse,
-    GeneratePromptsRequest,
     GeneratedPrompts,
+    TopicWithClusters,
+)
+from src.prompts.models.generate_request import GeneratePromptsRequest
+from src.prompts.models.prompt_responses import (
     PromptResponse,
     PromptsListResponse,
-    Topic,
     TopicPromptsResponse,
-    TopicsResponse,
 )
-from src.prompts.models.company_meta_info import CompanyMetaInfo
-from src.prompts.models.generated_topic import GeneratedTopic
-from src.prompts.models.topic_match_result import TopicMatchResult
 
 __all__ = [
-    "CompanyMetaInfo",
     "ClusterPrompts",
-    "Topic",
     "GeneratedPrompts",
+    "TopicWithClusters",
     "GeneratePromptsRequest",
-    "CompanyMetaInfoResponse",
-    "GeneratedTopic",
-    "TopicMatchResult",
-    "DBTopicResponse",
-    "GeneratedTopicResponse",
-    "TopicsResponse",
     "PromptResponse",
-    "TopicPromptsResponse",
     "PromptsListResponse",
+    "TopicPromptsResponse",
 ]
