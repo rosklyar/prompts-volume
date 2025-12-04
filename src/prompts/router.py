@@ -6,34 +6,39 @@ import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.config.settings import settings
-from src.prompts.services.country_service import CountryService, get_country_service
-from src.prompts.services.prompt_service import PromptService, get_prompt_service
+from src.geography.services import CountryService, get_country_service
+from src.prompts.services import (
+    PromptService,
+    get_prompt_service,
+    DataForSEOService,
+    PromptsGeneratorService,
+    get_dataforseo_service,
+    get_prompts_generator_service,
+)
 from src.embeddings.clustering_service import (
     ClusteringService,
     get_clustering_service,
 )
 from src.embeddings.embeddings_service import EmbeddingsService, get_embeddings_service
-from src.embeddings.topic_relevance_filter_service import (
+from src.topics.services import (
     TopicRelevanceFilterService,
     get_topic_relevance_filter_service,
 )
-from src.prompts.models import (
+from src.businessdomain.services import (
+    CompanyMetaInfoService,
+    get_company_meta_info_service,
+)
+from src.businessdomain.models import (
     CompanyMetaInfoResponse,
     DBTopicResponse,
-    GeneratedPrompts,
     GeneratedTopicResponse,
+    TopicsResponse,
+)
+from src.prompts.models import (
+    GeneratedPrompts,
     PromptResponse,
     PromptsListResponse,
     TopicPromptsResponse,
-    TopicsResponse,
-)
-from src.prompts.services import (
-    CompanyMetaInfoService,
-    DataForSEOService,
-    PromptsGeneratorService,
-    get_company_meta_info_service,
-    get_dataforseo_service,
-    get_prompts_generator_service,
 )
 from src.utils.keyword_filters import (
     deduplicate_keywords,

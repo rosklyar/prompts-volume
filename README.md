@@ -66,12 +66,25 @@ AI-powered prompts suggestion service for e-commerce businesses.
 - Topics organized by country and business domain
 - Vector similarity search support (HNSW index)
 
-**2. Service Layer**
-- `PromptService`: DB CRUD operations for prompts
-- `TopicService`: Topic management and matching
-- `DataForSEOService`: Keyword fetching from search engines (external API)
-- `PromptsGeneratorService`: OpenAI-based prompt generation (external API)
-- `EmbeddingsService`: Local multilingual text embeddings (HuggingFace model, no API calls)
+**2. Service Layer** (Domain-Driven Organization)
+- **businessdomain/services/** - Business domain classification
+  - `BusinessDomainService`: DB operations for business domains
+  - `BusinessDomainDetectionService`: LLM-based domain classification
+  - `CompanyMetaInfoService`: Orchestrates company metadata retrieval
+- **geography/services/** - Location & language data
+  - `CountryService`: Country DB operations
+  - `LanguageService`: Language DB operations
+- **topics/services/** - Topic matching & generation
+  - `TopicService`: Topic DB operations and matching
+  - `TopicsProvider`: LLM-based topic generation with DB matching
+  - `TopicRelevanceFilterService`: Cluster filtering by topic relevance
+- **prompts/services/** - Prompts generation & retrieval
+  - `PromptService`: Prompt DB operations
+  - `DataForSEOService`: Keyword fetching from search engines (external API)
+  - `PromptsGeneratorService`: LLM-based prompt generation (external API)
+- **embeddings/** - ML pipeline (local models)
+  - `EmbeddingsService`: Local multilingual text embeddings (HuggingFace model, no API calls)
+  - `ClusteringService`: HDBSCAN semantic clustering
 
 **3. ML Pipeline** (when generating)
 - **Embeddings**: sentence-transformers (local model, multilingual, 384-dim, runs in-process)
@@ -498,27 +511,67 @@ docker-compose down -v       # Stop + delete data volumes
 ```
 prompts-volume/
 ├── src/
-│   ├── main.py                      # FastAPI app + lifespan (DB init)
-│   ├── database/                    # SQLAlchemy models, init, seeding
-│   │   ├── models.py                # Topic, Prompt, Country models
-│   │   ├── init.py                  # Seeding logic
-│   │   └── session.py               # DB connection, vector index
-│   ├── prompts/
-│   │   ├── router.py                # API endpoints
-│   │   ├── models/                  # Request/response models
-│   │   └── services/                # Business logic
-│   ├── embeddings/                  # ML pipeline
-│   │   ├── embeddings_service.py    # sentence-transformers
-│   │   ├── clustering_service.py    # HDBSCAN
-│   │   └── topic_relevance_filter_service.py
-│   ├── data/                        # CSV files
-│   │   ├── prompts_phones.csv       # 50 phone prompts
-│   │   └── prompts_laptops.csv      # 59 laptop prompts
-│   └── utils/                       # Helpers
-├── tests/                           # Integration tests
-├── docker-compose.yml               # Multi-container setup
-├── Dockerfile                       # App container
-└── README.md                        # This file
+│   ├── main.py                          # FastAPI app + lifespan (DB init)
+│   │
+│   ├── businessdomain/                  # Business domain classification
+│   │   ├── models/
+│   │   │   ├── company_meta_info.py     # CompanyMetaInfo dataclass
+│   │   │   └── api_models.py            # API responses (CompanyMetaInfoResponse, etc.)
+│   │   └── services/
+│   │       ├── business_domain_service.py           # DB operations
+│   │       ├── business_domain_detection_service.py # LLM classification
+│   │       └── company_meta_info_service.py         # Orchestrator
+│   │
+│   ├── geography/                       # Location & language data
+│   │   └── services/
+│   │       ├── country_service.py       # Country DB operations
+│   │       └── language_service.py      # Language DB operations
+│   │
+│   ├── topics/                          # Topic matching & generation
+│   │   ├── models/
+│   │   │   ├── generated_topic.py       # GeneratedTopic dataclass
+│   │   │   └── topic_match_result.py    # TopicMatchResult dataclass
+│   │   └── services/
+│   │       ├── topic_service.py                    # DB operations
+│   │       ├── topics_provider.py                  # LLM generation + matching
+│   │       └── topic_relevance_filter_service.py   # Cluster filtering
+│   │
+│   ├── prompts/                         # Prompts generation & retrieval
+│   │   ├── router.py                    # API endpoints
+│   │   ├── models/
+│   │   │   ├── cluster_prompts.py       # Cluster-based models
+│   │   │   ├── prompt_responses.py      # DB retrieval responses
+│   │   │   └── generate_request.py      # Request models
+│   │   └── services/
+│   │       ├── prompt_service.py                # DB operations
+│   │       ├── data_for_seo_service.py          # External API (keywords)
+│   │       └── prompts_generator_service.py     # LLM generation
+│   │
+│   ├── embeddings/                      # ML pipeline (local models)
+│   │   ├── embeddings_service.py        # sentence-transformers
+│   │   └── clustering_service.py        # HDBSCAN
+│   │
+│   ├── database/                        # Data persistence layer
+│   │   ├── models.py                    # SQLAlchemy ORM (Topic, Prompt, Country, etc.)
+│   │   ├── init.py                      # Database seeding logic
+│   │   └── session.py                   # DB connection, vector index
+│   │
+│   ├── config/                          # Configuration
+│   │   └── settings.py                  # Environment-based settings
+│   │
+│   ├── utils/                           # Shared utilities
+│   │   ├── keyword_filters.py           # Keyword filtering logic
+│   │   └── url_validator.py            # URL validation
+│   │
+│   └── data/                            # Static data files
+│       ├── prompts_phones.csv           # 50 phone prompts
+│       └── prompts_laptops.csv          # 59 laptop prompts
+│
+├── tests/                               # Integration tests
+├── docker-compose.yml                   # Multi-container setup
+├── Dockerfile                           # App container
+├── README.md                            # This file
+└── CLAUDE.md                            # AI assistant guidance
 ```
 
 ---

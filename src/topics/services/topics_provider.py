@@ -12,9 +12,8 @@ from sklearn.metrics.pairwise import cosine_similarity
 from src.config.settings import settings
 from src.database import BusinessDomain, Country, Topic
 from src.embeddings.embeddings_service import EmbeddingsService, get_embeddings_service
-from src.prompts.models.generated_topic import GeneratedTopic
-from src.prompts.models.topic_match_result import TopicMatchResult
-from src.prompts.services.topic_service import TopicService, get_topic_service
+from src.topics.models import GeneratedTopic, TopicMatchResult
+from src.topics.services.topic_service import TopicService, get_topic_service
 
 logger = logging.getLogger(__name__)
 

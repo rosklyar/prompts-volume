@@ -5,12 +5,13 @@ import logging
 from fastapi import Depends
 
 from src.database import Country
-from src.prompts.models import CompanyMetaInfo, TopicMatchResult
-from src.prompts.services.business_domain_detection_service import (
+from src.businessdomain.models import CompanyMetaInfo
+from src.topics.models import TopicMatchResult
+from src.businessdomain.services import (
     BusinessDomainDetectionService,
     get_business_domain_detection_service,
 )
-from src.prompts.services.topics_provider import (
+from src.topics.services import (
     TopicsProvider,
     get_topics_provider,
 )

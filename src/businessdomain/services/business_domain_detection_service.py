@@ -9,7 +9,7 @@ from openai import AsyncOpenAI
 
 from src.config.settings import settings
 from src.database import BusinessDomain
-from src.prompts.services.business_domain_service import BusinessDomainService, get_business_domain_service
+from src.businessdomain.services.business_domain_service import BusinessDomainService, get_business_domain_service
 
 logger = logging.getLogger(__name__)
 

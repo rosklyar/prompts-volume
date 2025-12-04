@@ -41,38 +41,148 @@ When the application is running:
 
 ## Repository Structure
 
-- `src/` - All source code
-  - `src/main.py` - Application entry point, includes routers and health endpoint
-  - `src/config/` - Configuration files and mappings
-    - `src/config/countries.py` - ISO country code to location name mapping (94 countries)
-    - `src/config/settings.py` - Application settings (DataForSEO credentials from env vars)
-  - `src/services/` - External service integrations
-    - `src/services/dataforseo_service.py` - DataForSEO API client for keyword research
-  - `src/routers/` - API route handlers (FastAPI routers)
-  - `src/utils/` - Reusable utility functions and helpers
-- `tests/` - All test files (pytest)
-- `Dockerfile` - Docker configuration
-- `.env.example` - Environment variable template
+The project follows Domain-Driven Design (DDD) with clear separation of concerns:
+
+### Domain Modules
+
+- **`src/businessdomain/`** - Business domain classification
+  - `models/` - CompanyMetaInfo, API responses (CompanyMetaInfoResponse, DBTopicResponse, etc.)
+  - `services/` - BusinessDomainService, BusinessDomainDetectionService, CompanyMetaInfoService
+
+- **`src/geography/`** - Geographic and linguistic data
+  - `services/` - CountryService, LanguageService
+
+- **`src/topics/`** - Topic generation and matching
+  - `models/` - GeneratedTopic, TopicMatchResult
+  - `services/` - TopicService, TopicsProvider, TopicRelevanceFilterService
+
+- **`src/prompts/`** - Prompts generation and retrieval
+  - `router.py` - API endpoints (main router)
+  - `models/` - Request/response models (cluster_prompts, prompt_responses, generate_request)
+  - `services/` - PromptService, DataForSEOService, PromptsGeneratorService
+
+### Infrastructure Modules
+
+- **`src/embeddings/`** - ML pipeline (local models)
+  - `embeddings_service.py` - sentence-transformers for text embeddings
+  - `clustering_service.py` - HDBSCAN for semantic clustering
+
+- **`src/database/`** - Data persistence layer
+  - `models.py` - SQLAlchemy ORM models (Topic, Prompt, Country, etc.)
+  - `session.py` - Database connection and vector index setup
+  - `init.py` - Database seeding logic
+
+- **`src/config/`** - Application configuration
+  - `settings.py` - Environment-based settings (Pydantic)
+
+- **`src/utils/`** - Shared utilities
+  - `keyword_filters.py` - Keyword filtering logic
+  - `url_validator.py` - URL validation
+
+- **`src/data/`** - Static data files
+  - CSV files with pre-seeded prompts
+
+- **`tests/`** - Integration tests (pytest)
+
+### Core Principles
+
+1. **Domain-Driven Design**: Code organized by business domains (businessdomain, geography, topics, prompts)
+2. **Single Responsibility**: Each service has one clear purpose
+3. **Separation of Concerns**: Models, services, and infrastructure clearly separated
+4. **Dependency Direction**: Domain services depend on infrastructure, not vice versa
 
 ## Architecture Guidelines
+
+### Module Organization
+
+**Domain Modules** (business logic):
+- Each domain has its own directory under `src/`
+- Contains `models/` (data structures) and `services/` (business logic)
+- Examples: `businessdomain/`, `geography/`, `topics/`, `prompts/`
+
+**Infrastructure Modules** (technical concerns):
+- Support domain modules with technical capabilities
+- Examples: `database/`, `embeddings/`, `config/`, `utils/`
+
+### Service Organization Patterns
+
+1. **Database Services**:
+   - Named `*_service.py` (e.g., `topic_service.py`)
+   - Handle CRUD operations for domain entities
+   - Located in domain's `services/` directory
+
+2. **External API Services**:
+   - Named `*_service.py` (e.g., `data_for_seo_service.py`)
+   - Encapsulate external API calls
+   - Handle authentication and error handling
+
+3. **Orchestrator Services**:
+   - Coordinate multiple services to fulfill complex operations
+   - Example: `CompanyMetaInfoService` orchestrates domain detection + topic generation
+
+4. **Provider Services**:
+   - Generate or provide domain objects using external resources
+   - Example: `TopicsProvider` generates topics using LLM + DB matching
+
+### Model Organization
+
+**Internal Models** (dataclasses):
+- Domain-specific data structures for internal use
+- Located in domain's `models/` directory
+- Example: `CompanyMetaInfo`, `GeneratedTopic`, `TopicMatchResult`
+
+**API Models** (Pydantic):
+- Request/response models for API endpoints
+- Named `*_request.py`, `*_responses.py`, or `api_models.py`
+- Located in domain's `models/` directory
+- Example: `CompanyMetaInfoResponse`, `GeneratedPrompts`
+
+**Database Models** (SQLAlchemy):
+- ORM models for database tables
+- Located in `src/database/models.py`
+- Example: `Topic`, `Prompt`, `Country`
+
+### Naming Conventions
+
+- **API Response Models**: End with `Response` (e.g., `CompanyMetaInfoResponse`)
+- **Services**: End with `Service` (e.g., `TopicService`, `PromptService`)
+- **Providers**: End with `Provider` (e.g., `TopicsProvider`)
+- **Avoid naming conflicts**: Use descriptive names (e.g., `TopicWithClusters` for API model vs `Topic` for DB model)
 
 ### Single Responsibility Principle (SRP)
 
 Always follow the Single Responsibility Principle when writing code:
 
-- **Create separate components** for identifiable pieces of functionality
-- **Extract utilities** when logic can be reused (e.g., URL validation, data transformation)
-- **Use routers** to organize endpoints by domain/feature area
-- **Keep main.py minimal** - only application setup and health checks
-- **Service layer** - External API calls should be in dedicated service classes in `src/services/`
-- **Configuration** - Use `pydantic-settings` for environment-based configuration; store static mappings in `src/config/`
+**Domain Organization**:
+- **Group by domain** first, then by concern (models vs services)
+- Each domain directory represents a cohesive business concept
+- Example: `businessdomain/` handles all business classification logic
 
-When adding new functionality, ask: "Does this belong in a separate module/utility?" If a function does more than one thing, split it into focused, single-purpose components.
+**Service Responsibilities**:
+- **Create separate services** for distinct operations
+- Database operations → separate service (e.g., `TopicService`)
+- External API calls → separate service (e.g., `DataForSEOService`)
+- LLM operations → separate service (e.g., `TopicsProvider`)
+- Orchestration → separate service (e.g., `CompanyMetaInfoService`)
+
+**Model Separation**:
+- Internal dataclasses → domain's `models/` directory
+- API request/response models → domain's `models/` directory (separate files)
+- Database models → `src/database/models.py`
+
+**Extract utilities** when logic can be reused (e.g., URL validation, keyword filtering)
+
+**Keep main.py minimal** - only application setup, lifespan, and health endpoint
+
+When adding new functionality, ask:
+1. "Which domain does this belong to?"
+2. "Is this a service, model, or utility?"
+3. "Does this service do more than one thing?"
 
 ### API Integration Pattern
 
 When integrating external APIs:
-1. Create a service class in `src/services/` (e.g., `DataForSEOService`)
+1. Create a service class in the appropriate domain's `services/` directory (e.g., `DataForSEOService` in `prompts/services/`)
 2. Store credentials in environment variables, loaded via `src/config/settings.py`
 3. Handle errors comprehensively with meaningful HTTPException messages
 4. Mock external API calls in tests using `unittest.mock` or `pytest-mock`
@@ -80,6 +190,6 @@ When integrating external APIs:
 ### Country/Location Handling
 
 - Use ISO country codes (e.g., `US`, `GB`, `UA`) as API parameters
-- Map ISO codes to location names in `src/config/countries.py`
-- Support 94 countries as defined in the country mapping
+- CountryService and LanguageService handle geographic/linguistic data
+- Located in `src/geography/services/`
 - Accept case-insensitive ISO codes (convert to uppercase internally)

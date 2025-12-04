@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from src.database import BusinessDomain
-from src.prompts.models.topic_match_result import TopicMatchResult
+from src.topics.models.topic_match_result import TopicMatchResult
 
 
 @dataclass

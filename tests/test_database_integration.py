@@ -2,10 +2,9 @@
 
 import pytest
 
-from src.prompts.services.business_domain_service import BusinessDomainService
-from src.prompts.services.country_service import CountryService
-from src.prompts.services.language_service import LanguageService
-from src.prompts.services.topic_service import TopicService
+from src.businessdomain.services import BusinessDomainService
+from src.geography.services import CountryService, LanguageService
+from src.topics.services import TopicService
 
 
 @pytest.mark.asyncio
