@@ -1,9 +1,11 @@
 """SQLAlchemy ORM models for database tables."""
 
-from typing import List
+import enum
+from datetime import datetime
+from typing import List, Optional
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.database.session import Base
@@ -145,6 +147,84 @@ class Prompt(Base):
 
     # Relationships
     topic: Mapped["Topic"] = relationship(back_populates="prompts")
+    evaluations: Mapped[List["PromptEvaluation"]] = relationship(
+        back_populates="prompt",
+        cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<Prompt(id={self.id}, topic_id={self.topic_id}, prompt_text='{self.prompt_text[:50]}...')>"
+
+
+class EvaluationStatus(str, enum.Enum):
+    """Evaluation status enum."""
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class PromptEvaluation(Base):
+    """Track evaluations of prompts by different AI assistants."""
+
+    __tablename__ = "prompt_evaluations"
+    __table_args__ = (
+        UniqueConstraint(
+            "prompt_id",
+            "assistant_name",
+            "plan_name",
+            name="uq_prompt_assistant_plan"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    prompt_id: Mapped[int] = mapped_column(
+        ForeignKey("prompts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    # Assistant and plan identifiers
+    assistant_name: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        index=True
+    )
+    plan_name: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        index=True
+    )
+
+    # Status tracking
+    status: Mapped[EvaluationStatus] = mapped_column(
+        Enum(EvaluationStatus),
+        nullable=False,
+        default=EvaluationStatus.IN_PROGRESS,
+        index=True
+    )
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("NOW()"),
+        index=True
+    )
+    claimed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        index=True
+    )
+
+    # Result (JSON with response, citations, timestamp)
+    answer: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
+    # Relationships
+    prompt: Mapped["Prompt"] = relationship(back_populates="evaluations")
+
+    def __repr__(self) -> str:
+        return f"<PromptEvaluation(id={self.id}, prompt_id={self.prompt_id}, assistant_name='{self.assistant_name}', status='{self.status.value}')>"
