@@ -264,7 +264,327 @@ curl "http://localhost:8000/prompts/api/v1/generate?company_url=moyo.ua&iso_coun
 
 ---
 
-### 3.5 Complete Client Flow
+### 3.5 Evaluation Endpoints
+
+**Purpose**: Track AI assistant responses to prompts for quality evaluation and analytics
+
+The evaluation system provides atomic polling and submission APIs to:
+- Distribute prompts across AI assistants (ChatGPT, Claude, Perplexity, etc.)
+- Prevent duplicate evaluation work with database locking
+- Handle bot crashes with automatic timeout and retry
+- Preserve evaluation history for analytics
+
+**Configuration**:
+- `EVALUATION_TIMEOUT_HOURS=2` - Stale evaluations become available for retry after 2 hours
+- `MIN_DAYS_SINCE_LAST_EVALUATION=1` - Completed prompts unavailable for 1 day per assistant+plan
+
+---
+
+#### 3.5.1 Poll for Evaluation
+
+```http
+POST /evaluations/api/v1/poll
+```
+
+**Purpose**: Atomically claim a prompt for evaluation by an AI assistant
+
+**Request**:
+```json
+{
+  "assistant_name": "ChatGPT",
+  "plan_name": "Plus"
+}
+```
+
+**Parameters**:
+- `assistant_name` (required): AI assistant name (e.g., "ChatGPT", "Claude", "Perplexity")
+- `plan_name` (required): Assistant plan/tier (e.g., "Free", "Plus", "Pro")
+
+**Response** (prompt available):
+```json
+{
+  "evaluation_id": 123,
+  "prompt_id": 456,
+  "prompt_text": "Найкращий смартфон до 15 000 грн?",
+  "topic_id": 1,
+  "claimed_at": "2025-12-09T10:30:00Z"
+}
+```
+
+**Response** (no prompts available):
+```json
+{
+  "evaluation_id": null,
+  "prompt_id": null,
+  "prompt_text": null,
+  "topic_id": null,
+  "claimed_at": null
+}
+```
+
+**Example**:
+```bash
+curl -X POST "http://localhost:8000/evaluations/api/v1/poll" \
+  -H "Content-Type: application/json" \
+  -d '{"assistant_name": "ChatGPT", "plan_name": "Plus"}'
+```
+
+**Key Features**:
+- **Atomic claiming**: PostgreSQL locking (SELECT FOR UPDATE SKIP LOCKED) prevents duplicate work
+- **Concurrent-safe**: Multiple bots can poll simultaneously without conflicts
+- **Timeout protection**: Stale evaluations (>2 hours) automatically become available for retry
+- **Cooldown period**: Completed evaluations locked for 1 day per assistant+plan combination
+
+**Use Case**: Bot polls for a prompt, evaluates it with the AI assistant, then submits or releases
+
+---
+
+#### 3.5.2 Submit Answer
+
+```http
+POST /evaluations/api/v1/submit
+```
+
+**Purpose**: Submit evaluation answer and mark as completed
+
+**Request**:
+```json
+{
+  "evaluation_id": 123,
+  "answer": {
+    "response": "Перш ніж купувати смартфон до 15 000 грн, важливо...",
+    "citations": [
+      {
+        "url": "https://example.com/phones-guide",
+        "text": "Best Phones Under 15000"
+      }
+    ],
+    "timestamp": "2025-12-09T10:35:00Z"
+  }
+}
+```
+
+**Parameters**:
+- `evaluation_id` (required): Evaluation ID from poll response
+- `answer.response` (required): The AI assistant's response text
+- `answer.citations` (required): List of citation objects with URL and text
+- `answer.timestamp` (required): ISO timestamp when answer was generated
+
+**Response**:
+```json
+{
+  "evaluation_id": 123,
+  "prompt_id": 456,
+  "status": "completed",
+  "completed_at": "2025-12-09T10:35:00Z"
+}
+```
+
+**Example**:
+```bash
+curl -X POST "http://localhost:8000/evaluations/api/v1/submit" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "evaluation_id": 123,
+    "answer": {
+      "response": "Your AI assistant response here...",
+      "citations": [
+        {"url": "https://example.com", "text": "Source 1"}
+      ],
+      "timestamp": "2025-12-09T10:35:00Z"
+    }
+  }'
+```
+
+**Use Case**: After successfully getting answer from AI assistant, submit it to complete evaluation
+
+---
+
+#### 3.5.3 Release Evaluation
+
+```http
+POST /evaluations/api/v1/release
+```
+
+**Purpose**: Release evaluation on failure (delete or mark as failed)
+
+**Request** (mark as failed - preserves for analytics):
+```json
+{
+  "evaluation_id": 123,
+  "mark_as_failed": true,
+  "failure_reason": "API timeout after 60 seconds"
+}
+```
+
+**Request** (delete - makes available immediately):
+```json
+{
+  "evaluation_id": 123,
+  "mark_as_failed": false
+}
+```
+
+**Parameters**:
+- `evaluation_id` (required): Evaluation ID from poll response
+- `mark_as_failed` (optional, default: false): If true, mark as FAILED; if false, delete record
+- `failure_reason` (required if mark_as_failed=true): Reason for failure
+
+**Response**:
+```json
+{
+  "evaluation_id": 123,
+  "action": "marked_failed"
+}
+```
+(action can be "marked_failed" or "deleted")
+
+**Examples**:
+```bash
+# Mark as failed (preserves record for analytics)
+curl -X POST "http://localhost:8000/evaluations/api/v1/release" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "evaluation_id": 123,
+    "mark_as_failed": true,
+    "failure_reason": "ChatGPT API timeout"
+  }'
+
+# Delete (makes prompt immediately available)
+curl -X POST "http://localhost:8000/evaluations/api/v1/release" \
+  -H "Content-Type: application/json" \
+  -d '{"evaluation_id": 123, "mark_as_failed": false}'
+```
+
+**Use Case**: When bot encounters error (API timeout, rate limit, etc.), release the evaluation
+
+---
+
+#### 3.5.4 Get Evaluation Results
+
+```http
+POST /evaluations/api/v1/results
+```
+
+**Purpose**: Retrieve the latest completed evaluation results for a list of prompts
+
+**Request**:
+```json
+{
+  "assistant_name": "ChatGPT",
+  "plan_name": "Plus",
+  "prompt_ids": [1, 2, 3]
+}
+```
+
+**Parameters**:
+- `assistant_name` (required): AI assistant name (e.g., "ChatGPT", "Claude", "Perplexity")
+- `plan_name` (required): Assistant plan/tier (e.g., "Free", "Plus", "Pro")
+- `prompt_ids` (required): List of prompt IDs to get results for
+
+**Response**:
+```json
+{
+  "results": [
+    {
+      "prompt_id": 1,
+      "evaluation_id": 123,
+      "status": "completed",
+      "answer": {
+        "response": "The best smartphone under 15,000 UAH...",
+        "citations": [
+          {"url": "https://example.com/guide", "text": "Smartphone Guide"}
+        ],
+        "timestamp": "2025-12-09T10:35:00Z"
+      },
+      "completed_at": "2025-12-09T10:35:00Z"
+    }
+  ]
+}
+```
+
+**Example**:
+```bash
+curl -X POST "http://localhost:8000/evaluations/api/v1/results" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "assistant_name": "ChatGPT",
+    "plan_name": "Plus",
+    "prompt_ids": [1, 2, 3]
+  }'
+```
+
+**Key Features**:
+- Returns only COMPLETED evaluations (not IN_PROGRESS or FAILED)
+- Returns the latest evaluation per prompt when multiple exist
+- Uses PostgreSQL DISTINCT ON for efficient retrieval
+- Case-insensitive assistant/plan lookup
+
+**Use Case**: After evaluating prompts, retrieve the stored results for analysis, display, or comparison across different AI assistants
+
+---
+
+#### 3.5.5 Complete Evaluation Workflow
+
+**Example: Bot evaluating prompts**
+
+```bash
+# Step 1: Poll for a prompt
+RESPONSE=$(curl -X POST "http://localhost:8000/evaluations/api/v1/poll" \
+  -H "Content-Type: application/json" \
+  -d '{"assistant_name": "ChatGPT", "plan_name": "Plus"}')
+
+# Parse response (example uses jq)
+EVAL_ID=$(echo $RESPONSE | jq -r '.evaluation_id')
+PROMPT_TEXT=$(echo $RESPONSE | jq -r '.prompt_text')
+
+if [ "$EVAL_ID" = "null" ]; then
+  echo "No prompts available"
+  exit 0
+fi
+
+echo "Evaluating prompt: $PROMPT_TEXT"
+
+# Step 2: Get answer from AI assistant (external)
+# ... bot queries ChatGPT API with the prompt ...
+# ANSWER_TEXT="..."
+# CITATIONS=[...]
+
+# Step 3a: Submit successful answer
+curl -X POST "http://localhost:8000/evaluations/api/v1/submit" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"evaluation_id\": $EVAL_ID,
+    \"answer\": {
+      \"response\": \"$ANSWER_TEXT\",
+      \"citations\": $CITATIONS,
+      \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+    }
+  }"
+
+# OR Step 3b: Release on failure
+# curl -X POST "http://localhost:8000/evaluations/api/v1/release" \
+#   -H "Content-Type: application/json" \
+#   -d "{\"evaluation_id\": $EVAL_ID, \"mark_as_failed\": true, \"failure_reason\": \"API timeout\"}"
+```
+
+**Timeout & Retry Behavior**:
+- **Bot crash scenario**: If bot crashes without submitting/releasing, evaluation times out after 2 hours
+- **Automatic retry**: Timed-out prompts become available for any bot to claim
+- **Multiple attempts**: Multiple evaluation records tracked for same prompt+assistant+plan (for analytics)
+- **Failed prompts**: Status=FAILED evaluations immediately available for retry
+- **Completed prompts**: Status=COMPLETED evaluations locked for 1 day per assistant+plan
+
+**Configuration**:
+Set in `.env`:
+```bash
+EVALUATION_TIMEOUT_HOURS=2           # Timeout for stale IN_PROGRESS evaluations
+MIN_DAYS_SINCE_LAST_EVALUATION=1     # Cooldown for completed evaluations
+```
+
+---
+
+### 3.6 Complete Client Flow
 
 **Recommended Integration Pattern (Hybrid Approach):**
 
@@ -548,6 +868,13 @@ prompts-volume/
 │   │       ├── prompt_service.py                # DB operations
 │   │       ├── data_for_seo_service.py          # External API (keywords)
 │   │       └── prompts_generator_service.py     # LLM generation
+│   │
+│   ├── evaluations/                     # Prompt evaluation tracking
+│   │   ├── router.py                    # API endpoints (poll, submit, release)
+│   │   ├── models/
+│   │   │   └── api_models.py            # Request/response models
+│   │   └── services/
+│   │       └── evaluation_service.py    # Atomic polling, timeout logic
 │   │
 │   ├── embeddings/                      # ML pipeline (local models)
 │   │   ├── embeddings_service.py        # sentence-transformers

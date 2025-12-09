@@ -61,6 +61,11 @@ The project follows Domain-Driven Design (DDD) with clear separation of concerns
   - `models/` - Request/response models (cluster_prompts, prompt_responses, generate_request)
   - `services/` - PromptService, DataForSEOService, PromptsGeneratorService
 
+- **`src/evaluations/`** - Prompt evaluation tracking
+  - `router.py` - API endpoints (poll, submit, release, results)
+  - `models/api_models.py` - Request/response models (PollRequest, SubmitAnswerRequest, ReleaseRequest, GetResultsRequest, GetResultsResponse)
+  - `services/evaluation_service.py` - EvaluationService (atomic polling with locking, timeout logic)
+
 ### Infrastructure Modules
 
 - **`src/embeddings/`** - ML pipeline (local models)

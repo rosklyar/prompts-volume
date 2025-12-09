@@ -1,15 +1,15 @@
 """Service for managing prompt evaluations."""
 
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import Depends, HTTPException
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.config.settings import settings
-from src.database.models import EvaluationStatus, Prompt, PromptEvaluation
+from src.database.models import AIAssistant, AIAssistantPlan, EvaluationStatus, Prompt, PromptEvaluation
 from src.database.session import get_async_session
 
 
@@ -26,10 +26,36 @@ class EvaluationService:
         self.min_days_since_last_evaluation = min_days_since_last_evaluation
         self.evaluation_timeout_hours = evaluation_timeout_hours
 
-    async def poll_for_prompt(
+    async def get_assistant_plan_id(
         self,
         assistant_name: str,
         plan_name: str,
+    ) -> Optional[int]:
+        """
+        Get assistant_plan_id for the given assistant and plan names.
+
+        Performs case-insensitive lookup using UPPER() SQL function.
+
+        Returns:
+            assistant_plan_id if valid combination exists, None otherwise
+        """
+        # Single query with JOIN for efficiency
+        query = (
+            select(AIAssistantPlan.id)
+            .join(AIAssistant, AIAssistantPlan.assistant_id == AIAssistant.id)
+            .where(
+                func.upper(AIAssistant.name) == assistant_name.upper(),
+                func.upper(AIAssistantPlan.name) == plan_name.upper(),
+            )
+            .limit(1)
+        )
+
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()
+
+    async def poll_for_prompt(
+        self,
+        assistant_plan_id: int,
     ) -> Optional[PromptEvaluation]:
         """
         Atomically find and claim a prompt for evaluation.
@@ -49,8 +75,7 @@ class EvaluationService:
         subquery = (
             select(PromptEvaluation.prompt_id)
             .where(
-                PromptEvaluation.assistant_name == assistant_name,
-                PromptEvaluation.plan_name == plan_name,
+                PromptEvaluation.assistant_plan_id == assistant_plan_id,
             )
             .where(
                 or_(
@@ -88,8 +113,7 @@ class EvaluationService:
 
         evaluation = PromptEvaluation(
             prompt_id=prompt.id,
-            assistant_name=assistant_name,
-            plan_name=plan_name,
+            assistant_plan_id=assistant_plan_id,
             status=EvaluationStatus.IN_PROGRESS,
             claimed_at=now,
         )
@@ -135,6 +159,40 @@ class EvaluationService:
         await self.session.refresh(evaluation)
 
         return evaluation
+
+    async def get_latest_results(
+        self,
+        assistant_plan_id: int,
+        prompt_ids: List[int],
+    ) -> List[PromptEvaluation]:
+        """
+        Get latest completed evaluation results for given prompt IDs.
+
+        Returns the most recent COMPLETED evaluation for each prompt_id
+        that has been evaluated with the specified assistant/plan.
+
+        Uses PostgreSQL DISTINCT ON to get latest per prompt.
+        """
+        if not prompt_ids:
+            return []
+
+        # Use DISTINCT ON (PostgreSQL-specific) to get latest per prompt_id
+        query = (
+            select(PromptEvaluation)
+            .where(
+                PromptEvaluation.assistant_plan_id == assistant_plan_id,
+                PromptEvaluation.prompt_id.in_(prompt_ids),
+                PromptEvaluation.status == EvaluationStatus.COMPLETED,
+            )
+            .order_by(
+                PromptEvaluation.prompt_id,
+                PromptEvaluation.completed_at.desc(),
+            )
+            .distinct(PromptEvaluation.prompt_id)
+        )
+
+        result = await self.session.execute(query)
+        return list(result.scalars().all())
 
     async def release_evaluation(
         self,

@@ -85,3 +85,40 @@ class ReleaseResponse(BaseModel):
 
     evaluation_id: int = Field(..., description="Evaluation ID")
     action: str = Field(..., description="Action taken: 'deleted' or 'marked_failed'")
+
+
+# ===== RESULTS API =====
+
+class GetResultsRequest(BaseModel):
+    """Request to get latest evaluation results for prompts."""
+
+    assistant_name: str = Field(
+        ...,
+        description="AI assistant name (e.g., 'ChatGPT', 'Claude', 'Perplexity')",
+        max_length=100,
+    )
+    plan_name: str = Field(
+        ...,
+        description="Assistant plan (e.g., 'Free', 'Plus', 'Max')",
+        max_length=100,
+    )
+    prompt_ids: List[int] = Field(
+        ...,
+        description="List of prompt IDs to get results for",
+    )
+
+
+class EvaluationResultItem(BaseModel):
+    """Single evaluation result."""
+
+    prompt_id: int = Field(..., description="Prompt ID")
+    evaluation_id: int = Field(..., description="Evaluation record ID")
+    status: str = Field(..., description="Evaluation status (completed)")
+    answer: Optional[dict] = Field(None, description="Evaluation answer (response, citations, timestamp)")
+    completed_at: Optional[datetime] = Field(None, description="When evaluation was completed")
+
+
+class GetResultsResponse(BaseModel):
+    """Response with latest evaluation results."""
+
+    results: List[EvaluationResultItem] = Field(..., description="List of evaluation results")
