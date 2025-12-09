@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     topic_filter_similarity_threshold: float = 0.7
     topic_filter_min_relevant_ratio: float = 0.5
 
+    # Evaluation configuration
+    min_days_since_last_evaluation: int = 1
+    evaluation_timeout_hours: int = 2
+
     # Database configuration
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/prompts"
     database_echo: bool = False

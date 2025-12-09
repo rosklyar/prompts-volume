@@ -179,13 +179,63 @@ When adding new functionality, ask:
 2. "Is this a service, model, or utility?"
 3. "Does this service do more than one thing?"
 
+### Dependency Injection Pattern
+
+**Settings Injection**:
+- NEVER import the `settings` singleton directly in service classes
+- ALWAYS inject only the specific configuration values needed via constructor parameters
+- This follows the Interface Segregation Principle and makes services more testable
+- Only inject what you actually need - don't pass entire `Settings` object if you only need one value
+
+Example:
+```python
+# ❌ BAD - Hard to test
+from src.config.settings import settings
+
+class MyService:
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    def some_method(self):
+        value = settings.some_config  # Hard-coded dependency
+
+# ⚠️ ACCEPTABLE but not ideal - Over-injection
+from src.config.settings import Settings, settings
+
+class MyService:
+    def __init__(self, session: AsyncSession, settings: Settings):
+        self.session = session
+        self.settings = settings  # Injecting entire Settings when only need one value
+
+    def some_method(self):
+        value = self.settings.some_config
+
+# ✅ BEST - Inject only what you need
+from src.config.settings import settings
+
+class MyService:
+    def __init__(self, session: AsyncSession, some_config: int):
+        self.session = session
+        self.some_config = some_config  # Only inject specific value
+
+    def some_method(self):
+        value = self.some_config  # Clean, minimal dependency
+
+# Dependency injection function
+def get_my_service(
+    session: AsyncSession = Depends(get_async_session),
+) -> MyService:
+    return MyService(session, settings.some_config)
+```
+
 ### API Integration Pattern
 
 When integrating external APIs:
 1. Create a service class in the appropriate domain's `services/` directory (e.g., `DataForSEOService` in `prompts/services/`)
 2. Store credentials in environment variables, loaded via `src/config/settings.py`
-3. Handle errors comprehensively with meaningful HTTPException messages
-4. Mock external API calls in tests using `unittest.mock` or `pytest-mock`
+3. Inject settings via constructor (see Dependency Injection Pattern above)
+4. Handle errors comprehensively with meaningful HTTPException messages
+5. Mock external API calls in tests using `unittest.mock` or `pytest-mock`
 
 ### Country/Location Handling
 

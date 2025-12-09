@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from src.database import close_db, get_session_maker, init_db, seed_initial_data
+from src.evaluations.router import router as evaluations_router
 from src.prompts import router as prompts_router
 
 
@@ -30,6 +31,7 @@ app = FastAPI(lifespan=lifespan)
 
 # Include routers
 app.include_router(prompts_router.router)
+app.include_router(evaluations_router)
 
 
 @app.get("/health")
