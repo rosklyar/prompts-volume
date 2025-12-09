@@ -12,6 +12,7 @@ from testcontainers.postgres import PostgresContainer
 from src.database import Base, seed_initial_data
 from src.main import app
 from src.businessdomain.services import BusinessDomainService
+from src.evaluations.services.evaluation_service import EvaluationService
 from src.geography.services import CountryService, LanguageService
 from src.topics.services import TopicService
 
@@ -172,8 +173,6 @@ def evaluation_service_short_timeout(test_session):
     Fixture that provides an EvaluationService with a very short timeout.
     Useful for testing timeout behavior without long waits.
     """
-    from src.evaluations.services.evaluation_service import EvaluationService
-
     # Use 0.001 hours = 3.6 seconds for testing
     return EvaluationService(
         session=test_session,

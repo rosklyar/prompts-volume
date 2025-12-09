@@ -166,7 +166,7 @@ class EvaluationStatus(str, enum.Enum):
 class PromptEvaluation(Base):
     """Track evaluations of prompts by different AI assistants.
 
-    Note: Multiple evaluations can exist for the same (prompt_id, assistant_name, plan_name)
+    Note: Multiple evaluations can exist for the same (prompt_id, assistant_plan_id)
     combination to support retry scenarios when evaluations timeout or fail.
     """
 
@@ -179,14 +179,9 @@ class PromptEvaluation(Base):
         index=True
     )
 
-    # Assistant and plan identifiers
-    assistant_name: Mapped[str] = mapped_column(
-        String(100),
-        nullable=False,
-        index=True
-    )
-    plan_name: Mapped[str] = mapped_column(
-        String(100),
+    # Assistant plan identifier (references ai_assistant_plans)
+    assistant_plan_id: Mapped[int] = mapped_column(
+        ForeignKey("ai_assistant_plans.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
@@ -221,6 +216,73 @@ class PromptEvaluation(Base):
 
     # Relationships
     prompt: Mapped["Prompt"] = relationship(back_populates="evaluations")
+    assistant_plan: Mapped["AIAssistantPlan"] = relationship(back_populates="evaluations")
 
     def __repr__(self) -> str:
-        return f"<PromptEvaluation(id={self.id}, prompt_id={self.prompt_id}, assistant_name='{self.assistant_name}', status='{self.status.value}')>"
+        return f"<PromptEvaluation(id={self.id}, prompt_id={self.prompt_id}, assistant_plan_id={self.assistant_plan_id}, status='{self.status.value}')>"
+
+
+class AIAssistant(Base):
+    """AI Assistant model for tracking supported assistants."""
+
+    __tablename__ = "ai_assistants"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        unique=True,
+        index=True,  # Index for efficient case-insensitive lookups
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("NOW()"),
+    )
+
+    # Relationships
+    plans: Mapped[List["AIAssistantPlan"]] = relationship(
+        back_populates="assistant",
+        cascade="all, delete-orphan"
+    )
+
+    def __repr__(self) -> str:
+        return f"<AIAssistant(id={self.id}, name='{self.name}')>"
+
+
+class AIAssistantPlan(Base):
+    """AI Assistant Plan model for tracking supported plans per assistant."""
+
+    __tablename__ = "ai_assistant_plans"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        index=True,  # Index for efficient lookups
+    )
+    assistant_id: Mapped[int] = mapped_column(
+        ForeignKey("ai_assistants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("NOW()"),
+    )
+
+    # Relationships
+    assistant: Mapped["AIAssistant"] = relationship(back_populates="plans")
+    evaluations: Mapped[List["PromptEvaluation"]] = relationship(
+        back_populates="assistant_plan",
+        cascade="all, delete-orphan"
+    )
+
+    # Constraints - ensure unique plan names per assistant
+    __table_args__ = (
+        UniqueConstraint("assistant_id", "name", name="uq_assistant_plan"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<AIAssistantPlan(id={self.id}, assistant_id={self.assistant_id}, name='{self.name}')>"

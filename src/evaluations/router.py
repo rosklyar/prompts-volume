@@ -3,6 +3,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from src.evaluations.models.api_models import (
+    EvaluationResultItem,
+    GetResultsRequest,
+    GetResultsResponse,
     PollRequest,
     PollResponse,
     ReleaseRequest,
@@ -28,10 +31,27 @@ async def poll_for_evaluation(
 
     Returns exactly 1 prompt (or null fields if none available).
     Uses PostgreSQL locking (CAS) to prevent race conditions.
+
+    Validates assistant_name and plan_name against database.
     """
-    evaluation = await evaluation_service.poll_for_prompt(
+    # Validate assistant/plan combination and get assistant_plan_id
+    assistant_plan_id = await evaluation_service.get_assistant_plan_id(
         assistant_name=request.assistant_name,
         plan_name=request.plan_name,
+    )
+
+    if assistant_plan_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Invalid assistant/plan combination: "
+                f"assistant_name='{request.assistant_name}', "
+                f"plan_name='{request.plan_name}'"
+            )
+        )
+
+    evaluation = await evaluation_service.poll_for_prompt(
+        assistant_plan_id=assistant_plan_id,
     )
 
     if not evaluation:
@@ -96,3 +116,49 @@ async def release_evaluation(
         evaluation_id=evaluation_id,
         action=action,
     )
+
+
+@router.post("/results", response_model=GetResultsResponse)
+async def get_latest_results(
+    request: GetResultsRequest,
+    evaluation_service: EvaluationService = Depends(get_evaluation_service),
+) -> GetResultsResponse:
+    """
+    Get latest evaluation results for a list of prompt IDs.
+
+    Returns the most recent COMPLETED evaluation for each prompt_id
+    that has been evaluated with the specified assistant/plan.
+    """
+    # Validate assistant/plan combination and get assistant_plan_id
+    assistant_plan_id = await evaluation_service.get_assistant_plan_id(
+        assistant_name=request.assistant_name,
+        plan_name=request.plan_name,
+    )
+
+    if assistant_plan_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Invalid assistant/plan combination: "
+                f"assistant_name='{request.assistant_name}', "
+                f"plan_name='{request.plan_name}'"
+            )
+        )
+
+    evaluations = await evaluation_service.get_latest_results(
+        assistant_plan_id=assistant_plan_id,
+        prompt_ids=request.prompt_ids,
+    )
+
+    results = [
+        EvaluationResultItem(
+            prompt_id=evaluation.prompt_id,
+            evaluation_id=evaluation.id,
+            status=evaluation.status.value,
+            answer=evaluation.answer,
+            completed_at=evaluation.completed_at,
+        )
+        for evaluation in evaluations
+    ]
+
+    return GetResultsResponse(results=results)
