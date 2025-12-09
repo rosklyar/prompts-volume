@@ -6,7 +6,16 @@ from pathlib import Path
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.database.models import BusinessDomain, Country, CountryLanguage, Language, Prompt, Topic
+from src.database.models import (
+    AIAssistant,
+    AIAssistantPlan,
+    BusinessDomain,
+    Country,
+    CountryLanguage,
+    Language,
+    Prompt,
+    Topic,
+)
 from src.embeddings.embeddings_service import get_embeddings_service
 
 
@@ -35,6 +44,12 @@ async def seed_initial_data(session: AsyncSession) -> None:
 
     # 6. Seed Prompts (requires topics)
     await _seed_prompts(session)
+
+    # 7. Seed AI Assistants
+    await _seed_ai_assistants(session)
+
+    # 8. Seed AI Assistant Plans (requires assistants)
+    await _seed_ai_assistant_plans(session)
 
     await session.commit()
 
@@ -219,3 +234,48 @@ async def _seed_prompts(session: AsyncSession) -> None:
     if all_prompts:
         session.add_all(all_prompts)
         await session.flush()
+
+
+async def _seed_ai_assistants(session: AsyncSession) -> None:
+    """Seed initial AI assistants."""
+    # Check if ChatGPT already exists
+    result = await session.execute(
+        select(AIAssistant).where(AIAssistant.name == "ChatGPT")
+    )
+    existing = result.scalar_one_or_none()
+
+    if existing is None:
+        chatgpt = AIAssistant(
+            id=1,
+            name="ChatGPT",
+        )
+        session.add(chatgpt)
+        await session.flush()
+
+        # Reset sequence to continue from the highest ID
+        await session.execute(
+            text("SELECT setval('ai_assistants_id_seq', (SELECT MAX(id) FROM ai_assistants))")
+        )
+
+
+async def _seed_ai_assistant_plans(session: AsyncSession) -> None:
+    """Seed initial AI assistant plans."""
+    # Check if plans already exist for ChatGPT (assistant_id=1)
+    result = await session.execute(
+        select(AIAssistantPlan).where(AIAssistantPlan.assistant_id == 1)
+    )
+    existing_plans = result.scalars().all()
+
+    if len(existing_plans) == 0:
+        plans = [
+            AIAssistantPlan(id=1, assistant_id=1, name="FREE"),
+            AIAssistantPlan(id=2, assistant_id=1, name="PLUS"),
+            AIAssistantPlan(id=3, assistant_id=1, name="PRO"),
+        ]
+        session.add_all(plans)
+        await session.flush()
+
+        # Reset sequence to continue from the highest ID
+        await session.execute(
+            text("SELECT setval('ai_assistant_plans_id_seq', (SELECT MAX(id) FROM ai_assistant_plans))")
+        )
