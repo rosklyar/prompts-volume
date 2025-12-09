@@ -8,6 +8,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from src.config.settings import settings
 from src.database.models import EvaluationStatus, Prompt, PromptEvaluation
 from src.database.session import get_async_session
 
@@ -15,8 +16,15 @@ from src.database.session import get_async_session
 class EvaluationService:
     """Service for managing prompt evaluations."""
 
-    def __init__(self, session: AsyncSession):
+    def __init__(
+        self,
+        session: AsyncSession,
+        min_days_since_last_evaluation: int,
+        evaluation_timeout_hours: int,
+    ):
         self.session = session
+        self.min_days_since_last_evaluation = min_days_since_last_evaluation
+        self.evaluation_timeout_hours = evaluation_timeout_hours
 
     async def poll_for_prompt(
         self,
@@ -28,15 +36,15 @@ class EvaluationService:
 
         Returns the first available prompt that meets criteria:
         - No evaluation exists for this assistant+plan, OR
-        - Last evaluation completed >= 1 day ago
+        - Last evaluation completed >= configured days ago, OR
+        - IN_PROGRESS evaluation timed out (claimed > configured hours ago)
 
         Uses SELECT FOR UPDATE SKIP LOCKED for lock-free concurrency.
         """
-        # Configuration
-        MIN_DAYS_SINCE_LAST_EVALUATION = 1
-
-        # Step 1: Build subquery to find prompts that have recent evaluations
-        cutoff = datetime.now() - timedelta(days=MIN_DAYS_SINCE_LAST_EVALUATION)
+        # Step 1: Build subquery to find prompts that are currently locked
+        now = datetime.now()
+        completed_cutoff = now - timedelta(days=self.min_days_since_last_evaluation)
+        timeout_cutoff = now - timedelta(hours=self.evaluation_timeout_hours)
 
         subquery = (
             select(PromptEvaluation.prompt_id)
@@ -46,12 +54,15 @@ class EvaluationService:
             )
             .where(
                 or_(
-                    # Locked if in_progress
-                    PromptEvaluation.status == EvaluationStatus.IN_PROGRESS,
+                    # Locked if in_progress AND claimed recently (not timed out)
+                    and_(
+                        PromptEvaluation.status == EvaluationStatus.IN_PROGRESS,
+                        PromptEvaluation.claimed_at > timeout_cutoff
+                    ),
                     # Locked if completed recently
                     and_(
                         PromptEvaluation.status == EvaluationStatus.COMPLETED,
-                        PromptEvaluation.completed_at > cutoff
+                        PromptEvaluation.completed_at > completed_cutoff
                     )
                 )
             )
@@ -164,4 +175,8 @@ def get_evaluation_service(
     session: AsyncSession = Depends(get_async_session),
 ) -> EvaluationService:
     """Dependency injection for EvaluationService."""
-    return EvaluationService(session)
+    return EvaluationService(
+        session,
+        settings.min_days_since_last_evaluation,
+        settings.evaluation_timeout_hours,
+    )

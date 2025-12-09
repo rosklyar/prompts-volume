@@ -164,3 +164,19 @@ def topic_service(test_session):
     Fixture that provides a TopicService instance for testing.
     """
     return TopicService(test_session)
+
+
+@pytest.fixture(scope="function")
+def evaluation_service_short_timeout(test_session):
+    """
+    Fixture that provides an EvaluationService with a very short timeout.
+    Useful for testing timeout behavior without long waits.
+    """
+    from src.evaluations.services.evaluation_service import EvaluationService
+
+    # Use 0.001 hours = 3.6 seconds for testing
+    return EvaluationService(
+        session=test_session,
+        min_days_since_last_evaluation=1,
+        evaluation_timeout_hours=0.001
+    )

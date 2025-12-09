@@ -164,17 +164,13 @@ class EvaluationStatus(str, enum.Enum):
 
 
 class PromptEvaluation(Base):
-    """Track evaluations of prompts by different AI assistants."""
+    """Track evaluations of prompts by different AI assistants.
+
+    Note: Multiple evaluations can exist for the same (prompt_id, assistant_name, plan_name)
+    combination to support retry scenarios when evaluations timeout or fail.
+    """
 
     __tablename__ = "prompt_evaluations"
-    __table_args__ = (
-        UniqueConstraint(
-            "prompt_id",
-            "assistant_name",
-            "plan_name",
-            name="uq_prompt_assistant_plan"
-        ),
-    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     prompt_id: Mapped[int] = mapped_column(

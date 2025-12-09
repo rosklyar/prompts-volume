@@ -1,9 +1,14 @@
 """Integration test for evaluation poll endpoint."""
 
+import asyncio
 import time
 from datetime import datetime
 
 import pytest
+from sqlalchemy import select
+
+from src.database.models import PromptEvaluation
+from src.evaluations.services.evaluation_service import EvaluationService
 
 
 @pytest.mark.asyncio
@@ -162,3 +167,105 @@ async def test_concurrent_bot_polling(client):
         # No more prompts available - this is acceptable
         assert bot3_data["evaluation_id"] is None
         assert bot3_data["prompt_text"] is None
+
+
+@pytest.mark.asyncio
+async def test_evaluation_timeout_makes_prompt_available(client, test_session):
+    """Test that timed-out IN_PROGRESS evaluations make prompts available again.
+
+    Scenario:
+    1. Bot claims a prompt (creates IN_PROGRESS evaluation)
+    2. Wait for timeout period to elapse (4 seconds with 0.001 hour timeout)
+    3. Same bot polls again with same assistant/plan combination
+    4. Bot should get the SAME prompt (because previous evaluation timed out)
+    5. Both evaluations should exist in database for same combination
+
+    This tests the retry mechanism when a bot crashes and doesn't report back.
+    """
+    # Create service with short timeout (0.001 hours = 3.6 seconds)
+    service = EvaluationService(
+        session=test_session,
+        min_days_since_last_evaluation=1,
+        evaluation_timeout_hours=0.001
+    )
+
+    # Bot: Poll for prompt (first attempt)
+    evaluation1 = await service.poll_for_prompt(
+        assistant_name="TestBot",
+        plan_name="TestPlan"
+    )
+
+    assert evaluation1 is not None
+    prompt_id_1 = evaluation1.prompt_id
+    evaluation_id_1 = evaluation1.id
+
+    # Verify evaluation is IN_PROGRESS
+    assert evaluation1.status.value == "in_progress"
+
+    # Wait for timeout to elapse (4 seconds > 3.6 second timeout)
+    await asyncio.sleep(4)
+
+    # Bot: Poll again with SAME assistant/plan (retry after crash/timeout)
+    evaluation2 = await service.poll_for_prompt(
+        assistant_name="TestBot",
+        plan_name="TestPlan"
+    )
+
+    # Bot should get the SAME prompt (because previous evaluation timed out)
+    assert evaluation2 is not None
+    assert evaluation2.prompt_id == prompt_id_1, "Bot should get same prompt after timeout"
+    assert evaluation2.id != evaluation_id_1, "Bot should have different evaluation ID for retry"
+
+    # Verify both evaluations exist in database for same combination
+    result = await test_session.execute(
+        select(PromptEvaluation)
+        .where(PromptEvaluation.prompt_id == prompt_id_1)
+        .where(PromptEvaluation.assistant_name == "TestBot")
+        .where(PromptEvaluation.plan_name == "TestPlan")
+    )
+    evaluations = result.scalars().all()
+
+    assert len(evaluations) == 2, "Both evaluation attempts should exist in database"
+
+    # Verify both are for the same assistant+plan combination
+    assert all(e.assistant_name == "TestBot" for e in evaluations)
+    assert all(e.plan_name == "TestPlan" for e in evaluations)
+
+    # Verify both are IN_PROGRESS (stale one not auto-marked as FAILED)
+    assert all(e.status.value == "in_progress" for e in evaluations)
+
+
+@pytest.mark.asyncio
+async def test_fresh_evaluation_remains_locked(client, test_session):
+    """Test that fresh IN_PROGRESS evaluations keep prompts locked.
+
+    Scenario:
+    1. Bot 1 claims a prompt
+    2. Bot 2 polls immediately (within timeout period)
+    3. Bot 2 should get a DIFFERENT prompt (Bot 1's evaluation is still fresh)
+    """
+    # Create service with normal timeout (2 hours)
+    service = EvaluationService(
+        session=test_session,
+        min_days_since_last_evaluation=1,
+        evaluation_timeout_hours=2
+    )
+
+    # Bot 1: Poll for prompt
+    evaluation1 = await service.poll_for_prompt(
+        assistant_name="TestBot",
+        plan_name="TestPlan"
+    )
+
+    assert evaluation1 is not None
+    prompt_id_1 = evaluation1.prompt_id
+
+    # Bot 2: Poll immediately (within 2-hour timeout)
+    evaluation2 = await service.poll_for_prompt(
+        assistant_name="TestBot",
+        plan_name="TestPlan"
+    )
+
+    # Bot 2 should get a DIFFERENT prompt (Bot 1's is still locked)
+    if evaluation2 is not None:  # If there are more prompts available
+        assert evaluation2.prompt_id != prompt_id_1, "Bot 2 should get different prompt while Bot 1's is fresh"
