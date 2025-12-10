@@ -1,13 +1,20 @@
 """API router for evaluations endpoints."""
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 
+from src.config.settings import settings
+from src.database.models import Topic
+from src.embeddings.embeddings_service import EmbeddingsService, get_embeddings_service
 from src.evaluations.models.api_models import (
+    AddPriorityPromptsRequest,
+    AddPriorityPromptsResponse,
     EvaluationResultItem,
     GetResultsRequest,
     GetResultsResponse,
     PollRequest,
     PollResponse,
+    PriorityPromptResult,
     ReleaseRequest,
     ReleaseResponse,
     SubmitAnswerRequest,
@@ -16,6 +23,10 @@ from src.evaluations.models.api_models import (
 from src.evaluations.services.evaluation_service import (
     EvaluationService,
     get_evaluation_service,
+)
+from src.evaluations.services.priority_prompt_service import (
+    PriorityPromptService,
+    get_priority_prompt_service,
 )
 
 router = APIRouter(prefix="/evaluations/api/v1", tags=["evaluations"])
@@ -145,20 +156,80 @@ async def get_latest_results(
             )
         )
 
-    evaluations = await evaluation_service.get_latest_results(
+    prompt_eval_pairs = await evaluation_service.get_latest_results(
         assistant_plan_id=assistant_plan_id,
         prompt_ids=request.prompt_ids,
     )
 
     results = [
         EvaluationResultItem(
-            prompt_id=evaluation.prompt_id,
-            evaluation_id=evaluation.id,
-            status=evaluation.status.value,
-            answer=evaluation.answer,
-            completed_at=evaluation.completed_at,
+            prompt_id=prompt.id,
+            prompt_text=prompt.prompt_text,
+            evaluation_id=evaluation.id if evaluation else None,
+            status=evaluation.status.value if evaluation else None,
+            answer=evaluation.answer if evaluation else None,
+            completed_at=evaluation.completed_at if evaluation else None,
         )
-        for evaluation in evaluations
+        for prompt, evaluation in prompt_eval_pairs
     ]
 
     return GetResultsResponse(results=results)
+
+
+@router.post("/priority-prompts", response_model=AddPriorityPromptsResponse)
+async def add_priority_prompts(
+    request: AddPriorityPromptsRequest,
+    evaluation_service: EvaluationService = Depends(get_evaluation_service),
+    embeddings_service: EmbeddingsService = Depends(get_embeddings_service),
+) -> AddPriorityPromptsResponse:
+    """
+    Add new prompts with priority evaluation.
+
+    - Accepts list of prompt texts (up to configured max)
+    - Checks for duplicates using similarity >= 0.99
+    - Creates new prompts with embeddings
+    - Adds to priority queue (polled first)
+    - Allows null topic_id
+    """
+    # Validate batch size
+    if len(request.prompts) > settings.max_priority_prompts_per_request:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Batch size {len(request.prompts)} exceeds maximum "
+                f"{settings.max_priority_prompts_per_request}"
+            )
+        )
+
+    # Validate topic_id if provided
+    if request.topic_id is not None:
+        topic_query = select(Topic).where(Topic.id == request.topic_id)
+        result = await evaluation_service.session.execute(topic_query)
+        if not result.scalar_one_or_none():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Topic with id={request.topic_id} not found"
+            )
+
+    # Create service
+    priority_service = get_priority_prompt_service(
+        evaluation_service.session,
+        embeddings_service,
+        settings.max_priority_prompts_per_request,
+    )
+
+    # Process prompts
+    prompt_texts = [p.prompt_text for p in request.prompts]
+    result = await priority_service.add_priority_prompts(
+        prompt_texts=prompt_texts,
+        topic_id=request.topic_id,
+    )
+
+    # Build response
+    return AddPriorityPromptsResponse(
+        created_count=result["created_count"],
+        reused_count=result["reused_count"],
+        total_count=result["total_count"],
+        prompts=[PriorityPromptResult(**p) for p in result["prompts"]],
+        request_id=result["request_id"],
+    )

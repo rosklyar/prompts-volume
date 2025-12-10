@@ -1,17 +1,23 @@
 # Prompts Volume
 
-AI-powered prompts suggestion service for e-commerce businesses.
-
+AI-powered prompts management service
 ---
 
 ## 1. Service Purpose
 
 **What it does:**
+
+Prompts suggesting:
 - Provides conversational search prompts for AI assistants
 - Helps businesses understand customer search intent
 - Supports multilingual prompts (Ukrainian, Russian, English)
 
-**Two sources of prompts:**
+Answers mngmt:
+- Provides prompts from db for automation bots to evaluate and get answer with citations
+- Receives/stores results from ai-assistants bots
+- Serves latest answers for requested prompts
+
+**Two sources of prompts for suggestion**
 
 1. **DB-first (fast, ~50ms)**: Retrieve pre-seeded, topic-specific prompts from PostgreSQL
 2. **Generation (on-demand, ~30-60s)**: Create custom prompts from search engine ranking data when DB has no data for needed topics
@@ -584,7 +590,7 @@ MIN_DAYS_SINCE_LAST_EVALUATION=1     # Cooldown for completed evaluations
 
 ---
 
-### 3.6 Complete Client Flow
+### 3.6 Complete Client Flow for topics/prompts suggesting
 
 **Recommended Integration Pattern (Hybrid Approach):**
 

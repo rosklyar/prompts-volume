@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     min_days_since_last_evaluation: int = 1
     evaluation_timeout_hours: int = 2
 
+    # Priority prompts configuration
+    max_priority_prompts_per_request: int = 50
+
     # Database configuration
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/prompts"
     database_echo: bool = False

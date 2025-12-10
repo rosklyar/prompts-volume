@@ -139,9 +139,9 @@ class Prompt(Base):
     embedding: Mapped[Vector] = mapped_column(Vector(384), nullable=False)
 
     # Foreign keys
-    topic_id: Mapped[int] = mapped_column(
+    topic_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("topics.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
 
@@ -154,6 +154,37 @@ class Prompt(Base):
 
     def __repr__(self) -> str:
         return f"<Prompt(id={self.id}, topic_id={self.topic_id}, prompt_text='{self.prompt_text[:50]}...')>"
+
+
+class PriorityPromptQueue(Base):
+    """Queue for priority prompts that should be evaluated first."""
+
+    __tablename__ = "priority_prompt_queue"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    prompt_id: Mapped[int] = mapped_column(
+        ForeignKey("prompts.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,  # Each prompt can only be in queue once
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("NOW()"),
+        index=True,  # For ordering by priority (FIFO within priority)
+    )
+    request_id: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        index=True,  # For querying all prompts from same request
+    )
+
+    # Relationship
+    prompt: Mapped["Prompt"] = relationship()
+
+    def __repr__(self) -> str:
+        return f"<PriorityPromptQueue(id={self.id}, prompt_id={self.prompt_id}, request_id='{self.request_id}')>"
 
 
 class EvaluationStatus(str, enum.Enum):
