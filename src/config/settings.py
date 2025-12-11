@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     # Priority prompts configuration
     max_priority_prompts_per_request: int = 50
 
+    # Similar prompts search configuration
+    similar_prompts_max_k: int = 100
+    similar_prompts_min_similarity_threshold: float = 0.7
+
     # Database configuration
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/prompts"
     database_echo: bool = False

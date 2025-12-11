@@ -1,13 +1,23 @@
 """Prompt service for database operations."""
 
+from dataclasses import dataclass
 from typing import List
 
 from fastapi import Depends
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database import Prompt, get_async_session
 from src.embeddings.embeddings_service import EmbeddingsService, get_embeddings_service
+
+
+@dataclass
+class SimilarPromptResult:
+    """Internal result for similar prompt query."""
+
+    id: int
+    prompt_text: str
+    similarity: float
 
 
 class PromptService:
@@ -70,6 +80,55 @@ class PromptService:
         await self.session.flush()
         await self.session.refresh(prompt)
         return prompt
+
+    async def find_similar(
+        self,
+        query_text: str,
+        limit: int,
+        min_similarity: float,
+    ) -> List[SimilarPromptResult]:
+        """
+        Find similar prompts using pgvector cosine similarity.
+
+        Uses the HNSW index on the embedding column for efficient
+        approximate nearest neighbor search.
+
+        Args:
+            query_text: The text to find similar prompts for
+            limit: Maximum number of results to return
+            min_similarity: Minimum cosine similarity threshold (0-1)
+
+        Returns:
+            List of SimilarPromptResult sorted by similarity (highest first)
+        """
+        # Generate embedding for query text
+        text_embeddings = self.embeddings_service.encode_texts([query_text])
+        query_embedding = text_embeddings[0].embedding.tolist()
+
+        # Convert similarity to max distance (cosine_distance = 1 - cosine_similarity)
+        max_distance = 1.0 - min_similarity
+
+        # Query using pgvector <=> operator (cosine distance)
+        # Uses HNSW index for efficient ANN search
+        result = await self.session.execute(
+            text("""
+                SELECT id, prompt_text, 1 - (embedding <=> :query_embedding) AS similarity
+                FROM prompts
+                WHERE (embedding <=> :query_embedding) <= :max_distance
+                ORDER BY embedding <=> :query_embedding
+                LIMIT :limit
+            """),
+            {
+                "query_embedding": str(query_embedding),
+                "max_distance": max_distance,
+                "limit": limit,
+            },
+        )
+
+        return [
+            SimilarPromptResult(id=row.id, prompt_text=row.prompt_text, similarity=row.similarity)
+            for row in result.fetchall()
+        ]
 
 
 def get_prompt_service(

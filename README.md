@@ -270,7 +270,63 @@ curl "http://localhost:8000/prompts/api/v1/generate?company_url=moyo.ua&iso_coun
 
 ---
 
-### 3.5 Evaluation Endpoints
+### 3.5 Find Similar Prompts
+
+```http
+GET /prompts/api/v1/similar
+```
+
+**Purpose**: Find semantically similar prompts from the database using vector similarity search. Designed for autocomplete functionality - as user types, suggest relevant existing prompts.
+
+**Parameters**:
+- `text` (required): Input text to find similar prompts for (1-1000 characters)
+- `k` (optional, default: 10): Maximum number of results to return (1-100)
+- `min_similarity` (optional, default: 0.75): Minimum cosine similarity threshold (must be > 0.7, max 1.0)
+
+**Example**:
+```bash
+curl "http://localhost:8000/prompts/api/v1/similar?text=купити%20смартфон&k=5&min_similarity=0.8"
+```
+
+**Response**:
+```json
+{
+  "query_text": "купити смартфон",
+  "prompts": [
+    {
+      "id": 1,
+      "prompt_text": "Купити смартфон в Україні з швидкою доставкою",
+      "similarity": 0.92
+    },
+    {
+      "id": 3,
+      "prompt_text": "Де купити смартфон Україна",
+      "similarity": 0.87
+    }
+  ],
+  "total_found": 2
+}
+```
+
+**Key Features**:
+- **pgvector HNSW index**: Fast approximate nearest neighbor search
+- **Cosine similarity**: Results sorted by semantic similarity (highest first)
+- **Server-side caps**: `k` max 100, `min_similarity` must be > 0.7 (configurable in settings)
+- **Empty results = 200 OK**: Returns empty list if no matches found
+
+**Use Case**: Real-time autocomplete as user types a prompt - suggest relevant existing prompts from the database
+
+**Performance**: ~50-100ms (embedding generation + vector search)
+
+**Configuration** (in `.env` or settings):
+```bash
+SIMILAR_PROMPTS_MAX_K=100                      # Maximum allowed k parameter
+SIMILAR_PROMPTS_MIN_SIMILARITY_THRESHOLD=0.7  # Minimum allowed similarity threshold
+```
+
+---
+
+### 3.6 Evaluation Endpoints
 
 **Purpose**: Track AI assistant responses to prompts for quality evaluation and analytics
 
@@ -286,7 +342,7 @@ The evaluation system provides atomic polling and submission APIs to:
 
 ---
 
-#### 3.5.1 Poll for Evaluation
+#### 3.6.1 Poll for Evaluation
 
 ```http
 POST /evaluations/api/v1/poll
@@ -345,7 +401,7 @@ curl -X POST "http://localhost:8000/evaluations/api/v1/poll" \
 
 ---
 
-#### 3.5.2 Submit Answer
+#### 3.6.2 Submit Answer
 
 ```http
 POST /evaluations/api/v1/submit
@@ -406,7 +462,7 @@ curl -X POST "http://localhost:8000/evaluations/api/v1/submit" \
 
 ---
 
-#### 3.5.3 Release Evaluation
+#### 3.6.3 Release Evaluation
 
 ```http
 POST /evaluations/api/v1/release
@@ -466,7 +522,7 @@ curl -X POST "http://localhost:8000/evaluations/api/v1/release" \
 
 ---
 
-#### 3.5.4 Get Evaluation Results
+#### 3.6.4 Get Evaluation Results
 
 ```http
 POST /evaluations/api/v1/results
@@ -530,7 +586,7 @@ curl -X POST "http://localhost:8000/evaluations/api/v1/results" \
 
 ---
 
-#### 3.5.5 Complete Evaluation Workflow
+#### 3.6.5 Complete Evaluation Workflow
 
 **Example: Bot evaluating prompts**
 
@@ -590,7 +646,7 @@ MIN_DAYS_SINCE_LAST_EVALUATION=1     # Cooldown for completed evaluations
 
 ---
 
-### 3.6 Complete Client Flow for topics/prompts suggesting
+### 3.7 Complete Client Flow for topics/prompts suggesting
 
 **Recommended Integration Pattern (Hybrid Approach):**
 
@@ -869,6 +925,7 @@ prompts-volume/
 │   │   ├── models/
 │   │   │   ├── cluster_prompts.py       # Cluster-based models
 │   │   │   ├── prompt_responses.py      # DB retrieval responses
+│   │   │   ├── similar_prompts.py       # Similar prompts search responses
 │   │   │   └── generate_request.py      # Request models
 │   │   └── services/
 │   │       ├── prompt_service.py                # DB operations
