@@ -58,8 +58,8 @@ The project follows Domain-Driven Design (DDD) with clear separation of concerns
 
 - **`src/prompts/`** - Prompts generation and retrieval
   - `router.py` - API endpoints (main router)
-  - `models/` - Request/response models (cluster_prompts, prompt_responses, generate_request)
-  - `services/` - PromptService, DataForSEOService, PromptsGeneratorService
+  - `models/` - Request/response models (cluster_prompts, prompt_responses, similar_prompts, generate_request)
+  - `services/` - PromptService (includes `find_similar()` for vector search), DataForSEOService, PromptsGeneratorService
 
 - **`src/evaluations/`** - Prompt evaluation tracking
   - `router.py` - API endpoints (poll, submit, release, results)

@@ -38,6 +38,8 @@ from src.prompts.models import (
     GeneratedPrompts,
     PromptResponse,
     PromptsListResponse,
+    SimilarPromptResponse,
+    SimilarPromptsResponse,
     TopicPromptsResponse,
 )
 from src.utils.keyword_filters import (
@@ -388,4 +390,91 @@ async def get_prompts(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to retrieve prompts: {str(e)}"
+        )
+
+
+@router.get("/similar", response_model=SimilarPromptsResponse)
+async def find_similar_prompts(
+    text: str = Query(
+        ...,
+        min_length=1,
+        max_length=1000,
+        description="Input text to find similar prompts for",
+    ),
+    k: int = Query(
+        10,
+        ge=1,
+        le=settings.similar_prompts_max_k,
+        description=f"Maximum number of results (max {settings.similar_prompts_max_k})",
+    ),
+    min_similarity: float = Query(
+        0.75,
+        gt=settings.similar_prompts_min_similarity_threshold,
+        le=1.0,
+        description=f"Minimum similarity threshold (must be > {settings.similar_prompts_min_similarity_threshold})",
+    ),
+    prompt_service: PromptService = Depends(get_prompt_service),
+):
+    """
+    Find similar prompts by semantic similarity.
+
+    Uses pgvector cosine similarity with HNSW index for fast approximate
+    nearest neighbor search. Returns prompts sorted by similarity (highest first).
+
+    Designed for autocomplete: as user types, call this endpoint to suggest
+    relevant existing prompts from the database.
+
+    Args:
+        text: Input text to find similar prompts for
+        k: Maximum number of results to return (default 10, max 100)
+        min_similarity: Minimum cosine similarity threshold (default 0.75, must be > 0.7)
+
+    Returns:
+        SimilarPromptsResponse with:
+        - query_text: The input text that was searched
+        - prompts: List of similar prompts with id, prompt_text, and similarity score
+        - total_found: Number of prompts returned
+
+    Example:
+        GET /prompts/api/v1/similar?text=купити смартфон&k=5&min_similarity=0.8
+
+        Response:
+        {
+            "query_text": "купити смартфон",
+            "prompts": [
+                {
+                    "id": 42,
+                    "prompt_text": "Купити смартфон в Україні з швидкою доставкою",
+                    "similarity": 0.92
+                },
+                ...
+            ],
+            "total_found": 5
+        }
+    """
+    try:
+        results = await prompt_service.find_similar(
+            query_text=text,
+            limit=k,
+            min_similarity=min_similarity,
+        )
+
+        prompts = [
+            SimilarPromptResponse(
+                id=result.id,
+                prompt_text=result.prompt_text,
+                similarity=round(result.similarity, 4),
+            )
+            for result in results
+        ]
+
+        return SimilarPromptsResponse(
+            query_text=text,
+            prompts=prompts,
+            total_found=len(prompts),
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to find similar prompts: {str(e)}"
         )

@@ -11,6 +11,10 @@ from src.prompts.models.prompt_responses import (
     PromptsListResponse,
     TopicPromptsResponse,
 )
+from src.prompts.models.similar_prompts import (
+    SimilarPromptResponse,
+    SimilarPromptsResponse,
+)
 
 __all__ = [
     "ClusterPrompts",
@@ -20,4 +24,6 @@ __all__ = [
     "PromptResponse",
     "PromptsListResponse",
     "TopicPromptsResponse",
+    "SimilarPromptResponse",
+    "SimilarPromptsResponse",
 ]
