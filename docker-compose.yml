@@ -16,9 +16,9 @@ services:
       timeout: 5s
       retries: 5
 
-  app:
-    image: prompts-volume:latest
-    container_name: prompts-app
+  backend:
+    build: ./backend
+    container_name: prompts-backend
     depends_on:
       postgres:
         condition: service_healthy
@@ -28,6 +28,10 @@ services:
       DATAFORSEO_PASSWORD: ${DATAFORSEO_PASSWORD}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       TOPICS_PROVIDER_SIMILARITY_THRESHOLD: 0.8
+      SECRET_KEY: ${SECRET_KEY:-changethis}
+      FIRST_SUPERUSER_EMAIL: ${FIRST_SUPERUSER_EMAIL:-admin@example.com}
+      FIRST_SUPERUSER_PASSWORD: ${FIRST_SUPERUSER_PASSWORD:-changethis}
+      FRONTEND_URL: http://localhost:5173
     ports:
       - "8000:8000"
     healthcheck:
@@ -36,6 +40,16 @@ services:
       timeout: 30s
       start_period: 5s
       retries: 3
+
+  frontend:
+    build: ./frontend
+    container_name: prompts-frontend
+    depends_on:
+      - backend
+    environment:
+      VITE_API_URL: http://localhost:8000
+    ports:
+      - "5173:5173"
 
 volumes:
   postgres_data:

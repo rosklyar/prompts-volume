@@ -59,6 +59,15 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/prompts"
     database_echo: bool = False
 
+    # Auth configuration
+    secret_key: str = "changethis"
+    access_token_expire_minutes: int = 60 * 24 * 8  # 8 days
+    first_superuser_email: str = "admin@example.com"
+    first_superuser_password: str = "changethis"
+
+    # CORS configuration
+    frontend_url: str = "http://localhost:5173"
+
 
 # Singleton settings instance
 settings = Settings()

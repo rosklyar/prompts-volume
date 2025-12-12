@@ -279,3 +279,24 @@ async def _seed_ai_assistant_plans(session: AsyncSession) -> None:
         await session.execute(
             text("SELECT setval('ai_assistant_plans_id_seq', (SELECT MAX(id) FROM ai_assistant_plans))")
         )
+
+
+async def seed_superuser(session: AsyncSession) -> None:
+    """
+    Seed the first superuser if it doesn't exist.
+
+    Args:
+        session: AsyncSession to use for database operations
+    """
+    from src.auth.crud import create_user, get_user_by_email
+    from src.auth.models import UserCreate
+    from src.config.settings import settings
+
+    user = await get_user_by_email(session, settings.first_superuser_email)
+    if not user:
+        user_in = UserCreate(
+            email=settings.first_superuser_email,
+            password=settings.first_superuser_password,
+            is_superuser=True,
+        )
+        await create_user(session, user_in)

@@ -1,4 +1,4 @@
-name: CI Tests
+name: Backend CI
 
 on: [push, pull_request]
 
@@ -34,17 +34,19 @@ jobs:
       uses: actions/cache@v3
       with:
         path: ~/.cache/uv
-        key: ${{ runner.os }}-uv-${{ hashFiles('**/uv.lock') }}
+        key: ${{ runner.os }}-uv-${{ hashFiles('backend/uv.lock') }}
         restore-keys: |
           ${{ runner.os }}-uv-
 
     - name: Install dependencies
+      working-directory: ./backend
       run: uv sync
 
     - name: Pull PostgreSQL Docker image with pgvector
       run: docker pull pgvector/pgvector:pg16
 
     - name: Run tests with testcontainers
+      working-directory: ./backend
       run: uv run pytest -v
       env:
         # Set Docker host for testcontainers

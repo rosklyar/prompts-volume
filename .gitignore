@@ -14,8 +14,9 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+backend/lib/
 lib64/
+!frontend/**/lib/
 parts/
 sdist/
 var/
@@ -209,3 +210,11 @@ __marimo__/
 .env
 reports/
 .vscode/
+
+/tmp
+
+# Frontend
+node_modules/
+frontend/dist/
+frontend/.env.local
+frontend/src/routeTree.gen.ts
