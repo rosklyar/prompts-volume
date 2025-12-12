@@ -221,7 +221,7 @@ function PromptDiscovery() {
                 placeholder:text-[#9CA3AF] text-[#1F2937]
                 transition-all duration-300"
               role="combobox"
-              aria-expanded={showDropdown}
+              aria-expanded={!!showDropdown}
               aria-haspopup="listbox"
               aria-activedescendant={
                 highlightedIndex >= 0
