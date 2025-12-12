@@ -19,6 +19,18 @@ export interface UserRegister {
   full_name?: string
 }
 
+export interface SimilarPrompt {
+  id: number
+  prompt_text: string
+  similarity: number
+}
+
+export interface SimilarPromptsResponse {
+  query_text: string
+  prompts: SimilarPrompt[]
+  total_found: number
+}
+
 export interface LoginCredentials {
   username: string
   password: string
@@ -102,6 +114,22 @@ export const authApi = {
 
   async getCurrentUser(): Promise<UserPublic> {
     const response = await fetchWithAuth("/api/v1/users/me")
+    return response.json()
+  },
+}
+
+export const promptsApi = {
+  async getSimilarPrompts(
+    text: string,
+    k: number = 10,
+    minSimilarity: number = 0.75
+  ): Promise<SimilarPromptsResponse> {
+    const params = new URLSearchParams({
+      text,
+      k: k.toString(),
+      min_similarity: minSimilarity.toString(),
+    })
+    const response = await fetchWithAuth(`/prompts/api/v1/similar?${params}`)
     return response.json()
   },
 }
