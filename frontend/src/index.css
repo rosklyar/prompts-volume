@@ -78,6 +78,20 @@ body {
   animation-name: fade-in, slide-in-from-bottom;
 }
 
+.slide-in-from-bottom-1 {
+  animation-name: fade-in, slide-in-from-bottom;
+  --slide-distance: 4px;
+}
+
+@keyframes slide-in-from-bottom-small {
+  from {
+    transform: translateY(4px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
 /* Line clamp utility */
 .line-clamp-2 {
   display: -webkit-box;
