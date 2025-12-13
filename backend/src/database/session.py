@@ -73,27 +73,14 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
 
 async def init_db() -> None:
     """
-    Initialize database: create tables and enable extensions.
+    Initialize database connection.
     Should be called on application startup.
+
+    Note: Schema migrations are managed by Alembic and should be run
+    separately via `alembic upgrade head` before starting the application.
     """
-    engine = get_engine()
-
-    # Enable pgvector extension
-    async with engine.begin() as conn:
-        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-
-    # Create all tables
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    # Create vector index for similarity search on prompts embeddings
-    async with engine.begin() as conn:
-        await conn.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS idx_prompt_embedding "
-                "ON prompts USING hnsw (embedding vector_cosine_ops)"
-            )
-        )
+    # Just ensure the engine is initialized
+    get_engine()
 
 
 async def close_db() -> None:
@@ -108,7 +95,3 @@ async def close_db() -> None:
         _engine = None
 
     _async_session_maker = None
-
-
-# Import for text() function
-from sqlalchemy import text

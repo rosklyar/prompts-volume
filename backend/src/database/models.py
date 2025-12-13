@@ -336,3 +336,89 @@ class AIAssistantPlan(Base):
 
     def __repr__(self) -> str:
         return f"<AIAssistantPlan(id={self.id}, assistant_id={self.assistant_id}, name='{self.name}')>"
+
+
+class PromptGroup(Base):
+    """User-owned group for organizing prompts.
+
+    Each user has exactly one 'common' group (title=None) which is auto-created
+    and cannot be deleted. Users can create additional named groups.
+    """
+
+    __tablename__ = "prompt_groups"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("NOW()"),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("NOW()"),
+    )
+
+    # Relationships
+    bindings: Mapped[List["PromptGroupBinding"]] = relationship(
+        back_populates="group",
+        cascade="all, delete-orphan"
+    )
+
+    # Constraints - unique title per user (allows multiple NULL titles workaround via partial index in migration)
+    __table_args__ = (
+        UniqueConstraint("user_id", "title", name="uq_prompt_groups_user_title"),
+    )
+
+    @property
+    def is_common(self) -> bool:
+        """Common group has no title."""
+        return self.title is None
+
+    def __repr__(self) -> str:
+        return f"<PromptGroup(id={self.id}, user_id='{self.user_id}', title='{self.title}')>"
+
+
+class PromptGroupBinding(Base):
+    """Junction table linking prompts to groups.
+
+    A prompt can belong to multiple groups for the same user.
+    """
+
+    __tablename__ = "prompt_group_bindings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("prompt_groups.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    prompt_id: Mapped[int] = mapped_column(
+        ForeignKey("prompts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    added_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("NOW()"),
+    )
+
+    # Relationships
+    group: Mapped["PromptGroup"] = relationship(back_populates="bindings")
+    prompt: Mapped["Prompt"] = relationship()
+
+    # Constraints - each prompt can only be in a group once
+    __table_args__ = (
+        UniqueConstraint("group_id", "prompt_id", name="uq_prompt_group_bindings_group_prompt"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<PromptGroupBinding(id={self.id}, group_id={self.group_id}, prompt_id={self.prompt_id})>"
