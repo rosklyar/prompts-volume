@@ -99,3 +99,100 @@ body {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* Drag and drop animations */
+@keyframes pulse-border {
+  0%, 100% {
+    border-color: var(--pulse-color, #C4553D);
+    opacity: 1;
+  }
+  50% {
+    border-color: var(--pulse-color, #C4553D);
+    opacity: 0.5;
+  }
+}
+
+@keyframes shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-2px);
+  }
+  75% {
+    transform: translateX(2px);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-down {
+  from {
+    max-height: 0;
+    opacity: 0;
+  }
+  to {
+    max-height: 500px;
+    opacity: 1;
+  }
+}
+
+.animate-pulse-border {
+  animation: pulse-border 1.5s ease-in-out infinite;
+}
+
+.animate-shake {
+  animation: shake 0.3s ease-in-out;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.2s ease-out;
+}
+
+/* Custom scrollbar for group cards */
+.group-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.group-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.group-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.1);
+  border-radius: 3px;
+}
+
+.group-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+/* Drag overlay styles */
+[data-dnd-dragging="true"] {
+  cursor: grabbing !important;
+}
+
+/* Focus visible styles */
+:focus-visible {
+  outline: 2px solid #C4553D;
+  outline-offset: 2px;
+}
+
+/* Smooth transitions for interactive elements */
+button, a, input {
+  transition: all 0.15s ease;
+}
+
+/* Prevent text selection during drag */
+[data-dragging="true"] {
+  user-select: none;
+}
