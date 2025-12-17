@@ -134,4 +134,200 @@ export const promptsApi = {
   },
 }
 
+// ===== Group Types =====
+
+export interface GroupSummary {
+  id: number
+  title: string | null
+  is_common: boolean
+  prompt_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface PromptInGroup {
+  binding_id: number
+  prompt_id: number
+  prompt_text: string
+  added_at: string
+}
+
+export interface GroupDetail {
+  id: number
+  title: string | null
+  is_common: boolean
+  created_at: string
+  updated_at: string
+  prompts: PromptInGroup[]
+}
+
+export interface GroupListResponse {
+  groups: GroupSummary[]
+  total: number
+}
+
+export interface AddPromptsResult {
+  added_count: number
+  skipped_count: number
+  bindings: PromptInGroup[]
+}
+
+export interface RemovePromptsResult {
+  removed_count: number
+}
+
+// ===== Evaluation Types =====
+
+export interface Citation {
+  url: string
+  text: string
+}
+
+export interface EvaluationAnswer {
+  response: string
+  citations: Citation[]
+  timestamp: string
+}
+
+export interface EvaluationResultItem {
+  prompt_id: number
+  prompt_text: string
+  evaluation_id: number | null
+  status: string | null
+  answer: EvaluationAnswer | null
+  completed_at: string | null
+}
+
+export interface GetResultsResponse {
+  results: EvaluationResultItem[]
+}
+
+export interface PriorityPromptResult {
+  prompt_id: number
+  prompt_text: string
+  topic_id: number | null
+  was_duplicate: boolean
+  similarity_score: number | null
+}
+
+export interface AddPriorityPromptsResponse {
+  created_count: number
+  reused_count: number
+  total_count: number
+  prompts: PriorityPromptResult[]
+  request_id: string
+}
+
+// ===== Groups API =====
+
+export const groupsApi = {
+  async getGroups(): Promise<GroupListResponse> {
+    const response = await fetchWithAuth("/prompt-groups/api/v1/groups")
+    return response.json()
+  },
+
+  async getGroupDetail(groupId: number): Promise<GroupDetail> {
+    const response = await fetchWithAuth(
+      `/prompt-groups/api/v1/groups/${groupId}`
+    )
+    return response.json()
+  },
+
+  async createGroup(title: string): Promise<GroupSummary> {
+    const response = await fetchWithAuth("/prompt-groups/api/v1/groups", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    })
+    return response.json()
+  },
+
+  async updateGroup(groupId: number, title: string): Promise<GroupSummary> {
+    const response = await fetchWithAuth(
+      `/prompt-groups/api/v1/groups/${groupId}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      }
+    )
+    return response.json()
+  },
+
+  async deleteGroup(groupId: number): Promise<void> {
+    await fetchWithAuth(`/prompt-groups/api/v1/groups/${groupId}`, {
+      method: "DELETE",
+    })
+  },
+
+  async addPromptsToGroup(
+    groupId: number,
+    promptIds: number[]
+  ): Promise<AddPromptsResult> {
+    const response = await fetchWithAuth(
+      `/prompt-groups/api/v1/groups/${groupId}/prompts`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt_ids: promptIds }),
+      }
+    )
+    return response.json()
+  },
+
+  async removePromptsFromGroup(
+    groupId: number,
+    promptIds: number[]
+  ): Promise<RemovePromptsResult> {
+    const response = await fetchWithAuth(
+      `/prompt-groups/api/v1/groups/${groupId}/prompts`,
+      {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt_ids: promptIds }),
+      }
+    )
+    return response.json()
+  },
+}
+
+// ===== Evaluations API =====
+
+export const evaluationsApi = {
+  async getResults(
+    assistantName: string,
+    planName: string,
+    promptIds: number[]
+  ): Promise<GetResultsResponse> {
+    const response = await fetchWithAuth("/evaluations/api/v1/results", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        assistant_name: assistantName,
+        plan_name: planName,
+        prompt_ids: promptIds,
+      }),
+    })
+    return response.json()
+  },
+
+  async addPriorityPrompts(
+    prompts: string[],
+    topicId?: number
+  ): Promise<AddPriorityPromptsResponse> {
+    const response = await fetchWithAuth(
+      "/evaluations/api/v1/priority-prompts",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompts: prompts.map((prompt_text) => ({ prompt_text })),
+          topic_id: topicId,
+        }),
+      }
+    )
+    return response.json()
+  },
+}
+
 export { ApiError }

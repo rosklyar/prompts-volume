@@ -1,0 +1,118 @@
+/**
+ * TypeScript types for Prompt Groups feature
+ */
+
+// ===== Group Types =====
+
+export interface GroupSummary {
+  id: number
+  title: string | null
+  is_common: boolean
+  prompt_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface PromptInGroup {
+  binding_id: number
+  prompt_id: number
+  prompt_text: string
+  added_at: string
+}
+
+export interface GroupDetail {
+  id: number
+  title: string | null
+  is_common: boolean
+  created_at: string
+  updated_at: string
+  prompts: PromptInGroup[]
+}
+
+export interface GroupListResponse {
+  groups: GroupSummary[]
+  total: number
+}
+
+export interface AddPromptsResult {
+  added_count: number
+  skipped_count: number
+  bindings: PromptInGroup[]
+}
+
+export interface RemovePromptsResult {
+  removed_count: number
+}
+
+// ===== Evaluation Types =====
+
+export interface Citation {
+  url: string
+  text: string
+}
+
+export interface EvaluationAnswer {
+  response: string
+  citations: Citation[]
+  timestamp: string
+}
+
+export interface EvaluationResultItem {
+  prompt_id: number
+  prompt_text: string
+  evaluation_id: number | null
+  status: string | null
+  answer: EvaluationAnswer | null
+  completed_at: string | null
+}
+
+export interface GetResultsResponse {
+  results: EvaluationResultItem[]
+}
+
+export interface PriorityPromptItem {
+  prompt_text: string
+}
+
+export interface PriorityPromptResult {
+  prompt_id: number
+  prompt_text: string
+  topic_id: number | null
+  was_duplicate: boolean
+  similarity_score: number | null
+}
+
+export interface AddPriorityPromptsResponse {
+  created_count: number
+  reused_count: number
+  total_count: number
+  prompts: PriorityPromptResult[]
+  request_id: string
+}
+
+// ===== UI State Types =====
+
+export interface PromptWithAnswer extends PromptInGroup {
+  answer?: EvaluationAnswer | null
+  isExpanded?: boolean
+  isLoading?: boolean
+}
+
+export interface GroupWithPrompts extends Omit<GroupDetail, "prompts"> {
+  prompts: PromptWithAnswer[]
+  isLoadingAnswers?: boolean
+  answersLoaded?: boolean
+}
+
+// ===== Drag & Drop Types =====
+
+export interface DragItem {
+  promptId: number
+  sourceGroupId: number
+  prompt: PromptWithAnswer
+}
+
+export type DropResult = {
+  targetGroupId: number
+  targetIndex?: number
+}

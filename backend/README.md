@@ -646,7 +646,439 @@ MIN_DAYS_SINCE_LAST_EVALUATION=1     # Cooldown for completed evaluations
 
 ---
 
-### 3.7 Complete Client Flow for topics/prompts suggesting
+### 3.7 Prompt Groups Management
+
+**Purpose**: Organize and manage prompts in user-specific collections with authentication
+
+The prompt groups system provides authenticated CRUD operations for organizing prompts into named collections. Each user has:
+- **Common group** (auto-created, cannot be deleted): Default collection for frequently used prompts
+- **Named groups**: Custom collections created by users
+
+All endpoints require JWT authentication via `Authorization: Bearer {token}` header.
+
+---
+
+#### 3.7.1 List All Groups
+
+```http
+GET /prompt-groups/api/v1/groups
+```
+
+**Purpose**: Get all prompt groups for the authenticated user
+
+**Headers**:
+```
+Authorization: Bearer {jwt_token}
+```
+
+**Response**:
+```json
+{
+  "groups": [
+    {
+      "id": 1,
+      "title": null,
+      "is_common": true,
+      "prompt_count": 15,
+      "created_at": "2025-12-01T10:00:00Z",
+      "updated_at": "2025-12-09T14:30:00Z"
+    },
+    {
+      "id": 2,
+      "title": "My Favorites",
+      "is_common": false,
+      "prompt_count": 8,
+      "created_at": "2025-12-05T12:00:00Z",
+      "updated_at": "2025-12-08T09:15:00Z"
+    }
+  ],
+  "total": 2
+}
+```
+
+**Example**:
+```bash
+curl -H "Authorization: Bearer eyJhbGc..." \
+  "http://localhost:8000/prompt-groups/api/v1/groups"
+```
+
+**Key Features**:
+- Returns common group (auto-created if missing) plus all named groups
+- Includes prompt counts for each group
+- Sorted by creation date
+
+**Use Case**: Display user's prompt collections in UI
+
+---
+
+#### 3.7.2 Create New Group
+
+```http
+POST /prompt-groups/api/v1/groups
+```
+
+**Purpose**: Create a new named prompt group
+
+**Headers**:
+```
+Authorization: Bearer {jwt_token}
+Content-Type: application/json
+```
+
+**Request**:
+```json
+{
+  "title": "My Favorites"
+}
+```
+
+**Parameters**:
+- `title` (required): Group title (1-255 characters, non-empty)
+
+**Response** (201 Created):
+```json
+{
+  "id": 2,
+  "title": "My Favorites",
+  "is_common": false,
+  "prompt_count": 0,
+  "created_at": "2025-12-09T15:00:00Z",
+  "updated_at": "2025-12-09T15:00:00Z"
+}
+```
+
+**Example**:
+```bash
+curl -X POST "http://localhost:8000/prompt-groups/api/v1/groups" \
+  -H "Authorization: Bearer eyJhbGc..." \
+  -H "Content-Type: application/json" \
+  -d '{"title": "My Favorites"}'
+```
+
+**Use Case**: User creates custom collection for organizing prompts by category or project
+
+---
+
+#### 3.7.3 Get Group Details
+
+```http
+GET /prompt-groups/api/v1/groups/{group_id}
+```
+
+**Purpose**: Get detailed information about a group including all prompts
+
+**Headers**:
+```
+Authorization: Bearer {jwt_token}
+```
+
+**Response**:
+```json
+{
+  "id": 2,
+  "title": "My Favorites",
+  "is_common": false,
+  "created_at": "2025-12-05T12:00:00Z",
+  "updated_at": "2025-12-09T15:30:00Z",
+  "prompts": [
+    {
+      "binding_id": 10,
+      "prompt_id": 456,
+      "prompt_text": "Найкращий смартфон до 15 000 грн?",
+      "added_at": "2025-12-08T09:15:00Z"
+    },
+    {
+      "binding_id": 11,
+      "prompt_id": 789,
+      "prompt_text": "Де купити ноутбук в Києві?",
+      "added_at": "2025-12-09T10:20:00Z"
+    }
+  ]
+}
+```
+
+**Example**:
+```bash
+curl -H "Authorization: Bearer eyJhbGc..." \
+  "http://localhost:8000/prompt-groups/api/v1/groups/2"
+```
+
+**Key Features**:
+- Returns full group details with all prompts
+- Each prompt includes binding metadata (when it was added)
+- Prompts sorted by `added_at` timestamp
+
+**Use Case**: Display group contents in UI for editing or evaluation selection
+
+---
+
+#### 3.7.4 Update Group Title
+
+```http
+PATCH /prompt-groups/api/v1/groups/{group_id}
+```
+
+**Purpose**: Update a group's title
+
+**Headers**:
+```
+Authorization: Bearer {jwt_token}
+Content-Type: application/json
+```
+
+**Request**:
+```json
+{
+  "title": "Top Picks"
+}
+```
+
+**Parameters**:
+- `title` (required): New group title (1-255 characters, non-empty)
+
+**Response**:
+```json
+{
+  "id": 2,
+  "title": "Top Picks",
+  "is_common": false,
+  "prompt_count": 8,
+  "created_at": "2025-12-05T12:00:00Z",
+  "updated_at": "2025-12-09T16:00:00Z"
+}
+```
+
+**Example**:
+```bash
+curl -X PATCH "http://localhost:8000/prompt-groups/api/v1/groups/2" \
+  -H "Authorization: Bearer eyJhbGc..." \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Top Picks"}'
+```
+
+**Restrictions**:
+- Cannot update the common group (returns 400 error)
+
+**Use Case**: Rename group as user reorganizes collections
+
+---
+
+#### 3.7.5 Delete Group
+
+```http
+DELETE /prompt-groups/api/v1/groups/{group_id}
+```
+
+**Purpose**: Delete a prompt group
+
+**Headers**:
+```
+Authorization: Bearer {jwt_token}
+```
+
+**Response**: 204 No Content
+
+**Example**:
+```bash
+curl -X DELETE "http://localhost:8000/prompt-groups/api/v1/groups/2" \
+  -H "Authorization: Bearer eyJhbGc..."
+```
+
+**Key Features**:
+- Cascade deletes all prompt bindings in the group
+- Prompts themselves are NOT deleted (only the group membership)
+
+**Restrictions**:
+- Cannot delete the common group (returns 400 error)
+
+**Use Case**: Remove unused group from user's collections
+
+---
+
+#### 3.7.6 Add Prompts to Group
+
+```http
+POST /prompt-groups/api/v1/groups/{group_id}/prompts
+```
+
+**Purpose**: Add prompts to a group
+
+**Headers**:
+```
+Authorization: Bearer {jwt_token}
+Content-Type: application/json
+```
+
+**Request**:
+```json
+{
+  "prompt_ids": [456, 789, 123]
+}
+```
+
+**Parameters**:
+- `prompt_ids` (required): List of prompt IDs to add (at least 1)
+
+**Response**:
+```json
+{
+  "added_count": 2,
+  "skipped_count": 1,
+  "bindings": [
+    {
+      "binding_id": 12,
+      "prompt_id": 456,
+      "prompt_text": "Найкращий смартфон до 15 000 грн?",
+      "added_at": "2025-12-09T16:30:00Z"
+    },
+    {
+      "binding_id": 13,
+      "prompt_id": 789,
+      "prompt_text": "Де купити ноутбук в Києві?",
+      "added_at": "2025-12-09T16:30:00Z"
+    }
+  ]
+}
+```
+
+**Example**:
+```bash
+curl -X POST "http://localhost:8000/prompt-groups/api/v1/groups/2/prompts" \
+  -H "Authorization: Bearer eyJhbGc..." \
+  -H "Content-Type: application/json" \
+  -d '{"prompt_ids": [456, 789, 123]}'
+```
+
+**Key Features**:
+- Idempotent: Prompts already in the group are skipped
+- Returns count of added vs skipped prompts
+- Returns only newly added bindings with full details
+
+**Use Case**: Add prompts from search results to collection for tracking
+
+---
+
+#### 3.7.7 Remove Prompts from Group
+
+```http
+DELETE /prompt-groups/api/v1/groups/{group_id}/prompts
+```
+
+**Purpose**: Remove prompts from a group
+
+**Headers**:
+```
+Authorization: Bearer {jwt_token}
+Content-Type: application/json
+```
+
+**Request**:
+```json
+{
+  "prompt_ids": [456, 789]
+}
+```
+
+**Parameters**:
+- `prompt_ids` (required): List of prompt IDs to remove (at least 1)
+
+**Response**:
+```json
+{
+  "removed_count": 2
+}
+```
+
+**Example**:
+```bash
+curl -X DELETE "http://localhost:8000/prompt-groups/api/v1/groups/2/prompts" \
+  -H "Authorization: Bearer eyJhbGc..." \
+  -H "Content-Type: application/json" \
+  -d '{"prompt_ids": [456, 789]}'
+```
+
+**Key Features**:
+- Removes prompt-group bindings (prompts remain in database)
+- Returns count of actually removed prompts
+- Silently ignores prompt IDs not in the group
+
+**Use Case**: Clean up group by removing irrelevant prompts
+
+---
+
+#### 3.7.8 Authentication & Authorization
+
+All prompt group endpoints require JWT authentication:
+
+1. **Login** to get access token:
+```bash
+curl -X POST "http://localhost:8000/api/v1/login/access-token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "username=user@example.com&password=yourpassword"
+```
+
+Response:
+```json
+{
+  "access_token": "eyJhbGc...",
+  "token_type": "bearer"
+}
+```
+
+2. **Use token** in subsequent requests:
+```bash
+curl -H "Authorization: Bearer eyJhbGc..." \
+  "http://localhost:8000/prompt-groups/api/v1/groups"
+```
+
+**Authorization Rules**:
+- Users can only access their own groups
+- Attempting to access another user's group returns 404 Not Found
+- Common group is auto-created on first access
+
+---
+
+#### 3.7.9 Error Handling
+
+**Common Errors**:
+
+**401 Unauthorized** - Missing or invalid token:
+```json
+{
+  "detail": "Not authenticated"
+}
+```
+
+**404 Not Found** - Group doesn't exist or belongs to another user:
+```json
+{
+  "detail": "Group with ID 999 not found"
+}
+```
+
+**400 Bad Request** - Cannot modify common group:
+```json
+{
+  "detail": "Cannot update the common group"
+}
+```
+
+**400 Bad Request** - Invalid request data:
+```json
+{
+  "detail": [
+    {
+      "type": "string_too_short",
+      "loc": ["body", "title"],
+      "msg": "String should have at least 1 character"
+    }
+  ]
+}
+```
+
+---
+
+### 3.8 Complete Client Flow for topics/prompts suggesting
 
 **Recommended Integration Pattern (Hybrid Approach):**
 

@@ -16,6 +16,7 @@ Keywords are fetched from the DataForSEO API and can be filtered by location usi
 - uv for dependency management, build tool, and running code/tests
 - Docker for containerization
 - PostgreSQL for state management
+- Alembic for database migrations
 
 ## Development Commands
 
@@ -26,6 +27,22 @@ Keywords are fetched from the DataForSEO API and can be filtered by location usi
 - Run tests: `uv run pytest`
 - Run a single test: `uv run pytest tests/path/to/test_file.py::test_function_name`
 - Add dependencies: `uv add <package-name>`
+
+### Database Migrations (Alembic)
+
+- **Apply migrations**: `uv run alembic upgrade head`
+- **Check current version**: `uv run alembic current`
+- **Generate new migration**: `uv run alembic revision --autogenerate -m "description"`
+- **Rollback one step**: `uv run alembic downgrade -1`
+- **View migration history**: `uv run alembic history`
+
+**Workflow for schema changes:**
+1. Modify models in `src/database/models.py`
+2. Generate migration: `uv run alembic revision --autogenerate -m "add_xyz"`
+3. Review generated migration in `alembic/versions/`
+4. Apply: `uv run alembic upgrade head`
+
+**Note:** Migrations run automatically on Docker container startup. For local development, run `alembic upgrade head` before starting the app.
 
 ### Docker
 
@@ -66,6 +83,13 @@ The project follows Domain-Driven Design (DDD) with clear separation of concerns
   - `models/api_models.py` - Request/response models (PollRequest, SubmitAnswerRequest, ReleaseRequest, GetResultsRequest, GetResultsResponse)
   - `services/evaluation_service.py` - EvaluationService (atomic polling with locking, timeout logic)
 
+- **`src/prompt_groups/`** - User prompt group management
+  - `router.py` - API endpoints (CRUD for groups, add/remove prompts)
+  - `models/api_models.py` - Request/response models (CreateGroupRequest, GroupDetailResponse, etc.)
+  - `services/prompt_group_service.py` - PromptGroupService (group CRUD, common group logic)
+  - `services/prompt_group_binding_service.py` - PromptGroupBindingService (prompt-group bindings)
+  - `exceptions.py` - Domain exceptions (GroupNotFoundError, CommonGroupDeletionError, etc.)
+
 ### Infrastructure Modules
 
 - **`src/embeddings/`** - ML pipeline (local models)
@@ -73,9 +97,13 @@ The project follows Domain-Driven Design (DDD) with clear separation of concerns
   - `clustering_service.py` - HDBSCAN for semantic clustering
 
 - **`src/database/`** - Data persistence layer
-  - `models.py` - SQLAlchemy ORM models (Topic, Prompt, Country, etc.)
-  - `session.py` - Database connection and vector index setup
+  - `models.py` - SQLAlchemy ORM models (Topic, Prompt, Country, PromptGroup, PromptGroupBinding, etc.)
+  - `session.py` - Database connection management
   - `init.py` - Database seeding logic
+
+- **`alembic/`** - Database migrations
+  - `env.py` - Async SQLAlchemy configuration
+  - `versions/` - Migration files (schema changes)
 
 - **`src/config/`** - Application configuration
   - `settings.py` - Environment-based settings (Pydantic)
@@ -145,7 +173,7 @@ The project follows Domain-Driven Design (DDD) with clear separation of concerns
 **Database Models** (SQLAlchemy):
 - ORM models for database tables
 - Located in `src/database/models.py`
-- Example: `Topic`, `Prompt`, `Country`
+- Example: `Topic`, `Prompt`, `Country`, `PromptGroup`, `PromptGroupBinding`
 
 ### Naming Conventions
 

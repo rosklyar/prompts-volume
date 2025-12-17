@@ -33,9 +33,11 @@ RUN uv run python scripts/download_model.py && \
     mkdir -p /app/.cache/uv && \
     chown -R appuser:appuser /app/.cache
 
-# Copy source code (most frequently changed, should be last)
+# Copy source code and alembic files (most frequently changed, should be last)
 # Use --chown to set ownership during copy for efficiency
 COPY --chown=appuser:appuser src/ ./src/
+COPY --chown=appuser:appuser alembic/ ./alembic/
+COPY --chown=appuser:appuser alembic.ini ./
 
 # Switch to non-root user
 USER appuser
@@ -47,5 +49,5 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
 # Expose port
 EXPOSE 8000
 
-# Run the application as non-root user
-CMD ["uv", "run", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run migrations and start the application
+CMD ["sh", "-c", "uv run alembic upgrade head && uv run uvicorn src.main:app --host 0.0.0.0 --port 8000"]
