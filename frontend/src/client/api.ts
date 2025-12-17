@@ -138,8 +138,7 @@ export const promptsApi = {
 
 export interface GroupSummary {
   id: number
-  title: string | null
-  is_common: boolean
+  title: string
   prompt_count: number
   created_at: string
   updated_at: string
@@ -154,8 +153,7 @@ export interface PromptInGroup {
 
 export interface GroupDetail {
   id: number
-  title: string | null
-  is_common: boolean
+  title: string
   created_at: string
   updated_at: string
   prompts: PromptInGroup[]

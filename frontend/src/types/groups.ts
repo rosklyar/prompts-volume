@@ -6,8 +6,7 @@
 
 export interface GroupSummary {
   id: number
-  title: string | null
-  is_common: boolean
+  title: string
   prompt_count: number
   created_at: string
   updated_at: string
@@ -22,11 +21,19 @@ export interface PromptInGroup {
 
 export interface GroupDetail {
   id: number
-  title: string | null
-  is_common: boolean
+  title: string
   created_at: string
   updated_at: string
   prompts: PromptInGroup[]
+}
+
+// ===== Quarantine Types =====
+
+export interface QuarantinePrompt {
+  prompt_id: number
+  prompt_text: string
+  added_at: string
+  isCustom: boolean
 }
 
 export interface GroupListResponse {
@@ -108,8 +115,8 @@ export interface GroupWithPrompts extends Omit<GroupDetail, "prompts"> {
 
 export interface DragItem {
   promptId: number
-  sourceGroupId: number
-  prompt: PromptWithAnswer
+  sourceGroupId: number | "quarantine"
+  prompt: PromptWithAnswer | QuarantinePrompt
 }
 
 export type DropResult = {

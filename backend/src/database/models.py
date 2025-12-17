@@ -238,7 +238,11 @@ class PromptEvaluation(Base):
 
     # Status tracking
     status: Mapped[EvaluationStatus] = mapped_column(
-        Enum(EvaluationStatus),
+        Enum(
+            EvaluationStatus,
+            values_callable=lambda x: [e.value for e in x],
+            name="evaluationstatus",
+        ),
         nullable=False,
         default=EvaluationStatus.IN_PROGRESS,
         index=True
@@ -339,11 +343,7 @@ class AIAssistantPlan(Base):
 
 
 class PromptGroup(Base):
-    """User-owned group for organizing prompts.
-
-    Each user has exactly one 'common' group (title=None) which is auto-created
-    and cannot be deleted. Users can create additional named groups.
-    """
+    """User-owned group for organizing prompts."""
 
     __tablename__ = "prompt_groups"
 
@@ -354,7 +354,7 @@ class PromptGroup(Base):
         nullable=False,
         index=True,
     )
-    title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -372,15 +372,10 @@ class PromptGroup(Base):
         cascade="all, delete-orphan"
     )
 
-    # Constraints - unique title per user (allows multiple NULL titles workaround via partial index in migration)
+    # Constraints - unique title per user
     __table_args__ = (
         UniqueConstraint("user_id", "title", name="uq_prompt_groups_user_title"),
     )
-
-    @property
-    def is_common(self) -> bool:
-        """Common group has no title."""
-        return self.title is None
 
     def __repr__(self) -> str:
         return f"<PromptGroup(id={self.id}, user_id='{self.user_id}', title='{self.title}')>"

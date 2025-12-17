@@ -59,7 +59,10 @@ class PriorityPromptService:
         created_count = 0
         reused_count = 0
 
-        for prompt_text, embedding in zip(prompt_texts, embeddings):
+        for text_with_embedding in embeddings:
+            prompt_text = text_with_embedding.text
+            embedding = text_with_embedding.embedding
+
             # Search for duplicate with similarity >= 0.99
             existing_prompt, similarity = await self._find_duplicate(
                 embedding, similarity_threshold=0.99
@@ -144,14 +147,19 @@ class PriorityPromptService:
         closest_prompt = result.scalar_one_or_none()
 
         if closest_prompt:
-            # Calculate actual similarity
-            # Note: SQLAlchemy expression for distance
-            distance_query = select(
-                closest_prompt.embedding.cosine_distance(embedding)
+            # Calculate actual similarity using numpy
+            # Convert embedding to numpy array if needed
+            import numpy as np
+            prompt_emb = np.array(closest_prompt.embedding)
+            query_emb = np.array(embedding)
+
+            # Cosine distance = 1 - cosine similarity
+            # Cosine similarity = dot product / (norm1 * norm2)
+            cosine_similarity = np.dot(prompt_emb, query_emb) / (
+                np.linalg.norm(prompt_emb) * np.linalg.norm(query_emb)
             )
-            distance_result = await self.session.execute(distance_query)
-            distance = distance_result.scalar()
-            similarity = 1.0 - distance
+            distance = 1.0 - cosine_similarity
+            similarity = cosine_similarity
 
             if similarity >= similarity_threshold:
                 return closest_prompt, similarity

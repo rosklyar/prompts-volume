@@ -1,14 +1,10 @@
 import { createFileRoute, redirect } from "@tanstack/react-router"
-import { useState, useRef, useEffect, useCallback, useMemo } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import useAuth, { isLoggedIn } from "@/hooks/useAuth"
 import { useSimilarPrompts } from "@/hooks/useSimilarPrompts"
-import {
-  useGroups,
-  useAddPromptsToGroup,
-  useAddPriorityPrompt,
-} from "@/hooks/useGroups"
+import { useQuarantine } from "@/hooks/useQuarantine"
 import { Button } from "@/components/ui/button"
-import { GroupsGrid } from "@/components/groups"
+import { GroupsGrid, QuarantineCard } from "@/components/groups"
 
 export const Route = createFileRoute("/")({
   component: PromptDiscovery,
@@ -31,16 +27,14 @@ function PromptDiscovery() {
   const { suggestions, isLoading, isFetching, shouldSearch } =
     useSimilarPrompts(searchQuery)
 
-  // Get groups to find the common group
-  const { data: groupsData } = useGroups()
-  const commonGroup = useMemo(
-    () => groupsData?.groups.find((g) => g.is_common),
-    [groupsData]
-  )
-
-  // Mutations
-  const addToGroup = useAddPromptsToGroup()
-  const addPriorityPrompt = useAddPriorityPrompt()
+  // Quarantine state management
+  const {
+    prompts: quarantinePrompts,
+    addExistingPrompt,
+    addCustomPrompt,
+    removePrompt: removeFromQuarantine,
+    isAddingCustomPrompt,
+  } = useQuarantine()
 
   // Total selectable items: suggestions + custom option (if query exists)
   const hasCustomOption = searchQuery.trim().length > 0
@@ -78,37 +72,29 @@ function PromptDiscovery() {
     }
   }, [highlightedIndex])
 
-  // Handle selecting an existing prompt from suggestions
+  // Handle selecting an existing prompt from suggestions - add to quarantine
   const handleSelectPrompt = useCallback(
     (prompt: { id: number; prompt_text: string }) => {
-      if (commonGroup) {
-        addToGroup.mutate({
-          groupId: commonGroup.id,
-          promptIds: [prompt.id],
-        })
-      }
+      addExistingPrompt(prompt.id, prompt.prompt_text)
       setSearchQuery("")
       setIsDropdownOpen(false)
       setHighlightedIndex(-1)
       inputRef.current?.focus()
     },
-    [commonGroup, addToGroup]
+    [addExistingPrompt]
   )
 
-  // Handle adding a custom prompt
+  // Handle adding a custom prompt - creates via API, then adds to quarantine
   const handleAddCustom = useCallback(() => {
     const trimmed = searchQuery.trim()
-    if (trimmed && commonGroup) {
-      addPriorityPrompt.mutate({
-        promptText: trimmed,
-        targetGroupId: commonGroup.id,
-      })
+    if (trimmed) {
+      addCustomPrompt(trimmed)
     }
     setSearchQuery("")
     setIsDropdownOpen(false)
     setHighlightedIndex(-1)
     inputRef.current?.focus()
-  }, [searchQuery, commonGroup, addPriorityPrompt])
+  }, [searchQuery, addCustomPrompt])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!isDropdownOpen && e.key !== "Escape") {
@@ -178,7 +164,7 @@ function PromptDiscovery() {
   }
 
   const showDropdown = isDropdownOpen && shouldShowDropdown
-  const isAddingPrompt = addToGroup.isPending || addPriorityPrompt.isPending
+  const isAddingPrompt = isAddingCustomPrompt
 
   return (
     <div className="min-h-screen bg-[#FDFBF7] font-['DM_Sans']">
@@ -346,16 +332,17 @@ function PromptDiscovery() {
           </div>
 
           {/* Groups Grid Section */}
-          <div className="mt-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="font-['Fraunces'] text-xl text-[#1F2937]">
-                Your Prompt Groups
-              </h2>
-              <span className="text-xs text-[#9CA3AF]">
-                Drag prompts between groups to organize
-              </span>
-            </div>
-            <GroupsGrid />
+          <div className="mt-8">
+            <GroupsGrid
+              quarantinePrompts={quarantinePrompts}
+              onRemoveFromQuarantine={removeFromQuarantine}
+              renderQuarantine={() => (
+                <QuarantineCard
+                  prompts={quarantinePrompts}
+                  onDeletePrompt={removeFromQuarantine}
+                />
+              )}
+            />
           </div>
         </div>
       </main>
