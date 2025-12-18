@@ -297,15 +297,17 @@ export const evaluationsApi = {
     planName: string,
     promptIds: number[]
   ): Promise<GetResultsResponse> {
-    const response = await fetchWithAuth("/evaluations/api/v1/results", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        assistant_name: assistantName,
-        plan_name: planName,
-        prompt_ids: promptIds,
-      }),
+    const params = new URLSearchParams({
+      assistant_name: assistantName,
+      plan_name: planName,
+      prompt_ids: promptIds.join(','),
     })
+    const response = await fetchWithAuth(
+      `/evaluations/api/v1/results?${params.toString()}`,
+      {
+        method: "GET",
+      }
+    )
     return response.json()
   },
 
