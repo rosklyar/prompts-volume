@@ -11,7 +11,7 @@ import { useState } from "react"
 import type { GroupDetail, PromptInGroup, EvaluationAnswer } from "@/client/api"
 import { EditableTitle } from "./EditableTitle"
 import { PromptItem } from "./PromptItem"
-import { getGroupColorByIsCommon } from "./constants"
+import { getGroupColor } from "./constants"
 
 interface PromptWithAnswer extends PromptInGroup {
   answer?: EvaluationAnswer | null
@@ -20,7 +20,7 @@ interface PromptWithAnswer extends PromptInGroup {
 
 interface GroupCardProps {
   group: GroupDetail
-  customIndex: number
+  colorIndex: number
   prompts: PromptWithAnswer[]
   isLoadingAnswers: boolean
   answersLoaded: boolean
@@ -32,7 +32,7 @@ interface GroupCardProps {
 
 export function GroupCard({
   group,
-  customIndex,
+  colorIndex,
   prompts,
   isLoadingAnswers,
   answersLoaded,
@@ -42,7 +42,7 @@ export function GroupCard({
   onLoadAnswers,
 }: GroupCardProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  const colors = getGroupColorByIsCommon(group.is_common, customIndex)
+  const colors = getGroupColor(colorIndex)
 
   const { setNodeRef, isOver } = useDroppable({
     id: `group-${group.id}`,
@@ -76,8 +76,8 @@ export function GroupCard({
       <div className="px-4 pt-4 pb-3 flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <EditableTitle
-            title={group.title || "Common"}
-            isEditable={!group.is_common}
+            title={group.title}
+            isEditable={true}
             accentColor={colors.accent}
             onSave={onUpdateTitle}
           />
@@ -87,52 +87,50 @@ export function GroupCard({
         </div>
 
         {/* Actions */}
-        {!group.is_common && (
-          <div className="flex items-center gap-1">
-            {showDeleteConfirm ? (
-              <div className="flex items-center gap-1 animate-in fade-in duration-150">
-                <button
-                  onClick={() => {
-                    onDeleteGroup()
-                    setShowDeleteConfirm(false)
-                  }}
-                  className="px-2 py-1 text-xs font-medium text-white bg-red-500
-                    hover:bg-red-600 rounded transition-colors"
-                >
-                  Delete
-                </button>
-                <button
-                  onClick={() => setShowDeleteConfirm(false)}
-                  className="px-2 py-1 text-xs font-medium text-gray-600
-                    hover:bg-gray-100 rounded transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
+        <div className="flex items-center gap-1">
+          {showDeleteConfirm ? (
+            <div className="flex items-center gap-1 animate-in fade-in duration-150">
               <button
-                onClick={() => setShowDeleteConfirm(true)}
-                className="p-1.5 rounded-md text-gray-400 hover:text-red-500
-                  hover:bg-red-50 transition-colors"
-                aria-label="Delete group"
+                onClick={() => {
+                  onDeleteGroup()
+                  setShowDeleteConfirm(false)
+                }}
+                className="px-2 py-1 text-xs font-medium text-white bg-red-500
+                  hover:bg-red-600 rounded transition-colors"
               >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                  />
-                </svg>
+                Delete
               </button>
-            )}
-          </div>
-        )}
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-2 py-1 text-xs font-medium text-gray-600
+                  hover:bg-gray-100 rounded transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="p-1.5 rounded-md text-gray-400 hover:text-red-500
+                hover:bg-red-50 transition-colors"
+              aria-label="Delete group"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                />
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Body - Scrollable prompt list */}

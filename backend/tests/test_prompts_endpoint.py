@@ -28,7 +28,7 @@ def test_get_prompts_for_seeded_topics(client):
 
     # Validate topic 1 (Smartphones) - 50 prompts from prompts_phones.csv
     phones_topic = topic_map[1]
-    assert len(phones_topic["prompts"]) == 50, "Should have 50 phone prompts"
+    assert len(phones_topic["prompts"]) == 71, "Should have 71 phone prompts"
 
     # Check first phone prompt structure
     first_phone_prompt = phones_topic["prompts"][0]
@@ -68,7 +68,7 @@ def test_get_prompts_single_topic(client):
 
     assert len(data["topics"]) == 1
     assert data["topics"][0]["topic_id"] == 1
-    assert len(data["topics"][0]["prompts"]) == 50
+    assert len(data["topics"][0]["prompts"]) == 71
 
 
 def test_get_prompts_empty_topic_ids(client):

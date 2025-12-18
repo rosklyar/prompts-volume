@@ -248,7 +248,7 @@ export function useLoadAnswers() {
     mutationFn: async ({
       promptIds,
       assistantName = "ChatGPT",
-      planName = "Plus",
+      planName = "FREE",
     }: {
       promptIds: number[]
       assistantName?: string

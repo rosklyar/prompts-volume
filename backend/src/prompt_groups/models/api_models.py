@@ -1,7 +1,7 @@
 """Pydantic models for prompt groups API."""
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -65,8 +65,7 @@ class GroupSummaryResponse(BaseModel):
     """Summary response for a prompt group (without prompts)."""
 
     id: int
-    title: Optional[str] = None
-    is_common: bool
+    title: str
     prompt_count: int
     created_at: datetime
     updated_at: datetime
@@ -78,8 +77,7 @@ class GroupDetailResponse(BaseModel):
     """Detailed response for a prompt group (with prompts)."""
 
     id: int
-    title: Optional[str] = None
-    is_common: bool
+    title: str
     created_at: datetime
     updated_at: datetime
     prompts: List[PromptInGroupResponse] = Field(default_factory=list)

@@ -8,8 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models import PromptGroup, PromptGroupBinding
 from src.prompt_groups.exceptions import (
-    CommonGroupDeletionError,
-    CommonGroupRenameError,
     DuplicateGroupTitleError,
     GroupAccessDeniedError,
     GroupNotFoundError,
@@ -20,32 +18,11 @@ class PromptGroupService:
     """Service for managing prompt groups.
 
     Handles CRUD operations for groups and ensures business rules:
-    - Each user has exactly one common group (auto-created)
-    - Common group cannot be deleted or renamed
     - Group titles must be unique per user
     """
 
     def __init__(self, session: AsyncSession):
         self._session = session
-
-    async def get_or_create_common_group(self, user_id: str) -> PromptGroup:
-        """Get user's common group, creating it if it doesn't exist.
-
-        This is the primary method for ensuring a user has a common group.
-        Called lazily when needed rather than on user creation.
-        """
-        stmt = select(PromptGroup).where(
-            PromptGroup.user_id == user_id, PromptGroup.title.is_(None)
-        )
-        result = await self._session.execute(stmt)
-        group = result.scalar_one_or_none()
-
-        if group is None:
-            group = PromptGroup(user_id=user_id, title=None)
-            self._session.add(group)
-            await self._session.flush()
-
-        return group
 
     async def create_group(self, user_id: str, title: str) -> PromptGroup:
         """Create a new named group for a user.
@@ -85,11 +62,8 @@ class PromptGroupService:
     async def get_user_groups(self, user_id: str) -> List[Tuple[PromptGroup, int]]:
         """Get all groups for a user with prompt counts.
 
-        Returns list of (group, prompt_count) tuples.
-        Ensures common group exists before returning.
+        Returns list of (group, prompt_count) tuples, ordered by creation date.
         """
-        await self.get_or_create_common_group(user_id)
-
         stmt = (
             select(PromptGroup, func.count(PromptGroupBinding.id).label("prompt_count"))
             .outerjoin(
@@ -97,9 +71,7 @@ class PromptGroupService:
             )
             .where(PromptGroup.user_id == user_id)
             .group_by(PromptGroup.id)
-            .order_by(
-                PromptGroup.title.is_(None).desc(), PromptGroup.title
-            )  # Common first, then alpha
+            .order_by(PromptGroup.created_at)
         )
         result = await self._session.execute(stmt)
         return [(row[0], row[1]) for row in result.all()]
@@ -112,13 +84,9 @@ class PromptGroupService:
         Raises:
             GroupNotFoundError: If group doesn't exist
             GroupAccessDeniedError: If user doesn't own the group
-            CommonGroupRenameError: If attempting to rename common group
             DuplicateGroupTitleError: If new title already exists
         """
         group = await self.get_by_id_for_user(group_id, user_id)
-
-        if group.is_common:
-            raise CommonGroupRenameError()
 
         existing = await self._get_by_user_and_title(user_id, title)
         if existing is not None and existing.id != group_id:
@@ -135,12 +103,8 @@ class PromptGroupService:
         Raises:
             GroupNotFoundError: If group doesn't exist
             GroupAccessDeniedError: If user doesn't own the group
-            CommonGroupDeletionError: If attempting to delete common group
         """
         group = await self.get_by_id_for_user(group_id, user_id)
-
-        if group.is_common:
-            raise CommonGroupDeletionError()
 
         await self._session.delete(group)
         await self._session.flush()

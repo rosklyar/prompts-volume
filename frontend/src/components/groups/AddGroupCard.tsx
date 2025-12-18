@@ -130,7 +130,7 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
         Add Group
       </span>
       <span className="text-xs text-gray-400 mt-1">
-        Up to 6 total
+        Up to 3 total
       </span>
     </button>
   )

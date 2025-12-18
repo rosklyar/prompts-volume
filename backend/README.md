@@ -525,24 +525,15 @@ curl -X POST "http://localhost:8000/evaluations/api/v1/release" \
 #### 3.6.4 Get Evaluation Results
 
 ```http
-POST /evaluations/api/v1/results
+GET /evaluations/api/v1/results
 ```
 
 **Purpose**: Retrieve the latest completed evaluation results for a list of prompts
 
-**Request**:
-```json
-{
-  "assistant_name": "ChatGPT",
-  "plan_name": "Plus",
-  "prompt_ids": [1, 2, 3]
-}
-```
-
 **Parameters**:
 - `assistant_name` (required): AI assistant name (e.g., "ChatGPT", "Claude", "Perplexity")
 - `plan_name` (required): Assistant plan/tier (e.g., "Free", "Plus", "Pro")
-- `prompt_ids` (required): List of prompt IDs to get results for
+- `prompt_ids` (required, multi): List of prompt IDs to get results for
 
 **Response**:
 ```json
@@ -550,6 +541,7 @@ POST /evaluations/api/v1/results
   "results": [
     {
       "prompt_id": 1,
+      "prompt_text": "Найкращий смартфон до 15 000 грн?",
       "evaluation_id": 123,
       "status": "completed",
       "answer": {
@@ -567,13 +559,7 @@ POST /evaluations/api/v1/results
 
 **Example**:
 ```bash
-curl -X POST "http://localhost:8000/evaluations/api/v1/results" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "assistant_name": "ChatGPT",
-    "plan_name": "Plus",
-    "prompt_ids": [1, 2, 3]
-  }'
+curl "http://localhost:8000/evaluations/api/v1/results?assistant_name=ChatGPT&plan_name=Plus&prompt_ids=1&prompt_ids=2&prompt_ids=3"
 ```
 
 **Key Features**:

@@ -41,8 +41,7 @@ async def get_user_groups(
 ):
     """Get all prompt groups for the current user.
 
-    Includes the common group (auto-created if missing) and all named groups.
-    Returns groups with prompt counts.
+    Returns groups with prompt counts, ordered by creation date.
     """
     try:
         groups_with_counts = await group_service.get_user_groups(current_user.id)
@@ -51,7 +50,6 @@ async def get_user_groups(
             GroupSummaryResponse(
                 id=group.id,
                 title=group.title,
-                is_common=group.is_common,
                 prompt_count=count,
                 created_at=group.created_at,
                 updated_at=group.updated_at,
@@ -72,16 +70,12 @@ async def create_group(
     current_user: CurrentUser,
     group_service: PromptGroupServiceDep,
 ):
-    """Create a new named prompt group.
-
-    The common group is auto-created and cannot be created manually.
-    """
+    """Create a new named prompt group."""
     try:
         group = await group_service.create_group(current_user.id, request.title)
         return GroupSummaryResponse(
             id=group.id,
             title=group.title,
-            is_common=group.is_common,
             prompt_count=0,
             created_at=group.created_at,
             updated_at=group.updated_at,
@@ -105,7 +99,6 @@ async def get_group_details(
         return GroupDetailResponse(
             id=group.id,
             title=group.title,
-            is_common=group.is_common,
             created_at=group.created_at,
             updated_at=group.updated_at,
             prompts=[PromptInGroupResponse(**p) for p in prompts_data],
@@ -121,10 +114,7 @@ async def update_group(
     current_user: CurrentUser,
     group_service: PromptGroupServiceDep,
 ):
-    """Update a group's title.
-
-    Cannot update the common group.
-    """
+    """Update a group's title."""
     try:
         group = await group_service.update_group(
             group_id, current_user.id, request.title
@@ -136,7 +126,6 @@ async def update_group(
         return GroupSummaryResponse(
             id=group.id,
             title=group.title,
-            is_common=group.is_common,
             prompt_count=count,
             created_at=group.created_at,
             updated_at=group.updated_at,
@@ -151,11 +140,7 @@ async def delete_group(
     current_user: CurrentUser,
     group_service: PromptGroupServiceDep,
 ):
-    """Delete a prompt group.
-
-    Cannot delete the common group.
-    Bindings are cascade deleted.
-    """
+    """Delete a prompt group. Bindings are cascade deleted."""
     try:
         await group_service.delete_group(group_id, current_user.id)
     except PromptGroupError as e:

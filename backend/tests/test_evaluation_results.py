@@ -38,9 +38,9 @@ async def test_get_results_with_valid_data(client):
     assert submit_response.status_code == 200
 
     # Request results via API
-    response = client.post(
+    response = client.get(
         "/evaluations/api/v1/results",
-        json={
+        params={
             "assistant_name": "ChatGPT",
             "plan_name": "PLUS",
             "prompt_ids": [prompt_id]
@@ -61,9 +61,9 @@ async def test_get_results_with_valid_data(client):
 @pytest.mark.asyncio
 async def test_get_results_empty_for_non_existent_prompts(client):
     """Test returns empty list when prompt IDs don't exist in database."""
-    response = client.post(
+    response = client.get(
         "/evaluations/api/v1/results",
-        json={
+        params={
             "assistant_name": "ChatGPT",
             "plan_name": "PLUS",
             "prompt_ids": [999999, 999998, 999997]  # Non-existent prompt IDs
@@ -125,9 +125,9 @@ async def test_get_results_includes_prompts_without_evaluations(client):
     )
 
     # Request results for both prompts - one completed, one with no evaluation
-    response = client.post(
+    response = client.get(
         "/evaluations/api/v1/results",
-        json={
+        params={
             "assistant_name": "ChatGPT",
             "plan_name": "PLUS",
             "prompt_ids": [evaluated_prompt_id, unevaluated_prompt_id]
@@ -162,9 +162,9 @@ async def test_get_results_includes_prompts_without_evaluations(client):
 @pytest.mark.asyncio
 async def test_get_results_invalid_assistant_plan(client):
     """Test returns 422 for invalid assistant/plan combination."""
-    response = client.post(
+    response = client.get(
         "/evaluations/api/v1/results",
-        json={
+        params={
             "assistant_name": "NonExistentBot",
             "plan_name": "PLUS",
             "prompt_ids": [1]
@@ -217,9 +217,9 @@ async def test_get_results_only_returns_completed(client):
     assert release_response.status_code == 200
 
     # Request results for both prompts
-    response = client.post(
+    response = client.get(
         "/evaluations/api/v1/results",
-        json={
+        params={
             "assistant_name": "ChatGPT",
             "plan_name": "PLUS",
             "prompt_ids": [in_progress_prompt_id, failed_prompt_id]
@@ -270,9 +270,9 @@ async def test_get_results_returns_latest_per_prompt(client):
     assert submit_response1.status_code == 200
 
     # Request results - should have the old response
-    response = client.post(
+    response = client.get(
         "/evaluations/api/v1/results",
-        json={
+        params={
             "assistant_name": "ChatGPT",
             "plan_name": "FREE",
             "prompt_ids": [prompt_id]
@@ -317,9 +317,9 @@ async def test_get_results_case_insensitive(client):
     assert submit_response.status_code == 200
 
     # Request with different case
-    response = client.post(
+    response = client.get(
         "/evaluations/api/v1/results",
-        json={
+        params={
             "assistant_name": "chatgpt",  # lowercase
             "plan_name": "pro",  # lowercase
             "prompt_ids": [prompt_id]
