@@ -1,6 +1,6 @@
 """API router for evaluations endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 
 from src.config.settings import settings
@@ -10,7 +10,6 @@ from src.evaluations.models.api_models import (
     AddPriorityPromptsRequest,
     AddPriorityPromptsResponse,
     EvaluationResultItem,
-    GetResultsRequest,
     GetResultsResponse,
     PollRequest,
     PollResponse,
@@ -129,9 +128,11 @@ async def release_evaluation(
     )
 
 
-@router.post("/results", response_model=GetResultsResponse)
+@router.get("/results", response_model=GetResultsResponse)
 async def get_latest_results(
-    request: GetResultsRequest,
+    assistant_name: str = Query(..., description="AI assistant name (e.g., 'ChatGPT', 'Claude', 'Perplexity')"),
+    plan_name: str = Query(..., description="Assistant plan (e.g., 'Free', 'Plus', 'Max')"),
+    prompt_ids: list[int] = Query(..., description="List of prompt IDs to get results for"),
     evaluation_service: EvaluationService = Depends(get_evaluation_service),
 ) -> GetResultsResponse:
     """
@@ -142,8 +143,8 @@ async def get_latest_results(
     """
     # Validate assistant/plan combination and get assistant_plan_id
     assistant_plan_id = await evaluation_service.get_assistant_plan_id(
-        assistant_name=request.assistant_name,
-        plan_name=request.plan_name,
+        assistant_name=assistant_name,
+        plan_name=plan_name,
     )
 
     if assistant_plan_id is None:
@@ -151,14 +152,14 @@ async def get_latest_results(
             status_code=422,
             detail=(
                 f"Invalid assistant/plan combination: "
-                f"assistant_name='{request.assistant_name}', "
-                f"plan_name='{request.plan_name}'"
+                f"assistant_name='{assistant_name}', "
+                f"plan_name='{plan_name}'"
             )
         )
 
     prompt_eval_pairs = await evaluation_service.get_latest_results(
         assistant_plan_id=assistant_plan_id,
-        prompt_ids=request.prompt_ids,
+        prompt_ids=prompt_ids,
     )
 
     results = [
