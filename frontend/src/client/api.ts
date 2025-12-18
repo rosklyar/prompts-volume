@@ -138,8 +138,7 @@ export const promptsApi = {
 
 export interface GroupSummary {
   id: number
-  title: string | null
-  is_common: boolean
+  title: string
   prompt_count: number
   created_at: string
   updated_at: string
@@ -154,8 +153,7 @@ export interface PromptInGroup {
 
 export interface GroupDetail {
   id: number
-  title: string | null
-  is_common: boolean
+  title: string
   created_at: string
   updated_at: string
   prompts: PromptInGroup[]
@@ -299,15 +297,17 @@ export const evaluationsApi = {
     planName: string,
     promptIds: number[]
   ): Promise<GetResultsResponse> {
-    const response = await fetchWithAuth("/evaluations/api/v1/results", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        assistant_name: assistantName,
-        plan_name: planName,
-        prompt_ids: promptIds,
-      }),
+    const params = new URLSearchParams({
+      assistant_name: assistantName,
+      plan_name: planName,
+      prompt_ids: promptIds.join(','),
     })
+    const response = await fetchWithAuth(
+      `/evaluations/api/v1/results?${params.toString()}`,
+      {
+        method: "GET",
+      }
+    )
     return response.json()
   },
 

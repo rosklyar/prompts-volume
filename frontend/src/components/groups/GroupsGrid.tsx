@@ -1,8 +1,9 @@
 /**
  * GroupsGrid - Main grid container with drag-and-drop context
+ * Includes quarantine space for staging prompts before organizing into groups
  */
 
-import { useState, useMemo, useCallback } from "react"
+import { useState, useMemo, useCallback, type ReactNode } from "react"
 import {
   DndContext,
   DragOverlay,
@@ -17,6 +18,7 @@ import {
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable"
 
 import type { GroupDetail, PromptInGroup, EvaluationAnswer } from "@/client/api"
+import type { QuarantinePrompt } from "@/types/groups"
 import {
   useGroups,
   useAllGroupDetails,
@@ -26,11 +28,13 @@ import {
   useRemovePromptsFromGroup,
   useMovePrompt,
   useLoadAnswers,
+  useAddPromptsToGroup,
 } from "@/hooks/useGroups"
 import { GroupCard } from "./GroupCard"
 import { AddGroupCard } from "./AddGroupCard"
+import { QuarantinePromptItem } from "./QuarantineCard"
 import { PromptItem } from "./PromptItem"
-import { MAX_GROUPS, getGroupColorByIsCommon } from "./constants"
+import { MAX_GROUPS, getGroupColor } from "./constants"
 
 interface PromptWithAnswer extends PromptInGroup {
   answer?: EvaluationAnswer | null
@@ -43,7 +47,19 @@ interface GroupState {
   answersLoaded: boolean
 }
 
-export function GroupsGrid() {
+interface GroupsGridProps {
+  quarantinePrompts: QuarantinePrompt[]
+  onRemoveFromQuarantine: (promptId: number) => void
+  renderQuarantine?: () => ReactNode
+}
+
+export function GroupsGrid({
+  quarantinePrompts: _quarantinePrompts,
+  onRemoveFromQuarantine,
+  renderQuarantine,
+}: GroupsGridProps) {
+  // quarantinePrompts is passed to QuarantineCard via renderQuarantine
+  void _quarantinePrompts
   // Fetch groups list
   const { data: groupsData, isLoading: isLoadingGroups } = useGroups()
 
@@ -64,14 +80,15 @@ export function GroupsGrid() {
   const removePrompts = useRemovePromptsFromGroup()
   const movePrompt = useMovePrompt()
   const loadAnswers = useLoadAnswers()
+  const addPromptsToGroup = useAddPromptsToGroup()
 
   // Local state for answers
   const [groupStates, setGroupStates] = useState<Record<number, GroupState>>({})
 
   // Active drag item
   const [activePrompt, setActivePrompt] = useState<{
-    prompt: PromptWithAnswer
-    groupId: number
+    prompt: PromptWithAnswer | QuarantinePrompt
+    groupId: number | "quarantine"
   } | null>(null)
 
   // Sensors for drag
@@ -86,24 +103,13 @@ export function GroupsGrid() {
     })
   )
 
-  // Sort groups: common first, then by created_at (must be before early return)
+  // Sort groups by created_at
   const sortedGroups = useMemo(() => {
     if (!groupDetails) return []
     return [...groupDetails].sort((a, b) => {
-      if (a.is_common && !b.is_common) return -1
-      if (!a.is_common && b.is_common) return 1
       return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     })
   }, [groupDetails])
-
-  // Calculate custom index for colors
-  const getCustomIndex = useCallback(
-    (group: GroupDetail) => {
-      const customGroups = sortedGroups.filter((g) => !g.is_common)
-      return customGroups.findIndex((g) => g.id === group.id)
-    },
-    [sortedGroups]
-  )
 
   // Get prompts for a group with answers merged
   const getPromptsWithAnswers = useCallback(
@@ -151,16 +157,29 @@ export function GroupsGrid() {
 
     if (overId.startsWith("group-")) {
       targetGroupId = parseInt(overId.replace("group-", ""), 10)
-    } else if (overId.includes("-")) {
-      // Dropped on another prompt
+    } else if (overId.includes("-") && !overId.startsWith("quarantine")) {
+      // Dropped on another prompt (not quarantine prompts)
       const [groupIdStr] = overId.split("-")
       targetGroupId = parseInt(groupIdStr, 10)
     }
 
-    if (targetGroupId && targetGroupId !== sourceGroupId) {
+    if (!targetGroupId) return
+
+    // Handle move from quarantine to group
+    if (sourceGroupId === "quarantine") {
+      addPromptsToGroup.mutate(
+        { groupId: targetGroupId, promptIds: [promptId] },
+        {
+          onSuccess: () => {
+            onRemoveFromQuarantine(promptId)
+          },
+        }
+      )
+    } else if (targetGroupId !== sourceGroupId) {
+      // Move between groups
       movePrompt.mutate({
         promptId,
-        sourceGroupId,
+        sourceGroupId: sourceGroupId as number,
         targetGroupId,
       })
     }
@@ -280,18 +299,31 @@ export function GroupsGrid() {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="w-full">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {sortedGroups.map((group) => {
+      <div className="w-full space-y-6">
+        {/* Quarantine section - rendered via prop for layout flexibility */}
+        {renderQuarantine && renderQuarantine()}
+
+        {/* Groups section */}
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-['Fraunces'] text-xl text-[#1F2937]">
+              Your Prompt Groups
+            </h2>
+            <span className="text-xs text-[#9CA3AF]">
+              Drag prompts from staging to groups
+            </span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* User groups */}
+            {sortedGroups.map((group, index) => {
             const state = groupStates[group.id]
             const prompts = getPromptsWithAnswers(group)
-            const customIndex = getCustomIndex(group)
 
             return (
               <GroupCard
                 key={group.id}
                 group={group}
-                customIndex={customIndex}
+                colorIndex={index}
                 prompts={prompts}
                 isLoadingAnswers={state?.isLoadingAnswers || false}
                 answersLoaded={state?.answersLoaded || false}
@@ -305,12 +337,14 @@ export function GroupsGrid() {
             )
           })}
 
-          {canAddMore && (
-            <AddGroupCard
-              onAdd={handleCreateGroup}
-              isLoading={createGroup.isPending}
-            />
-          )}
+            {/* Add group card - only if under limit */}
+            {canAddMore && (
+              <AddGroupCard
+                onAdd={handleCreateGroup}
+                isLoading={createGroup.isPending}
+              />
+            )}
+          </div>
         </div>
       </div>
 
@@ -318,23 +352,27 @@ export function GroupsGrid() {
       <DragOverlay>
         {activePrompt && (
           <div className="w-[300px]">
-            <PromptItem
-              prompt={activePrompt.prompt}
-              groupId={activePrompt.groupId}
-              accentColor={
-                getGroupColorByIsCommon(
-                  sortedGroups.find((g) => g.id === activePrompt.groupId)
-                    ?.is_common || false,
-                  getCustomIndex(
-                    sortedGroups.find(
+            {activePrompt.groupId === "quarantine" ? (
+              <QuarantinePromptItem
+                prompt={activePrompt.prompt as QuarantinePrompt}
+                onDelete={() => {}}
+                isDragOverlay
+              />
+            ) : (
+              <PromptItem
+                prompt={activePrompt.prompt as PromptWithAnswer}
+                groupId={activePrompt.groupId as number}
+                accentColor={
+                  getGroupColor(
+                    sortedGroups.findIndex(
                       (g) => g.id === activePrompt.groupId
-                    ) as GroupDetail
-                  )
-                ).accent
-              }
-              onDelete={() => {}}
-              isDragOverlay
-            />
+                    )
+                  ).accent
+                }
+                onDelete={() => {}}
+                isDragOverlay
+              />
+            )}
           </div>
         )}
       </DragOverlay>

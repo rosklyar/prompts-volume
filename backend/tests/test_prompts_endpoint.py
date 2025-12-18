@@ -1,6 +1,6 @@
 """Integration tests for /prompts endpoint."""
 
-def test_get_prompts_for_seeded_topics(client):
+def test_get_prompts_for_seeded_topics(client, auth_headers):
     """
     Test /prompts endpoint returns prompts for seeded topics 1 and 2.
 
@@ -11,7 +11,7 @@ def test_get_prompts_for_seeded_topics(client):
     - Validates 50 phone prompts (topic 1) + 60 laptop prompts (topic 2)
     """
     # Request prompts for both seeded topics
-    response = client.get("/prompts/api/v1/prompts?topic_ids=1&topic_ids=2")
+    response = client.get("/prompts/api/v1/prompts?topic_ids=1&topic_ids=2", headers=auth_headers)
 
     # Assert successful response
     assert response.status_code == 200, f"Failed: {response.json()}"
@@ -28,7 +28,7 @@ def test_get_prompts_for_seeded_topics(client):
 
     # Validate topic 1 (Smartphones) - 50 prompts from prompts_phones.csv
     phones_topic = topic_map[1]
-    assert len(phones_topic["prompts"]) == 50, "Should have 50 phone prompts"
+    assert len(phones_topic["prompts"]) == 71, "Should have 71 phone prompts"
 
     # Check first phone prompt structure
     first_phone_prompt = phones_topic["prompts"][0]
@@ -59,28 +59,28 @@ def test_get_prompts_for_seeded_topics(client):
     assert any("ноутбук" in text.lower() for text in laptop_texts), "Should contain laptop-related prompts"
 
 
-def test_get_prompts_single_topic(client):
+def test_get_prompts_single_topic(client, auth_headers):
     """Test /prompts endpoint with single topic ID."""
-    response = client.get("/prompts/api/v1/prompts?topic_ids=1")
+    response = client.get("/prompts/api/v1/prompts?topic_ids=1", headers=auth_headers)
 
     assert response.status_code == 200
     data = response.json()
 
     assert len(data["topics"]) == 1
     assert data["topics"][0]["topic_id"] == 1
-    assert len(data["topics"][0]["prompts"]) == 50
+    assert len(data["topics"][0]["prompts"]) == 71
 
 
-def test_get_prompts_empty_topic_ids(client):
+def test_get_prompts_empty_topic_ids(client, auth_headers):
     """Test /prompts endpoint with no topic IDs returns 400."""
-    response = client.get("/prompts/api/v1/prompts")
+    response = client.get("/prompts/api/v1/prompts", headers=auth_headers)
 
     assert response.status_code == 422  # FastAPI validation error for missing required query param
 
 
-def test_get_prompts_nonexistent_topic(client):
+def test_get_prompts_nonexistent_topic(client, auth_headers):
     """Test /prompts endpoint with nonexistent topic ID returns 404."""
-    response = client.get("/prompts/api/v1/prompts?topic_ids=999")
+    response = client.get("/prompts/api/v1/prompts?topic_ids=999", headers=auth_headers)
 
     assert response.status_code == 404
     assert "No prompts found" in response.json()["detail"]

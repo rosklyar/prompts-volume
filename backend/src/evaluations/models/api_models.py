@@ -89,25 +89,6 @@ class ReleaseResponse(BaseModel):
 
 # ===== RESULTS API =====
 
-class GetResultsRequest(BaseModel):
-    """Request to get latest evaluation results for prompts."""
-
-    assistant_name: str = Field(
-        ...,
-        description="AI assistant name (e.g., 'ChatGPT', 'Claude', 'Perplexity')",
-        max_length=100,
-    )
-    plan_name: str = Field(
-        ...,
-        description="Assistant plan (e.g., 'Free', 'Plus', 'Max')",
-        max_length=100,
-    )
-    prompt_ids: List[int] = Field(
-        ...,
-        description="List of prompt IDs to get results for",
-    )
-
-
 class EvaluationResultItem(BaseModel):
     """Single evaluation result."""
 

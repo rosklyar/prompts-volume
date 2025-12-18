@@ -1,7 +1,7 @@
 """Integration tests for similar prompts endpoint."""
 
 
-def test_find_similar_prompts_success(client):
+def test_find_similar_prompts_success(client, auth_headers):
     """Test finding similar prompts with query similar to seeded phone prompts."""
     # Query text similar to seeded prompts like:
     # - "Купити смартфон в Україні з швидкою доставкою"
@@ -11,6 +11,7 @@ def test_find_similar_prompts_success(client):
     response = client.get(
         "/prompts/api/v1/similar",
         params={"text": query_text, "k": 3, "min_similarity": 0.8},
+        headers=auth_headers,
     )
 
     assert response.status_code == 200
