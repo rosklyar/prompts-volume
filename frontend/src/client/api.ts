@@ -1,3 +1,8 @@
+import type {
+  BrandVariation,
+  EnrichedResultsResponse,
+} from "@/types/groups"
+
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000"
 
 export interface UserPublic {
@@ -324,6 +329,29 @@ export const evaluationsApi = {
           prompts: prompts.map((prompt_text) => ({ prompt_text })),
           topic_id: topicId,
         }),
+      }
+    )
+    return response.json()
+  },
+
+  async getEnrichedResults(
+    assistantName: string,
+    planName: string,
+    promptIds: number[],
+    brands: BrandVariation[] | null
+  ): Promise<EnrichedResultsResponse> {
+    const params = new URLSearchParams()
+    params.append("assistant_name", assistantName)
+    params.append("plan_name", planName)
+    // Backend expects multiple prompt_ids params, not comma-separated
+    promptIds.forEach((id) => params.append("prompt_ids", id.toString()))
+
+    const response = await fetchWithAuth(
+      `/evaluations/api/v1/results/enriched?${params.toString()}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brands }),
       }
     )
     return response.json()

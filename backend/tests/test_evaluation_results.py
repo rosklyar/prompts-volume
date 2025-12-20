@@ -7,7 +7,7 @@ from src.database.models import EvaluationStatus, PromptEvaluation
 
 
 @pytest.mark.asyncio
-async def test_get_results_with_valid_data(client):
+async def test_get_results_with_valid_data(client, auth_headers):
     """Test getting results for completed evaluations."""
     # First, poll for a prompt to create an evaluation
     poll_response = client.post(
@@ -44,7 +44,8 @@ async def test_get_results_with_valid_data(client):
             "assistant_name": "ChatGPT",
             "plan_name": "PLUS",
             "prompt_ids": [prompt_id]
-        }
+        },
+        headers=auth_headers
     )
 
     assert response.status_code == 200
@@ -59,7 +60,7 @@ async def test_get_results_with_valid_data(client):
 
 
 @pytest.mark.asyncio
-async def test_get_results_empty_for_non_existent_prompts(client):
+async def test_get_results_empty_for_non_existent_prompts(client, auth_headers):
     """Test returns empty list when prompt IDs don't exist in database."""
     response = client.get(
         "/evaluations/api/v1/results",
@@ -67,7 +68,8 @@ async def test_get_results_empty_for_non_existent_prompts(client):
             "assistant_name": "ChatGPT",
             "plan_name": "PLUS",
             "prompt_ids": [999999, 999998, 999997]  # Non-existent prompt IDs
-        }
+        },
+        headers=auth_headers
     )
 
     assert response.status_code == 200
@@ -76,7 +78,7 @@ async def test_get_results_empty_for_non_existent_prompts(client):
 
 
 @pytest.mark.asyncio
-async def test_get_results_includes_prompts_without_evaluations(client):
+async def test_get_results_includes_prompts_without_evaluations(client, auth_headers):
     """Test returns prompts with null evaluation fields when no evaluation exists."""
     # Poll for a prompt and complete it
     poll_response = client.post(
@@ -131,7 +133,8 @@ async def test_get_results_includes_prompts_without_evaluations(client):
             "assistant_name": "ChatGPT",
             "plan_name": "PLUS",
             "prompt_ids": [evaluated_prompt_id, unevaluated_prompt_id]
-        }
+        },
+        headers=auth_headers
     )
 
     assert response.status_code == 200
@@ -160,7 +163,7 @@ async def test_get_results_includes_prompts_without_evaluations(client):
 
 
 @pytest.mark.asyncio
-async def test_get_results_invalid_assistant_plan(client):
+async def test_get_results_invalid_assistant_plan(client, auth_headers):
     """Test returns 422 for invalid assistant/plan combination."""
     response = client.get(
         "/evaluations/api/v1/results",
@@ -168,7 +171,8 @@ async def test_get_results_invalid_assistant_plan(client):
             "assistant_name": "NonExistentBot",
             "plan_name": "PLUS",
             "prompt_ids": [1]
-        }
+        },
+        headers=auth_headers
     )
 
     assert response.status_code == 422
@@ -177,7 +181,7 @@ async def test_get_results_invalid_assistant_plan(client):
 
 
 @pytest.mark.asyncio
-async def test_get_results_only_returns_completed(client):
+async def test_get_results_only_returns_completed(client, auth_headers):
     """Test that only COMPLETED evaluations are returned, not IN_PROGRESS or FAILED."""
     # Poll for a prompt (creates IN_PROGRESS)
     poll_response = client.post(
@@ -223,7 +227,8 @@ async def test_get_results_only_returns_completed(client):
             "assistant_name": "ChatGPT",
             "plan_name": "PLUS",
             "prompt_ids": [in_progress_prompt_id, failed_prompt_id]
-        }
+        },
+        headers=auth_headers
     )
 
     assert response.status_code == 200
@@ -240,7 +245,7 @@ async def test_get_results_only_returns_completed(client):
 
 
 @pytest.mark.asyncio
-async def test_get_results_returns_latest_per_prompt(client):
+async def test_get_results_returns_latest_per_prompt(client, auth_headers):
     """Test that when multiple evaluations exist, only latest COMPLETED is returned."""
     # Poll for a prompt and complete it with "Old response"
     poll_response1 = client.post(
@@ -276,7 +281,8 @@ async def test_get_results_returns_latest_per_prompt(client):
             "assistant_name": "ChatGPT",
             "plan_name": "FREE",
             "prompt_ids": [prompt_id]
-        }
+        },
+        headers=auth_headers
     )
 
     assert response.status_code == 200
@@ -287,7 +293,7 @@ async def test_get_results_returns_latest_per_prompt(client):
 
 
 @pytest.mark.asyncio
-async def test_get_results_case_insensitive(client):
+async def test_get_results_case_insensitive(client, auth_headers):
     """Test that assistant/plan lookup is case-insensitive."""
     # Poll for a prompt and complete it
     poll_response = client.post(
@@ -323,7 +329,8 @@ async def test_get_results_case_insensitive(client):
             "assistant_name": "chatgpt",  # lowercase
             "plan_name": "pro",  # lowercase
             "prompt_ids": [prompt_id]
-        }
+        },
+        headers=auth_headers
     )
 
     assert response.status_code == 200

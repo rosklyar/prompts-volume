@@ -8,6 +8,7 @@ import {
   evaluationsApi,
   type GroupDetail,
 } from "@/client/api"
+import type { BrandVariation } from "@/types/groups"
 
 // ===== Query Keys =====
 
@@ -241,20 +242,27 @@ export function useAddPriorityPrompt() {
   })
 }
 
-// ===== Load Answers =====
+// ===== Load Report =====
 
-export function useLoadAnswers() {
+export function useLoadReport() {
   return useMutation({
     mutationFn: async ({
       promptIds,
+      brands,
       assistantName = "ChatGPT",
       planName = "FREE",
     }: {
       promptIds: number[]
+      brands: BrandVariation[] | null
       assistantName?: string
       planName?: string
     }) => {
-      return evaluationsApi.getResults(assistantName, planName, promptIds)
+      return evaluationsApi.getEnrichedResults(
+        assistantName,
+        planName,
+        promptIds,
+        brands
+      )
     },
   })
 }

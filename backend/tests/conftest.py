@@ -1,5 +1,8 @@
 """Pytest configuration and fixtures for testing."""
 
+import uuid
+from datetime import timedelta
+
 import pytest
 import pytest_asyncio
 import src.database.session as db_session
@@ -11,6 +14,9 @@ from testcontainers.postgres import PostgresContainer
 
 from src.database import Base, seed_initial_data
 from src.main import app
+from src.auth.crud import create_user
+from src.auth.models import UserCreate
+from src.auth.security import create_access_token
 from src.businessdomain.services import BusinessDomainService
 from src.evaluations.services.evaluation_service import EvaluationService
 from src.geography.services import CountryService, LanguageService
@@ -179,3 +185,61 @@ def evaluation_service_short_timeout(test_session):
         min_days_since_last_evaluation=1,
         evaluation_timeout_hours=0.001
     )
+
+
+@pytest_asyncio.fixture(scope="function")
+async def test_user(test_engine):
+    """
+    Fixture that creates a test user in the database.
+    Uses the test_engine to create a session and user.
+    Each invocation creates a user with a unique email to avoid conflicts.
+    Returns the created User object.
+    """
+    # Create a new session using the test engine
+    async_session_maker = async_sessionmaker(
+        bind=test_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autocommit=False,
+        autoflush=False,
+    )
+
+    # Use UUID to ensure unique email per test
+    unique_email = f"test-{uuid.uuid4()}@example.com"
+
+    async with async_session_maker() as session:
+        user = await create_user(
+            session,
+            UserCreate(
+                email=unique_email,
+                password="testpassword123",
+                full_name="Test User",
+                is_active=True,
+                is_superuser=False,
+            ),
+        )
+        # Detach the user from the session so it can be used outside
+        session.expunge(user)
+        return user
+
+
+@pytest.fixture(scope="function")
+def auth_token(test_user):
+    """
+    Fixture that creates a JWT access token for the test user.
+    Returns the token string.
+    """
+    token = create_access_token(
+        subject=test_user.id,
+        expires_delta=timedelta(minutes=30),
+    )
+    return token
+
+
+@pytest.fixture(scope="function")
+def auth_headers(auth_token):
+    """
+    Fixture that provides authorization headers with Bearer token.
+    Returns a dict with Authorization header.
+    """
+    return {"Authorization": f"Bearer {auth_token}"}

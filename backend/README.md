@@ -124,6 +124,36 @@ https://github.com/user-attachments/assets/3018bcec-bc0e-40ad-a577-4dfbbb5e1758
 
 **Base URL**: `http://localhost:8000`
 
+### Authentication Overview
+
+Most endpoints require JWT authentication via `Authorization: Bearer {token}` header:
+
+**Authenticated Endpoints**:
+- All prompts endpoints: `/prompts/api/v1/*` (meta-info, prompts, generate, similar)
+- Prompt groups endpoints: `/prompt-groups/api/v1/*` (all CRUD operations)
+- Evaluation results: `/evaluations/api/v1/results`
+
+**Public Endpoints** (no authentication required):
+- Health check: `/health`
+- Auth endpoints: `/api/v1/login/access-token`, `/api/v1/signup`
+- Evaluation automation: `/evaluations/api/v1/poll`, `/submit`, `/release`, `/priority-prompts`
+
+**How to authenticate**:
+```bash
+# 1. Login to get access token
+curl -X POST "http://localhost:8000/api/v1/login/access-token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "username=user@example.com&password=yourpassword"
+
+# Response: {"access_token": "eyJhbGc...", "token_type": "bearer"}
+
+# 2. Use token in subsequent requests
+curl -H "Authorization: Bearer eyJhbGc..." \
+  "http://localhost:8000/prompts/api/v1/meta-info?company_url=moyo.ua&iso_country_code=UA"
+```
+
+---
+
 ### 3.1 Health Check
 
 ```http
@@ -131,6 +161,8 @@ GET /health
 ```
 
 **Purpose**: Service health status
+
+**Authentication**: Not required
 
 **Response**:
 ```json
@@ -147,13 +179,21 @@ GET /prompts/api/v1/meta-info
 
 **Purpose**: Retrieve business domain and suggested topics for a company
 
+**Authentication**: Required (JWT Bearer token)
+
+**Headers**:
+```
+Authorization: Bearer {jwt_token}
+```
+
 **Parameters**:
 - `company_url` (required): Company website URL (e.g., `moyo.ua`)
 - `iso_country_code` (required): ISO 3166-1 alpha-2 country code (e.g., `UA`)
 
 **Example**:
 ```bash
-curl "http://localhost:8000/prompts/api/v1/meta-info?company_url=moyo.ua&iso_country_code=UA"
+curl -H "Authorization: Bearer eyJhbGc..." \
+  "http://localhost:8000/prompts/api/v1/meta-info?company_url=moyo.ua&iso_country_code=UA"
 ```
 
 **Response**:
@@ -183,12 +223,20 @@ GET /prompts/api/v1/prompts
 
 **Purpose**: Retrieve pre-seeded prompts for specified topics (fast, DB-first approach)
 
+**Authentication**: Required (JWT Bearer token)
+
+**Headers**:
+```
+Authorization: Bearer {jwt_token}
+```
+
 **Parameters**:
 - `topic_ids` (required, multi): List of topic IDs to retrieve prompts for
 
 **Example**:
 ```bash
-curl "http://localhost:8000/prompts/api/v1/prompts?topic_ids=1&topic_ids=2"
+curl -H "Authorization: Bearer eyJhbGc..." \
+  "http://localhost:8000/prompts/api/v1/prompts?topic_ids=1&topic_ids=2"
 ```
 
 **Response**:
@@ -225,6 +273,13 @@ GET /prompts/api/v1/generate
 
 **Purpose**: Generate custom prompts based on search engine data (fallback when DB has no data)
 
+**Authentication**: Required (JWT Bearer token)
+
+**Headers**:
+```
+Authorization: Bearer {jwt_token}
+```
+
 **Parameters**:
 - `company_url` (required): Company website URL
 - `iso_country_code` (required): ISO 3166-1 alpha-2 country code
@@ -233,7 +288,8 @@ GET /prompts/api/v1/generate
 
 **Example**:
 ```bash
-curl "http://localhost:8000/prompts/api/v1/generate?company_url=moyo.ua&iso_country_code=UA&topics=Смартфони+і+телефони&topics=Ноутбуки&brand_variations=moyo&brand_variations=мойо"
+curl -H "Authorization: Bearer eyJhbGc..." \
+  "http://localhost:8000/prompts/api/v1/generate?company_url=moyo.ua&iso_country_code=UA&topics=Смартфони+і+телефони&topics=Ноутбуки&brand_variations=moyo&brand_variations=мойо"
 ```
 
 **Response**:
@@ -278,6 +334,13 @@ GET /prompts/api/v1/similar
 
 **Purpose**: Find semantically similar prompts from the database using vector similarity search. Designed for autocomplete functionality - as user types, suggest relevant existing prompts.
 
+**Authentication**: Required (JWT Bearer token)
+
+**Headers**:
+```
+Authorization: Bearer {jwt_token}
+```
+
 **Parameters**:
 - `text` (required): Input text to find similar prompts for (1-1000 characters)
 - `k` (optional, default: 10): Maximum number of results to return (1-100)
@@ -285,7 +348,8 @@ GET /prompts/api/v1/similar
 
 **Example**:
 ```bash
-curl "http://localhost:8000/prompts/api/v1/similar?text=купити%20смартфон&k=5&min_similarity=0.8"
+curl -H "Authorization: Bearer eyJhbGc..." \
+  "http://localhost:8000/prompts/api/v1/similar?text=купити%20смартфон&k=5&min_similarity=0.8"
 ```
 
 **Response**:
@@ -335,6 +399,10 @@ The evaluation system provides atomic polling and submission APIs to:
 - Prevent duplicate evaluation work with database locking
 - Handle bot crashes with automatic timeout and retry
 - Preserve evaluation history for analytics
+
+**Authentication**:
+- **Public endpoints** (for automation bots): `/poll`, `/submit`, `/release`, `/priority-prompts`
+- **Authenticated endpoints** (JWT required): `/results`, `/results/enriched`
 
 **Configuration**:
 - `EVALUATION_TIMEOUT_HOURS=2` - Stale evaluations become available for retry after 2 hours
@@ -530,6 +598,13 @@ GET /evaluations/api/v1/results
 
 **Purpose**: Retrieve the latest completed evaluation results for a list of prompts
 
+**Authentication**: Required (JWT Bearer token)
+
+**Headers**:
+```
+Authorization: Bearer {jwt_token}
+```
+
 **Parameters**:
 - `assistant_name` (required): AI assistant name (e.g., "ChatGPT", "Claude", "Perplexity")
 - `plan_name` (required): Assistant plan/tier (e.g., "Free", "Plus", "Pro")
@@ -559,7 +634,8 @@ GET /evaluations/api/v1/results
 
 **Example**:
 ```bash
-curl "http://localhost:8000/evaluations/api/v1/results?assistant_name=ChatGPT&plan_name=Plus&prompt_ids=1&prompt_ids=2&prompt_ids=3"
+curl -H "Authorization: Bearer eyJhbGc..." \
+  "http://localhost:8000/evaluations/api/v1/results?assistant_name=ChatGPT&plan_name=Plus&prompt_ids=1&prompt_ids=2&prompt_ids=3"
 ```
 
 **Key Features**:
@@ -572,7 +648,114 @@ curl "http://localhost:8000/evaluations/api/v1/results?assistant_name=ChatGPT&pl
 
 ---
 
-#### 3.6.5 Complete Evaluation Workflow
+#### 3.6.5 Get Enriched Results
+
+```http
+POST /evaluations/api/v1/results/enriched
+```
+
+**Purpose**: Retrieve evaluation results enriched with brand mention positions and citation domain leaderboard
+
+**Authentication**: Required (JWT Bearer token)
+
+**Headers**:
+```
+Authorization: Bearer {jwt_token}
+Content-Type: application/json
+```
+
+**Query Parameters**:
+- `assistant_name` (required): AI assistant name (e.g., "ChatGPT", "Claude", "Perplexity")
+- `plan_name` (required): Assistant plan/tier (e.g., "Free", "Plus", "Pro")
+- `prompt_ids` (required, multi): List of prompt IDs to get results for
+
+**Request Body**:
+```json
+{
+  "brands": [
+    {"name": "Moyo", "variations": ["Moyo", "Мойо", "moyo.ua"]},
+    {"name": "Rozetka", "variations": ["Rozetka", "Розетка", "rozetka.com.ua"]}
+  ]
+}
+```
+
+**Parameters**:
+- `brands` (optional): List of brands to detect in responses
+  - `name`: Brand display name
+  - `variations`: List of text variations to search for (case-insensitive, supports Cyrillic)
+
+**Response**:
+```json
+{
+  "results": [
+    {
+      "prompt_id": 1,
+      "prompt_text": "Де купити смартфон?",
+      "evaluation_id": 123,
+      "status": "completed",
+      "answer": {
+        "response": "Магазин Moyo пропонує найкращі ціни...",
+        "citations": [
+          {"url": "https://moyo.ua/phones/123", "text": "Moyo Phones"}
+        ],
+        "timestamp": "2025-12-09T10:35:00Z"
+      },
+      "completed_at": "2025-12-09T10:35:00Z",
+      "brand_mentions": [
+        {
+          "brand_name": "Moyo",
+          "mentions": [
+            {
+              "start": 8,
+              "end": 12,
+              "matched_text": "Moyo",
+              "variation": "Moyo"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "citation_leaderboard": {
+    "items": [
+      {"path": "rozetka.com.ua", "count": 5, "is_domain": true},
+      {"path": "rozetka.com.ua/ua/mobile-phones", "count": 3, "is_domain": false},
+      {"path": "moyo.ua", "count": 2, "is_domain": true}
+    ],
+    "total_citations": 7
+  }
+}
+```
+
+**Example**:
+```bash
+curl -X POST "http://localhost:8000/evaluations/api/v1/results/enriched?assistant_name=ChatGPT&plan_name=Plus&prompt_ids=1&prompt_ids=2" \
+  -H "Authorization: Bearer eyJhbGc..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "brands": [
+      {"name": "Moyo", "variations": ["Moyo", "Мойо", "moyo.ua"]},
+      {"name": "Rozetka", "variations": ["Rozetka", "Розетка"]}
+    ]
+  }'
+```
+
+**Key Features**:
+- **Brand mention detection**: Returns character positions (`start`, `end`) for each brand mention in response text
+- **Case-insensitive matching**: Works with both Latin and Cyrillic text
+- **Citation leaderboard**: Aggregates citations by domain and sub-paths with frequency counts
+- **Hierarchical path counting**: `/ua/mobile-phones/xyz` counts for both domain and `/ua/mobile-phones`
+- **Configurable path depth**: Default 2 levels of sub-path tracking
+
+**Use Cases**:
+- Frontend highlighting of brand mentions in AI responses
+- Calculating brand visibility scores across prompt groups
+- Analyzing which domains are most frequently cited by AI assistants
+- Comparing citation patterns across different assistants/plans
+
+---
+
+#### 3.6.6 Complete Evaluation Workflow
 
 **Example: Bot evaluating prompts**
 
@@ -1130,18 +1313,26 @@ So, while client selects prompts that returned instantly from DB - service has a
 import asyncio
 import httpx
 
-async def get_prompts_for_business(company_url: str, iso_country_code: str):
+async def get_prompts_for_business(company_url: str, iso_country_code: str, access_token: str):
     """
     Complete hybrid client flow for getting prompts.
 
     Returns both DB prompts (matched topics) and generated prompts (unmatched topics)
     for complete coverage.
+
+    Args:
+        company_url: Company website URL
+        iso_country_code: ISO country code
+        access_token: JWT access token from login
     """
+    headers = {"Authorization": f"Bearer {access_token}"}
+
     async with httpx.AsyncClient() as client:
         # Step 1: Get meta-info (discover matched and unmatched topics)
         meta_response = await client.get(
             "http://localhost:8000/prompts/api/v1/meta-info",
-            params={"company_url": company_url, "iso_country_code": iso_country_code}
+            params={"company_url": company_url, "iso_country_code": iso_country_code},
+            headers=headers
         )
         meta = meta_response.json()
 
@@ -1159,7 +1350,8 @@ async def get_prompts_for_business(company_url: str, iso_country_code: str):
             matched_ids = [t["id"] for t in matched_topics]
             db_response = await client.get(
                 "http://localhost:8000/prompts/api/v1/prompts",
-                params={"topic_ids": matched_ids}
+                params={"topic_ids": matched_ids},
+                headers=headers
             )
             results["db_prompts"] = db_response.json()
 
@@ -1174,6 +1366,7 @@ async def get_prompts_for_business(company_url: str, iso_country_code: str):
                     "topics": unmatched_names,
                     "brand_variations": brand_variations
                 },
+                headers=headers,
                 timeout=120.0  # Generation takes 30-60s
             )
             results["generated_prompts"] = gen_response.json()
@@ -1181,7 +1374,15 @@ async def get_prompts_for_business(company_url: str, iso_country_code: str):
         return results
 
 # Usage
-results = await get_prompts_for_business("moyo.ua", "UA")
+# First, login to get access token
+login_response = await client.post(
+    "http://localhost:8000/api/v1/login/access-token",
+    data={"username": "user@example.com", "password": "yourpassword"}
+)
+access_token = login_response.json()["access_token"]
+
+# Then get prompts with authentication
+results = await get_prompts_for_business("moyo.ua", "UA", access_token)
 # results["db_prompts"] → Fast pre-seeded prompts from DB (matched topics)
 # results["generated_prompts"] → AI-generated prompts (unmatched topics)
 ```
@@ -1287,16 +1488,25 @@ On first startup, the service automatically:
 ### Example API Calls
 
 ```bash
-# Complete client flow
+# Complete client flow (with authentication)
 
-# 1. Get meta-info
-curl "http://localhost:8000/prompts/api/v1/meta-info?company_url=moyo.ua&iso_country_code=UA"
+# 1. Login to get access token
+TOKEN=$(curl -X POST "http://localhost:8000/api/v1/login/access-token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "username=user@example.com&password=yourpassword" \
+  | jq -r '.access_token')
 
-# 2. Get prompts from DB (fast, ~50ms)
-curl "http://localhost:8000/prompts/api/v1/prompts?topic_ids=1&topic_ids=2"
+# 2. Get meta-info (requires authentication)
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8000/prompts/api/v1/meta-info?company_url=moyo.ua&iso_country_code=UA"
 
-# 3. Generate prompts if needed (slow, ~30-60s, requires OpenAI API key)
-curl "http://localhost:8000/prompts/api/v1/generate?company_url=moyo.ua&iso_country_code=UA&topics=Смартфони+і+телефони&brand_variations=moyo"
+# 3. Get prompts from DB (fast, ~50ms, requires authentication)
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8000/prompts/api/v1/prompts?topic_ids=1&topic_ids=2"
+
+# 4. Generate prompts if needed (slow, ~30-60s, requires OpenAI API key and authentication)
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8000/prompts/api/v1/generate?company_url=moyo.ua&iso_country_code=UA&topics=Смартфони+і+телефони&brand_variations=moyo"
 ```
 
 ### Stopping

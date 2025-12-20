@@ -5,6 +5,7 @@ from typing import List
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from src.auth.deps import CurrentUser
 from src.config.settings import settings
 from src.geography.services import CountryService, get_country_service
 from src.prompts.services import (
@@ -54,6 +55,7 @@ router = APIRouter(prefix="/prompts/api/v1", tags=["prompts"])
 
 @router.get("/meta-info", response_model=CompanyMetaInfoResponse)
 async def get_company_meta_info(
+    current_user: CurrentUser,
     company_url: str = Query(
         ..., description="Company website URL (e.g., 'moyo.ua', 'https://example.com')"
     ),
@@ -161,6 +163,7 @@ async def get_company_meta_info(
 
 @router.get("/generate", response_model=GeneratedPrompts)
 async def generate_prompts(
+    current_user: CurrentUser,
     company_url: str = Query(..., description="Company website URL (e.g., 'moyo.ua', 'https://example.com')"),
     iso_country_code: str = Query(..., description="ISO 3166-1 alpha-2 country code (e.g., 'UA', 'US')"),
     topics: List[str] = Query(..., description="List of topics/categories (from /meta-info)"),
@@ -305,6 +308,7 @@ async def generate_prompts(
 
 @router.get("/prompts", response_model=PromptsListResponse)
 async def get_prompts(
+    current_user: CurrentUser,
     topic_ids: List[int] = Query(..., description="List of topic IDs to retrieve prompts for"),
     prompt_service: PromptService = Depends(get_prompt_service),
 ):
@@ -395,6 +399,7 @@ async def get_prompts(
 
 @router.get("/similar", response_model=SimilarPromptsResponse)
 async def find_similar_prompts(
+    current_user: CurrentUser,
     text: str = Query(
         ...,
         min_length=1,
