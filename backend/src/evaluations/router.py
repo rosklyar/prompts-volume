@@ -20,6 +20,12 @@ from src.evaluations.models.api_models import (
     SubmitAnswerRequest,
     SubmitAnswerResponse,
 )
+from src.evaluations.models.enriched_models import (
+    EnrichedResultsRequestModel,
+    EnrichedResultsResponse,
+)
+from src.evaluations.services.brand_mention_detector import BrandInput
+from src.evaluations.services.results_enricher import ResultsEnricher, get_results_enricher
 from src.evaluations.services.evaluation_service import (
     EvaluationService,
     get_evaluation_service,
@@ -177,6 +183,80 @@ async def get_latest_results(
     ]
 
     return GetResultsResponse(results=results)
+
+
+@router.post("/results/enriched", response_model=EnrichedResultsResponse)
+async def get_enriched_results(
+    current_user: CurrentUser,
+    request: EnrichedResultsRequestModel,
+    assistant_name: str = Query(
+        ..., description="AI assistant name (e.g., 'ChatGPT', 'Claude', 'Perplexity')"
+    ),
+    plan_name: str = Query(
+        ..., description="Assistant plan (e.g., 'Free', 'Plus', 'Max')"
+    ),
+    prompt_ids: list[int] = Query(..., description="List of prompt IDs to get results for"),
+    evaluation_service: EvaluationService = Depends(get_evaluation_service),
+    results_enricher: ResultsEnricher = Depends(get_results_enricher),
+) -> EnrichedResultsResponse:
+    """
+    Get evaluation results enriched with brand mentions and citation leaderboard.
+
+    - Brand mentions include position tracking for frontend highlighting
+    - Citation leaderboard shows frequency by domain and sub-path
+
+    Request body should contain optional brands list:
+    {
+        "brands": [
+            {"name": "Moyo", "variations": ["Moyo", "Мойо", "moyo.ua"]},
+            {"name": "Rozetka", "variations": ["Rozetka", "Розетка"]}
+        ]
+    }
+    """
+    # Validate assistant/plan combination and get assistant_plan_id
+    assistant_plan_id = await evaluation_service.get_assistant_plan_id(
+        assistant_name=assistant_name,
+        plan_name=plan_name,
+    )
+
+    if assistant_plan_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Invalid assistant/plan combination: "
+                f"assistant_name='{assistant_name}', "
+                f"plan_name='{plan_name}'"
+            ),
+        )
+
+    # Get raw results from evaluation service
+    prompt_eval_pairs = await evaluation_service.get_latest_results(
+        assistant_plan_id=assistant_plan_id,
+        prompt_ids=prompt_ids,
+    )
+
+    # Convert to EvaluationResultItem format
+    raw_results = [
+        EvaluationResultItem(
+            prompt_id=prompt.id,
+            prompt_text=prompt.prompt_text,
+            evaluation_id=evaluation.id if evaluation else None,
+            status=evaluation.status.value if evaluation else None,
+            answer=evaluation.answer if evaluation else None,
+            completed_at=evaluation.completed_at if evaluation else None,
+        )
+        for prompt, evaluation in prompt_eval_pairs
+    ]
+
+    # Convert request brands to internal format
+    brands = None
+    if request.brands:
+        brands = [
+            BrandInput(name=b.name, variations=b.variations) for b in request.brands
+        ]
+
+    # Enrich and return
+    return results_enricher.enrich(raw_results, brands)
 
 
 @router.post("/priority-prompts", response_model=AddPriorityPromptsResponse)

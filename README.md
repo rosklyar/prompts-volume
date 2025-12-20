@@ -17,29 +17,7 @@
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────┐
-│         Frontend (React + Vite)             │
-│    - Login/Signup UI                        │
-│    - Protected dashboard                    │
-│    - TanStack Router + Query                │
-└──────────────────┬──────────────────────────┘
-                   │ HTTP/REST
-                   ▼
-┌─────────────────────────────────────────────┐
-│         Backend (FastAPI)                   │
-│    - JWT Authentication                     │
-│    - Prompt generation API                  │
-│    - Vector similarity search               │
-└──────────────────┬──────────────────────────┘
-                   │
-                   ▼
-┌─────────────────────────────────────────────┐
-│    PostgreSQL + pgvector                    │
-│    - Users, Topics, Prompts                 │
-│    - 384-dim embeddings                     │
-└─────────────────────────────────────────────┘
-```
+![Architecture Diagram](latest_arch.png)
 
 ## Quick Start
 

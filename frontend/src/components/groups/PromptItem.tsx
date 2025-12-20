@@ -6,10 +6,13 @@ import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { useState } from "react"
 import type { PromptInGroup, EvaluationAnswer } from "@/client/api"
+import type { BrandMentionResult } from "@/types/groups"
+import { HighlightedResponse } from "./HighlightedResponse"
 
 interface PromptItemProps {
   prompt: PromptInGroup & {
     answer?: EvaluationAnswer | null
+    brand_mentions?: BrandMentionResult[] | null
     isLoading?: boolean
   }
   groupId: number
@@ -55,10 +58,10 @@ export function PromptItem({
       ref={setNodeRef}
       style={style}
       className={`
-        group relative bg-white rounded-lg border border-gray-100
+        group relative bg-white rounded-xl border border-gray-100
         transition-all duration-200
         ${isDragging ? "opacity-50 scale-[0.98]" : ""}
-        ${isDragOverlay ? "shadow-xl rotate-[-2deg] scale-105" : "hover:shadow-md"}
+        ${isDragOverlay ? "shadow-xl rotate-[-2deg] scale-105 max-w-sm" : "hover:shadow-md"}
       `}
     >
       {/* Main prompt row */}
@@ -159,9 +162,17 @@ export function PromptItem({
           </button>
 
           {/* Response */}
-          <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-            {prompt.answer.response}
-          </p>
+          {prompt.brand_mentions && prompt.brand_mentions.length > 0 ? (
+            <HighlightedResponse
+              response={prompt.answer.response}
+              brandMentions={prompt.brand_mentions}
+              accentColor={accentColor}
+            />
+          ) : (
+            <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+              {prompt.answer.response}
+            </p>
+          )}
 
           {/* Citations */}
           {prompt.answer.citations.length > 0 && (

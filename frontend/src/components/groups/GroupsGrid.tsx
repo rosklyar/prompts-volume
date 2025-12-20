@@ -18,7 +18,12 @@ import {
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable"
 
 import type { GroupDetail, PromptInGroup, EvaluationAnswer } from "@/client/api"
-import type { QuarantinePrompt } from "@/types/groups"
+import type {
+  QuarantinePrompt,
+  BrandMentionResult,
+  BrandVisibilityScore,
+  CitationLeaderboard,
+} from "@/types/groups"
 import {
   useGroups,
   useAllGroupDetails,
@@ -27,9 +32,11 @@ import {
   useDeleteGroup,
   useRemovePromptsFromGroup,
   useMovePrompt,
-  useLoadAnswers,
+  useLoadReport,
   useAddPromptsToGroup,
 } from "@/hooks/useGroups"
+import { useBrands } from "@/hooks/useBrands"
+import { calculateVisibilityScores } from "@/lib/report-utils"
 import { GroupCard } from "./GroupCard"
 import { AddGroupCard } from "./AddGroupCard"
 import { QuarantinePromptItem } from "./QuarantineCard"
@@ -38,6 +45,7 @@ import { MAX_GROUPS, getGroupColor } from "./constants"
 
 interface PromptWithAnswer extends PromptInGroup {
   answer?: EvaluationAnswer | null
+  brand_mentions?: BrandMentionResult[] | null
   isLoading?: boolean
 }
 
@@ -45,6 +53,8 @@ interface GroupState {
   prompts: PromptWithAnswer[]
   isLoadingAnswers: boolean
   answersLoaded: boolean
+  visibilityScores: BrandVisibilityScore[] | null
+  citationLeaderboard: CitationLeaderboard | null
 }
 
 interface GroupsGridProps {
@@ -79,10 +89,13 @@ export function GroupsGrid({
   const deleteGroup = useDeleteGroup()
   const removePrompts = useRemovePromptsFromGroup()
   const movePrompt = useMovePrompt()
-  const loadAnswers = useLoadAnswers()
+  const loadReport = useLoadReport()
   const addPromptsToGroup = useAddPromptsToGroup()
 
-  // Local state for answers
+  // Brands management
+  const { getBrands, setBrands } = useBrands()
+
+  // Local state for answers and report data
   const [groupStates, setGroupStates] = useState<Record<number, GroupState>>({})
 
   // Active drag item
@@ -223,10 +236,13 @@ export function GroupsGrid({
     })
   }
 
-  // Handle load answers
-  const handleLoadAnswers = async (group: GroupDetail) => {
+  // Handle load report (enriched results)
+  const handleLoadReport = async (group: GroupDetail) => {
     const promptIds = group.prompts.map((p) => p.prompt_id)
     if (promptIds.length === 0) return
+
+    // Get brands for this group
+    const brands = getBrands(group.id)
 
     // Set loading state
     setGroupStates((prev) => ({
@@ -237,13 +253,18 @@ export function GroupsGrid({
           group.prompts.map((p) => ({ ...p, isLoading: true })),
         isLoadingAnswers: true,
         answersLoaded: prev[group.id]?.answersLoaded || false,
+        visibilityScores: prev[group.id]?.visibilityScores || null,
+        citationLeaderboard: prev[group.id]?.citationLeaderboard || null,
       },
     }))
 
     try {
-      const result = await loadAnswers.mutateAsync({ promptIds })
+      const result = await loadReport.mutateAsync({
+        promptIds,
+        brands: brands.length > 0 ? brands : null,
+      })
 
-      // Merge answers into prompts
+      // Merge answers and brand mentions into prompts
       const promptsWithAnswers = group.prompts.map((p) => {
         const evaluation = result.results.find(
           (r) => r.prompt_id === p.prompt_id
@@ -251,9 +272,16 @@ export function GroupsGrid({
         return {
           ...p,
           answer: evaluation?.answer || null,
+          brand_mentions: evaluation?.brand_mentions || null,
           isLoading: false,
         }
       })
+
+      // Calculate visibility scores
+      const visibilityScores =
+        brands.length > 0
+          ? calculateVisibilityScores(result.results, brands)
+          : null
 
       setGroupStates((prev) => ({
         ...prev,
@@ -261,33 +289,40 @@ export function GroupsGrid({
           prompts: promptsWithAnswers,
           isLoadingAnswers: false,
           answersLoaded: true,
+          visibilityScores,
+          citationLeaderboard: result.citation_leaderboard,
         },
       }))
     } catch (error) {
-      console.error("Failed to load answers:", error)
+      console.error("Failed to load report:", error)
       setGroupStates((prev) => ({
         ...prev,
         [group.id]: {
           ...prev[group.id],
           prompts: group.prompts.map((p) => ({ ...p, isLoading: false })),
           isLoadingAnswers: false,
+          visibilityScores: null,
+          citationLeaderboard: null,
         },
       }))
     }
   }
 
+  // Handle brands change for a group
+  const handleBrandsChange = (groupId: number, brands: typeof getBrands extends (id: number) => infer R ? R : never) => {
+    setBrands(groupId, brands)
+  }
+
   // Loading state
   if (isLoadingGroups || isLoadingDetails) {
     return (
-      <div className="w-full">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[...Array(3)].map((_, i) => (
-            <div
-              key={i}
-              className="h-[320px] rounded-2xl bg-gray-100 animate-pulse"
-            />
-          ))}
-        </div>
+      <div className="w-full space-y-4">
+        {[...Array(3)].map((_, i) => (
+          <div
+            key={i}
+            className="h-[140px] rounded-2xl bg-gray-100 animate-pulse"
+          />
+        ))}
       </div>
     )
   }
@@ -313,11 +348,12 @@ export function GroupsGrid({
               Drag prompts from staging to groups
             </span>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {/* User groups */}
+          <div className="space-y-4">
+            {/* User groups - each in its own row */}
             {sortedGroups.map((group, index) => {
             const state = groupStates[group.id]
             const prompts = getPromptsWithAnswers(group)
+            const brands = getBrands(group.id)
 
             return (
               <GroupCard
@@ -327,12 +363,16 @@ export function GroupsGrid({
                 prompts={prompts}
                 isLoadingAnswers={state?.isLoadingAnswers || false}
                 answersLoaded={state?.answersLoaded || false}
+                brands={brands}
+                visibilityScores={state?.visibilityScores || null}
+                citationLeaderboard={state?.citationLeaderboard || null}
                 onUpdateTitle={(title) => handleUpdateGroup(group.id, title)}
                 onDeleteGroup={() => handleDeleteGroup(group.id)}
                 onDeletePrompt={(promptId) =>
                   handleDeletePrompt(group.id, promptId)
                 }
-                onLoadAnswers={() => handleLoadAnswers(group)}
+                onLoadReport={() => handleLoadReport(group)}
+                onBrandsChange={(brands) => handleBrandsChange(group.id, brands)}
               />
             )
           })}

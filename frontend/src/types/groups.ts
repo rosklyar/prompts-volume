@@ -77,6 +77,62 @@ export interface GetResultsResponse {
   results: EvaluationResultItem[]
 }
 
+// ===== Brand Types =====
+
+export interface BrandVariation {
+  name: string
+  variations: string[]
+}
+
+export interface MentionPosition {
+  start: number
+  end: number
+  matched_text: string
+  variation: string
+}
+
+export interface BrandMentionResult {
+  brand_name: string
+  mentions: MentionPosition[]
+}
+
+// ===== Citation Leaderboard Types =====
+
+export interface CitationCountItem {
+  path: string
+  count: number
+  is_domain: boolean
+}
+
+export interface CitationLeaderboard {
+  items: CitationCountItem[]
+  total_citations: number
+}
+
+// ===== Enriched Result Types =====
+
+export interface EnrichedEvaluationResultItem extends EvaluationResultItem {
+  brand_mentions: BrandMentionResult[] | null
+}
+
+export interface EnrichedResultsResponse {
+  results: EnrichedEvaluationResultItem[]
+  citation_leaderboard: CitationLeaderboard
+}
+
+export interface EnrichedResultsRequest {
+  brands: BrandVariation[] | null
+}
+
+// ===== Visibility Score Types =====
+
+export interface BrandVisibilityScore {
+  brand_name: string
+  prompts_with_mentions: number
+  total_prompts: number
+  visibility_percentage: number
+}
+
 export interface PriorityPromptItem {
   prompt_text: string
 }
@@ -101,6 +157,7 @@ export interface AddPriorityPromptsResponse {
 
 export interface PromptWithAnswer extends PromptInGroup {
   answer?: EvaluationAnswer | null
+  brand_mentions?: BrandMentionResult[] | null
   isExpanded?: boolean
   isLoading?: boolean
 }
@@ -109,6 +166,8 @@ export interface GroupWithPrompts extends Omit<GroupDetail, "prompts"> {
   prompts: PromptWithAnswer[]
   isLoadingAnswers?: boolean
   answersLoaded?: boolean
+  visibilityScores?: BrandVisibilityScore[] | null
+  citationLeaderboard?: CitationLeaderboard | null
 }
 
 // ===== Drag & Drop Types =====

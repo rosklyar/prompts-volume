@@ -402,7 +402,7 @@ The evaluation system provides atomic polling and submission APIs to:
 
 **Authentication**:
 - **Public endpoints** (for automation bots): `/poll`, `/submit`, `/release`, `/priority-prompts`
-- **Authenticated endpoints** (JWT required): `/results`
+- **Authenticated endpoints** (JWT required): `/results`, `/results/enriched`
 
 **Configuration**:
 - `EVALUATION_TIMEOUT_HOURS=2` - Stale evaluations become available for retry after 2 hours
@@ -648,7 +648,114 @@ curl -H "Authorization: Bearer eyJhbGc..." \
 
 ---
 
-#### 3.6.5 Complete Evaluation Workflow
+#### 3.6.5 Get Enriched Results
+
+```http
+POST /evaluations/api/v1/results/enriched
+```
+
+**Purpose**: Retrieve evaluation results enriched with brand mention positions and citation domain leaderboard
+
+**Authentication**: Required (JWT Bearer token)
+
+**Headers**:
+```
+Authorization: Bearer {jwt_token}
+Content-Type: application/json
+```
+
+**Query Parameters**:
+- `assistant_name` (required): AI assistant name (e.g., "ChatGPT", "Claude", "Perplexity")
+- `plan_name` (required): Assistant plan/tier (e.g., "Free", "Plus", "Pro")
+- `prompt_ids` (required, multi): List of prompt IDs to get results for
+
+**Request Body**:
+```json
+{
+  "brands": [
+    {"name": "Moyo", "variations": ["Moyo", "Мойо", "moyo.ua"]},
+    {"name": "Rozetka", "variations": ["Rozetka", "Розетка", "rozetka.com.ua"]}
+  ]
+}
+```
+
+**Parameters**:
+- `brands` (optional): List of brands to detect in responses
+  - `name`: Brand display name
+  - `variations`: List of text variations to search for (case-insensitive, supports Cyrillic)
+
+**Response**:
+```json
+{
+  "results": [
+    {
+      "prompt_id": 1,
+      "prompt_text": "Де купити смартфон?",
+      "evaluation_id": 123,
+      "status": "completed",
+      "answer": {
+        "response": "Магазин Moyo пропонує найкращі ціни...",
+        "citations": [
+          {"url": "https://moyo.ua/phones/123", "text": "Moyo Phones"}
+        ],
+        "timestamp": "2025-12-09T10:35:00Z"
+      },
+      "completed_at": "2025-12-09T10:35:00Z",
+      "brand_mentions": [
+        {
+          "brand_name": "Moyo",
+          "mentions": [
+            {
+              "start": 8,
+              "end": 12,
+              "matched_text": "Moyo",
+              "variation": "Moyo"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "citation_leaderboard": {
+    "items": [
+      {"path": "rozetka.com.ua", "count": 5, "is_domain": true},
+      {"path": "rozetka.com.ua/ua/mobile-phones", "count": 3, "is_domain": false},
+      {"path": "moyo.ua", "count": 2, "is_domain": true}
+    ],
+    "total_citations": 7
+  }
+}
+```
+
+**Example**:
+```bash
+curl -X POST "http://localhost:8000/evaluations/api/v1/results/enriched?assistant_name=ChatGPT&plan_name=Plus&prompt_ids=1&prompt_ids=2" \
+  -H "Authorization: Bearer eyJhbGc..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "brands": [
+      {"name": "Moyo", "variations": ["Moyo", "Мойо", "moyo.ua"]},
+      {"name": "Rozetka", "variations": ["Rozetka", "Розетка"]}
+    ]
+  }'
+```
+
+**Key Features**:
+- **Brand mention detection**: Returns character positions (`start`, `end`) for each brand mention in response text
+- **Case-insensitive matching**: Works with both Latin and Cyrillic text
+- **Citation leaderboard**: Aggregates citations by domain and sub-paths with frequency counts
+- **Hierarchical path counting**: `/ua/mobile-phones/xyz` counts for both domain and `/ua/mobile-phones`
+- **Configurable path depth**: Default 2 levels of sub-path tracking
+
+**Use Cases**:
+- Frontend highlighting of brand mentions in AI responses
+- Calculating brand visibility scores across prompt groups
+- Analyzing which domains are most frequently cited by AI assistants
+- Comparing citation patterns across different assistants/plans
+
+---
+
+#### 3.6.6 Complete Evaluation Workflow
 
 **Example: Bot evaluating prompts**
 
