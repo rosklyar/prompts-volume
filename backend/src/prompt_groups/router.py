@@ -41,7 +41,7 @@ async def get_user_groups(
 ):
     """Get all prompt groups for the current user.
 
-    Returns groups with prompt counts, ordered by creation date.
+    Returns groups with prompt counts and brand counts, ordered by creation date.
     """
     try:
         groups_with_counts = await group_service.get_user_groups(current_user.id)
@@ -50,11 +50,12 @@ async def get_user_groups(
             GroupSummaryResponse(
                 id=group.id,
                 title=group.title,
-                prompt_count=count,
+                prompt_count=prompt_count,
+                brand_count=brand_count,
                 created_at=group.created_at,
                 updated_at=group.updated_at,
             )
-            for group, count in groups_with_counts
+            for group, prompt_count, brand_count in groups_with_counts
         ]
 
         return GroupListResponse(groups=summaries, total=len(summaries))
@@ -70,13 +71,21 @@ async def create_group(
     current_user: CurrentUser,
     group_service: PromptGroupServiceDep,
 ):
-    """Create a new named prompt group."""
+    """Create a new named prompt group with optional brands."""
     try:
-        group = await group_service.create_group(current_user.id, request.title)
+        # Convert Pydantic models to dicts for storage
+        brands_data = None
+        if request.brands:
+            brands_data = [b.model_dump() for b in request.brands]
+
+        group = await group_service.create_group(
+            current_user.id, request.title, brands=brands_data
+        )
         return GroupSummaryResponse(
             id=group.id,
             title=group.title,
             prompt_count=0,
+            brand_count=len(request.brands) if request.brands else 0,
             created_at=group.created_at,
             updated_at=group.updated_at,
         )
@@ -91,16 +100,23 @@ async def get_group_details(
     group_service: PromptGroupServiceDep,
     binding_service: PromptGroupBindingServiceDep,
 ):
-    """Get detailed information about a group including all prompts."""
+    """Get detailed information about a group including brands and prompts."""
     try:
         group = await group_service.get_by_id_for_user(group_id, current_user.id)
         prompts_data = await binding_service.get_group_with_prompts(group)
+
+        # Convert brands from JSONB to Pydantic models
+        from src.prompt_groups.models.brand_models import BrandVariationModel
+        brands = None
+        if group.brands is not None:
+            brands = [BrandVariationModel(**b) for b in group.brands]
 
         return GroupDetailResponse(
             id=group.id,
             title=group.title,
             created_at=group.created_at,
             updated_at=group.updated_at,
+            brands=brands,
             prompts=[PromptInGroupResponse(**p) for p in prompts_data],
         )
     except PromptGroupError as e:
@@ -114,19 +130,27 @@ async def update_group(
     current_user: CurrentUser,
     group_service: PromptGroupServiceDep,
 ):
-    """Update a group's title."""
+    """Update a group's title and/or brands."""
     try:
+        # Convert brands to dict format if provided
+        brands_data = None
+        if request.brands is not None:
+            brands_data = [b.model_dump() for b in request.brands]
+
         group = await group_service.update_group(
-            group_id, current_user.id, request.title
+            group_id, current_user.id, title=request.title, brands=brands_data
         )
 
         groups_with_counts = await group_service.get_user_groups(current_user.id)
-        count = next((c for g, c in groups_with_counts if g.id == group_id), 0)
+        prompt_count, brand_count = next(
+            ((pc, bc) for g, pc, bc in groups_with_counts if g.id == group_id), (0, 0)
+        )
 
         return GroupSummaryResponse(
             id=group.id,
             title=group.title,
-            prompt_count=count,
+            prompt_count=prompt_count,
+            brand_count=brand_count,
             created_at=group.created_at,
             updated_at=group.updated_at,
         )

@@ -34,6 +34,8 @@ from src.evaluations.services.priority_prompt_service import (
     PriorityPromptService,
     get_priority_prompt_service,
 )
+from src.prompt_groups.services import PromptGroupService, get_prompt_group_service
+from src.prompt_groups.exceptions import PromptGroupError
 
 router = APIRouter(prefix="/evaluations/api/v1", tags=["evaluations"])
 
@@ -198,6 +200,7 @@ async def get_enriched_results(
     prompt_ids: list[int] = Query(..., description="List of prompt IDs to get results for"),
     evaluation_service: EvaluationService = Depends(get_evaluation_service),
     results_enricher: ResultsEnricher = Depends(get_results_enricher),
+    group_service: PromptGroupService = Depends(get_prompt_group_service),
 ) -> EnrichedResultsResponse:
     """
     Get evaluation results enriched with brand mentions and citation leaderboard.
@@ -248,12 +251,24 @@ async def get_enriched_results(
         for prompt, evaluation in prompt_eval_pairs
     ]
 
-    # Convert request brands to internal format
+    # Determine brands to use (request.brands takes precedence over group brands)
     brands = None
     if request.brands:
+        # Priority 1: Explicit brands in request body
         brands = [
             BrandInput(name=b.name, variations=b.variations) for b in request.brands
         ]
+    elif request.group_id:
+        # Priority 2: Fetch brands from prompt group
+        try:
+            group = await group_service.get_by_id_for_user(request.group_id, current_user.id)
+            if group.brands:
+                brands = [
+                    BrandInput(name=b["name"], variations=b["variations"]) for b in group.brands
+                ]
+        except PromptGroupError:
+            # Group not found or access denied - continue without brands
+            pass
 
     # Enrich and return
     return results_enricher.enrich(raw_results, brands)

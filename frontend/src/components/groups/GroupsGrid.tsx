@@ -23,6 +23,7 @@ import type {
   BrandMentionResult,
   BrandVisibilityScore,
   CitationLeaderboard,
+  BrandVariation,
 } from "@/types/groups"
 import {
   useGroups,
@@ -35,7 +36,6 @@ import {
   useLoadReport,
   useAddPromptsToGroup,
 } from "@/hooks/useGroups"
-import { useBrands } from "@/hooks/useBrands"
 import { calculateVisibilityScores } from "@/lib/report-utils"
 import { GroupCard } from "./GroupCard"
 import { AddGroupCard } from "./AddGroupCard"
@@ -91,9 +91,6 @@ export function GroupsGrid({
   const movePrompt = useMovePrompt()
   const loadReport = useLoadReport()
   const addPromptsToGroup = useAddPromptsToGroup()
-
-  // Brands management
-  const { getBrands, setBrands } = useBrands()
 
   // Local state for answers and report data
   const [groupStates, setGroupStates] = useState<Record<number, GroupState>>({})
@@ -200,7 +197,7 @@ export function GroupsGrid({
 
   // Handle group creation
   const handleCreateGroup = (title: string) => {
-    createGroup.mutate(title)
+    createGroup.mutate({ title })
   }
 
   // Handle group update
@@ -241,8 +238,8 @@ export function GroupsGrid({
     const promptIds = group.prompts.map((p) => p.prompt_id)
     if (promptIds.length === 0) return
 
-    // Get brands for this group
-    const brands = getBrands(group.id)
+    // Get brands from group (from API)
+    const brands = group.brands || []
 
     // Set loading state
     setGroupStates((prev) => ({
@@ -260,8 +257,8 @@ export function GroupsGrid({
 
     try {
       const result = await loadReport.mutateAsync({
+        groupId: group.id,
         promptIds,
-        brands: brands.length > 0 ? brands : null,
       })
 
       // Merge answers and brand mentions into prompts
@@ -309,8 +306,21 @@ export function GroupsGrid({
   }
 
   // Handle brands change for a group
-  const handleBrandsChange = (groupId: number, brands: typeof getBrands extends (id: number) => infer R ? R : never) => {
-    setBrands(groupId, brands)
+  const handleBrandsChange = (groupId: number, brands: BrandVariation[]) => {
+    // Update brands via API
+    updateGroup.mutate({ groupId, brands })
+    // Clear visibility scores (user must click Report to reload)
+    setGroupStates((prev) => {
+      const state = prev[groupId]
+      if (!state) return prev
+      return {
+        ...prev,
+        [groupId]: {
+          ...state,
+          visibilityScores: null,
+        },
+      }
+    })
   }
 
   // Loading state
@@ -353,7 +363,7 @@ export function GroupsGrid({
             {sortedGroups.map((group, index) => {
             const state = groupStates[group.id]
             const prompts = getPromptsWithAnswers(group)
-            const brands = getBrands(group.id)
+            const brands = group.brands || []
 
             return (
               <GroupCard

@@ -8,6 +8,7 @@ export interface GroupSummary {
   id: number
   title: string
   prompt_count: number
+  brand_count: number
   created_at: string
   updated_at: string
 }
@@ -24,6 +25,7 @@ export interface GroupDetail {
   title: string
   created_at: string
   updated_at: string
+  brands: BrandVariation[] | null
   prompts: PromptInGroup[]
 }
 
@@ -121,7 +123,8 @@ export interface EnrichedResultsResponse {
 }
 
 export interface EnrichedResultsRequest {
-  brands: BrandVariation[] | null
+  brands?: BrandVariation[] | null
+  group_id?: number
 }
 
 // ===== Visibility Score Types =====

@@ -55,7 +55,8 @@ export function useCreateGroup() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (title: string) => groupsApi.createGroup(title),
+    mutationFn: ({ title, brands }: { title: string; brands?: BrandVariation[] }) =>
+      groupsApi.createGroup(title, brands),
     onSuccess: () => {
       // Invalidate all group queries to ensure UI updates
       queryClient.invalidateQueries({ queryKey: groupKeys.all })
@@ -67,8 +68,15 @@ export function useUpdateGroup() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ groupId, title }: { groupId: number; title: string }) =>
-      groupsApi.updateGroup(groupId, title),
+    mutationFn: ({
+      groupId,
+      title,
+      brands,
+    }: {
+      groupId: number
+      title?: string
+      brands?: BrandVariation[] | null
+    }) => groupsApi.updateGroup(groupId, { title, brands }),
     onSuccess: () => {
       // Invalidate all group queries to ensure UI updates
       queryClient.invalidateQueries({ queryKey: groupKeys.all })
@@ -247,13 +255,13 @@ export function useAddPriorityPrompt() {
 export function useLoadReport() {
   return useMutation({
     mutationFn: async ({
+      groupId,
       promptIds,
-      brands,
       assistantName = "ChatGPT",
       planName = "FREE",
     }: {
+      groupId: number
       promptIds: number[]
-      brands: BrandVariation[] | null
       assistantName?: string
       planName?: string
     }) => {
@@ -261,7 +269,7 @@ export function useLoadReport() {
         assistantName,
         planName,
         promptIds,
-        brands
+        groupId
       )
     },
   })

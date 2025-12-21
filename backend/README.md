@@ -679,10 +679,20 @@ Content-Type: application/json
 }
 ```
 
+Or use brands from a prompt group:
+```json
+{
+  "group_id": 2
+}
+```
+
 **Parameters**:
-- `brands` (optional): List of brands to detect in responses
+- `brands` (optional): List of brands to detect in responses (takes priority over group_id)
   - `name`: Brand display name
   - `variations`: List of text variations to search for (case-insensitive, supports Cyrillic)
+- `group_id` (optional): Prompt group ID to fetch brands from
+  - Used only if `brands` is not provided
+  - Group must belong to the authenticated user
 
 **Response**:
 ```json
@@ -727,8 +737,9 @@ Content-Type: application/json
 }
 ```
 
-**Example**:
+**Examples**:
 ```bash
+# With explicit brands
 curl -X POST "http://localhost:8000/evaluations/api/v1/results/enriched?assistant_name=ChatGPT&plan_name=Plus&prompt_ids=1&prompt_ids=2" \
   -H "Authorization: Bearer eyJhbGc..." \
   -H "Content-Type: application/json" \
@@ -738,11 +749,18 @@ curl -X POST "http://localhost:8000/evaluations/api/v1/results/enriched?assistan
       {"name": "Rozetka", "variations": ["Rozetka", "Розетка"]}
     ]
   }'
+
+# With brands from a prompt group
+curl -X POST "http://localhost:8000/evaluations/api/v1/results/enriched?assistant_name=ChatGPT&plan_name=Plus&prompt_ids=1&prompt_ids=2" \
+  -H "Authorization: Bearer eyJhbGc..." \
+  -H "Content-Type: application/json" \
+  -d '{"group_id": 2}'
 ```
 
 **Key Features**:
 - **Brand mention detection**: Returns character positions (`start`, `end`) for each brand mention in response text
 - **Case-insensitive matching**: Works with both Latin and Cyrillic text
+- **Group-based brands**: Use `group_id` to automatically apply brands configured on a prompt group
 - **Citation leaderboard**: Aggregates citations by domain and sub-paths with frequency counts
 - **Hierarchical path counting**: `/ua/mobile-phones/xyz` counts for both domain and `/ua/mobile-phones`
 - **Configurable path depth**: Default 2 levels of sub-path tracking
@@ -823,6 +841,10 @@ The prompt groups system provides authenticated CRUD operations for organizing p
 - **Common group** (auto-created, cannot be deleted): Default collection for frequently used prompts
 - **Named groups**: Custom collections created by users
 
+**Key Features**:
+- **Brand tracking**: Groups can have brands with variations attached for enriched result analysis
+- **Group-based enrichment**: Use `group_id` in enriched results to automatically apply group's brands
+
 All endpoints require JWT authentication via `Authorization: Bearer {token}` header.
 
 ---
@@ -849,6 +871,7 @@ Authorization: Bearer {jwt_token}
       "title": null,
       "is_common": true,
       "prompt_count": 15,
+      "brand_count": 0,
       "created_at": "2025-12-01T10:00:00Z",
       "updated_at": "2025-12-09T14:30:00Z"
     },
@@ -857,6 +880,7 @@ Authorization: Bearer {jwt_token}
       "title": "My Favorites",
       "is_common": false,
       "prompt_count": 8,
+      "brand_count": 2,
       "created_at": "2025-12-05T12:00:00Z",
       "updated_at": "2025-12-08T09:15:00Z"
     }
@@ -873,7 +897,7 @@ curl -H "Authorization: Bearer eyJhbGc..." \
 
 **Key Features**:
 - Returns common group (auto-created if missing) plus all named groups
-- Includes prompt counts for each group
+- Includes prompt counts and brand counts for each group
 - Sorted by creation date
 
 **Use Case**: Display user's prompt collections in UI
@@ -886,7 +910,7 @@ curl -H "Authorization: Bearer eyJhbGc..." \
 POST /prompt-groups/api/v1/groups
 ```
 
-**Purpose**: Create a new named prompt group
+**Purpose**: Create a new named prompt group with optional brands for tracking
 
 **Headers**:
 ```
@@ -897,12 +921,19 @@ Content-Type: application/json
 **Request**:
 ```json
 {
-  "title": "My Favorites"
+  "title": "My Favorites",
+  "brands": [
+    {"name": "Moyo", "variations": ["Moyo", "Мойо", "moyo.ua"]},
+    {"name": "Rozetka", "variations": ["Rozetka", "Розетка"]}
+  ]
 }
 ```
 
 **Parameters**:
 - `title` (required): Group title (1-255 characters, non-empty)
+- `brands` (optional): List of brands to track
+  - `name`: Brand display name (unique within group)
+  - `variations`: List of text variations to detect (case-sensitive, supports Cyrillic)
 
 **Response** (201 Created):
 ```json
@@ -911,6 +942,7 @@ Content-Type: application/json
   "title": "My Favorites",
   "is_common": false,
   "prompt_count": 0,
+  "brand_count": 2,
   "created_at": "2025-12-09T15:00:00Z",
   "updated_at": "2025-12-09T15:00:00Z"
 }
@@ -921,10 +953,15 @@ Content-Type: application/json
 curl -X POST "http://localhost:8000/prompt-groups/api/v1/groups" \
   -H "Authorization: Bearer eyJhbGc..." \
   -H "Content-Type: application/json" \
-  -d '{"title": "My Favorites"}'
+  -d '{
+    "title": "My Favorites",
+    "brands": [
+      {"name": "Moyo", "variations": ["Moyo", "Мойо"]}
+    ]
+  }'
 ```
 
-**Use Case**: User creates custom collection for organizing prompts by category or project
+**Use Case**: User creates custom collection for organizing prompts by category or project, with brands configured for enriched analysis
 
 ---
 
@@ -934,7 +971,7 @@ curl -X POST "http://localhost:8000/prompt-groups/api/v1/groups" \
 GET /prompt-groups/api/v1/groups/{group_id}
 ```
 
-**Purpose**: Get detailed information about a group including all prompts
+**Purpose**: Get detailed information about a group including brands and all prompts
 
 **Headers**:
 ```
@@ -949,6 +986,10 @@ Authorization: Bearer {jwt_token}
   "is_common": false,
   "created_at": "2025-12-05T12:00:00Z",
   "updated_at": "2025-12-09T15:30:00Z",
+  "brands": [
+    {"name": "Moyo", "variations": ["Moyo", "Мойо", "moyo.ua"]},
+    {"name": "Rozetka", "variations": ["Rozetka", "Розетка"]}
+  ],
   "prompts": [
     {
       "binding_id": 10,
@@ -973,7 +1014,8 @@ curl -H "Authorization: Bearer eyJhbGc..." \
 ```
 
 **Key Features**:
-- Returns full group details with all prompts
+- Returns full group details with brands and all prompts
+- Includes configured brands for enriched result analysis
 - Each prompt includes binding metadata (when it was added)
 - Prompts sorted by `added_at` timestamp
 
@@ -981,13 +1023,13 @@ curl -H "Authorization: Bearer eyJhbGc..." \
 
 ---
 
-#### 3.7.4 Update Group Title
+#### 3.7.4 Update Group
 
 ```http
 PATCH /prompt-groups/api/v1/groups/{group_id}
 ```
 
-**Purpose**: Update a group's title
+**Purpose**: Update a group's title and/or brands
 
 **Headers**:
 ```
@@ -995,15 +1037,36 @@ Authorization: Bearer {jwt_token}
 Content-Type: application/json
 ```
 
-**Request**:
+**Request** (update title only):
 ```json
 {
   "title": "Top Picks"
 }
 ```
 
+**Request** (update brands only):
+```json
+{
+  "brands": [
+    {"name": "Moyo", "variations": ["Moyo", "Мойо", "moyo.ua"]},
+    {"name": "Citrus", "variations": ["Citrus", "Цитрус"]}
+  ]
+}
+```
+
+**Request** (clear all brands):
+```json
+{
+  "brands": []
+}
+```
+
 **Parameters**:
-- `title` (required): New group title (1-255 characters, non-empty)
+- `title` (optional): New group title (1-255 characters, non-empty)
+- `brands` (optional): Brands to track
+  - `null` or omitted = no change to brands
+  - `[]` = clear all brands
+  - `[{...}]` = replace with new brands
 
 **Response**:
 ```json
@@ -1012,6 +1075,7 @@ Content-Type: application/json
   "title": "Top Picks",
   "is_common": false,
   "prompt_count": 8,
+  "brand_count": 2,
   "created_at": "2025-12-05T12:00:00Z",
   "updated_at": "2025-12-09T16:00:00Z"
 }
@@ -1022,13 +1086,13 @@ Content-Type: application/json
 curl -X PATCH "http://localhost:8000/prompt-groups/api/v1/groups/2" \
   -H "Authorization: Bearer eyJhbGc..." \
   -H "Content-Type: application/json" \
-  -d '{"title": "Top Picks"}'
+  -d '{"title": "Top Picks", "brands": [{"name": "Moyo", "variations": ["Moyo"]}]}'
 ```
 
 **Restrictions**:
 - Cannot update the common group (returns 400 error)
 
-**Use Case**: Rename group as user reorganizes collections
+**Use Case**: Rename group or update tracked brands as user reorganizes collections
 
 ---
 
@@ -1566,6 +1630,15 @@ prompts-volume/
 │   │   │   └── api_models.py            # Request/response models
 │   │   └── services/
 │   │       └── evaluation_service.py    # Atomic polling, timeout logic
+│   │
+│   ├── prompt_groups/                   # User prompt group management
+│   │   ├── router.py                    # API endpoints (CRUD for groups)
+│   │   ├── models/
+│   │   │   ├── api_models.py            # Request/response models
+│   │   │   └── brand_models.py          # Brand variation models
+│   │   └── services/
+│   │       ├── prompt_group_service.py         # Group CRUD, brand management
+│   │       └── prompt_group_binding_service.py # Prompt-group bindings
 │   │
 │   ├── embeddings/                      # ML pipeline (local models)
 │   │   ├── embeddings_service.py        # sentence-transformers

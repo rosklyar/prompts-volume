@@ -298,3 +298,231 @@ async def test_get_enriched_results_cyrillic_brand_detection(client, auth_header
     assert len(result["brand_mentions"]) == 1
     assert result["brand_mentions"][0]["brand_name"] == "Moyo"
     assert result["brand_mentions"][0]["mentions"][0]["matched_text"] == "Мойо"
+
+
+def test_enriched_results_with_group_brands(client, auth_headers):
+    """Test fetching brands from a prompt group via group_id."""
+    # Create a prompt group with brands
+    group_response = client.post(
+        "/prompt-groups/api/v1/groups",
+        json={
+            "title": "Test Group for Enriched Results",
+            "brands": [
+                {"name": "Rozetka", "variations": ["Rozetka", "Розетка"]},
+                {"name": "Moyo", "variations": ["Moyo", "Мойо"]},
+            ],
+        },
+        headers=auth_headers,
+    )
+    assert group_response.status_code == 201
+    group_id = group_response.json()["id"]
+
+    # Poll and complete an evaluation
+    poll_response = client.post(
+        "/evaluations/api/v1/poll",
+        json={"assistant_name": "ChatGPT", "plan_name": "PLUS"},
+    )
+    assert poll_response.status_code == 200
+    poll_data = poll_response.json()
+
+    if poll_data["evaluation_id"] is None:
+        pytest.skip("No prompts available")
+
+    prompt_id = poll_data["prompt_id"]
+
+    # Submit with brand mentions
+    client.post(
+        "/evaluations/api/v1/submit",
+        json={
+            "evaluation_id": poll_data["evaluation_id"],
+            "answer": {
+                "response": "Купуйте телефони в Rozetka та Мойо",
+                "citations": [],
+                "timestamp": "2024-01-01T00:00:00Z",
+            },
+        },
+    )
+
+    # Request enriched results with group_id (no explicit brands)
+    response = client.post(
+        "/evaluations/api/v1/results/enriched",
+        params={
+            "assistant_name": "ChatGPT",
+            "plan_name": "PLUS",
+            "prompt_ids": [prompt_id],
+        },
+        json={"group_id": group_id},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify brand mentions were detected using group brands
+    result = data["results"][0]
+    assert result["brand_mentions"] is not None
+    brand_names = [bm["brand_name"] for bm in result["brand_mentions"]]
+    assert "Rozetka" in brand_names
+    assert "Moyo" in brand_names
+
+
+def test_enriched_results_request_brands_override_group(client, auth_headers):
+    """Test that request brands take precedence over group brands."""
+    # Create a prompt group with brands
+    group_response = client.post(
+        "/prompt-groups/api/v1/groups",
+        json={
+            "title": "Override Test Group",
+            "brands": [
+                {"name": "GroupBrand", "variations": ["GroupBrand"]},
+            ],
+        },
+        headers=auth_headers,
+    )
+    group_id = group_response.json()["id"]
+
+    # Poll and complete an evaluation
+    poll_response = client.post(
+        "/evaluations/api/v1/poll",
+        json={"assistant_name": "ChatGPT", "plan_name": "FREE"},
+    )
+    poll_data = poll_response.json()
+
+    if poll_data["evaluation_id"] is None:
+        pytest.skip("No prompts available")
+
+    prompt_id = poll_data["prompt_id"]
+
+    client.post(
+        "/evaluations/api/v1/submit",
+        json={
+            "evaluation_id": poll_data["evaluation_id"],
+            "answer": {
+                "response": "Mention GroupBrand and RequestBrand",
+                "citations": [],
+                "timestamp": "2024-01-01T00:00:00Z",
+            },
+        },
+    )
+
+    # Request with both group_id and explicit brands
+    response = client.post(
+        "/evaluations/api/v1/results/enriched",
+        params={
+            "assistant_name": "ChatGPT",
+            "plan_name": "FREE",
+            "prompt_ids": [prompt_id],
+        },
+        json={
+            "group_id": group_id,
+            "brands": [
+                {"name": "RequestBrand", "variations": ["RequestBrand"]},
+            ],
+        },
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify only RequestBrand was detected (not GroupBrand)
+    result = data["results"][0]
+    brand_names = [bm["brand_name"] for bm in result["brand_mentions"]]
+    assert "RequestBrand" in brand_names
+    assert "GroupBrand" not in brand_names
+
+
+def test_enriched_results_invalid_group_id(client, auth_headers):
+    """Test that invalid group_id is handled gracefully."""
+    # Poll and complete an evaluation
+    poll_response = client.post(
+        "/evaluations/api/v1/poll",
+        json={"assistant_name": "ChatGPT", "plan_name": "PRO"},
+    )
+    poll_data = poll_response.json()
+
+    if poll_data["evaluation_id"] is None:
+        pytest.skip("No prompts available")
+
+    prompt_id = poll_data["prompt_id"]
+
+    client.post(
+        "/evaluations/api/v1/submit",
+        json={
+            "evaluation_id": poll_data["evaluation_id"],
+            "answer": {
+                "response": "Test response",
+                "citations": [],
+                "timestamp": "2024-01-01T00:00:00Z",
+            },
+        },
+    )
+
+    # Request with non-existent group_id
+    response = client.post(
+        "/evaluations/api/v1/results/enriched",
+        params={
+            "assistant_name": "ChatGPT",
+            "plan_name": "PRO",
+            "prompt_ids": [prompt_id],
+        },
+        json={"group_id": 999999},
+        headers=auth_headers,
+    )
+
+    # Should succeed but with no brand mentions
+    assert response.status_code == 200
+    data = response.json()
+    assert data["results"][0]["brand_mentions"] is None
+
+
+def test_enriched_results_group_without_brands(client, auth_headers):
+    """Test that group without brands works correctly."""
+    # Create a group without brands
+    group_response = client.post(
+        "/prompt-groups/api/v1/groups",
+        json={"title": "No Brands Group"},
+        headers=auth_headers,
+    )
+    group_id = group_response.json()["id"]
+
+    # Poll and complete an evaluation
+    poll_response = client.post(
+        "/evaluations/api/v1/poll",
+        json={"assistant_name": "ChatGPT", "plan_name": "FREE"},
+    )
+    poll_data = poll_response.json()
+
+    if poll_data["evaluation_id"] is None:
+        pytest.skip("No prompts available")
+
+    prompt_id = poll_data["prompt_id"]
+
+    client.post(
+        "/evaluations/api/v1/submit",
+        json={
+            "evaluation_id": poll_data["evaluation_id"],
+            "answer": {
+                "response": "Test response",
+                "citations": [],
+                "timestamp": "2024-01-01T00:00:00Z",
+            },
+        },
+    )
+
+    # Request with group_id that has no brands
+    response = client.post(
+        "/evaluations/api/v1/results/enriched",
+        params={
+            "assistant_name": "ChatGPT",
+            "plan_name": "FREE",
+            "prompt_ids": [prompt_id],
+        },
+        json={"group_id": group_id},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    # No brands in group, so brand_mentions should be None
+    assert data["results"][0]["brand_mentions"] is None

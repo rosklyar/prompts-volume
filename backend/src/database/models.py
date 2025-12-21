@@ -7,6 +7,7 @@ from typing import List, Optional
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.database.session import Base
@@ -364,6 +365,11 @@ class PromptGroup(Base):
         DateTime(timezone=True),
         nullable=False,
         server_default=text("NOW()"),
+    )
+    brands: Mapped[Optional[List[dict]]] = mapped_column(
+        JSONB,
+        nullable=True,
+        comment="Brand/company tracking with variations"
     )
 
     # Relationships

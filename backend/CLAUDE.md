@@ -86,7 +86,8 @@ The project follows Domain-Driven Design (DDD) with clear separation of concerns
 - **`src/prompt_groups/`** - User prompt group management
   - `router.py` - API endpoints (CRUD for groups, add/remove prompts)
   - `models/api_models.py` - Request/response models (CreateGroupRequest, GroupDetailResponse, etc.)
-  - `services/prompt_group_service.py` - PromptGroupService (group CRUD, common group logic)
+  - `models/brand_models.py` - Brand variation models (BrandVariationModel)
+  - `services/prompt_group_service.py` - PromptGroupService (group CRUD, brand management)
   - `services/prompt_group_binding_service.py` - PromptGroupBindingService (prompt-group bindings)
   - `exceptions.py` - Domain exceptions (GroupNotFoundError, CommonGroupDeletionError, etc.)
 
