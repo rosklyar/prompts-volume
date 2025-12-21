@@ -27,7 +27,11 @@ class EnrichedResultsRequestModel(BaseModel):
     """Request body for enriched results."""
 
     brands: Optional[List[BrandInputModel]] = Field(
-        None, description="Brands to detect in responses"
+        None, description="Brands to detect in responses (overrides group brands if provided)"
+    )
+    group_id: Optional[int] = Field(
+        None,
+        description="Prompt group ID to fetch brands from"
     )
 
 

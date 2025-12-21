@@ -145,6 +145,7 @@ export interface GroupSummary {
   id: number
   title: string
   prompt_count: number
+  brand_count: number
   created_at: string
   updated_at: string
 }
@@ -161,6 +162,7 @@ export interface GroupDetail {
   title: string
   created_at: string
   updated_at: string
+  brands: BrandVariation[] | null
   prompts: PromptInGroup[]
 }
 
@@ -236,22 +238,25 @@ export const groupsApi = {
     return response.json()
   },
 
-  async createGroup(title: string): Promise<GroupSummary> {
+  async createGroup(title: string, brands?: BrandVariation[]): Promise<GroupSummary> {
     const response = await fetchWithAuth("/prompt-groups/api/v1/groups", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title }),
+      body: JSON.stringify({ title, brands }),
     })
     return response.json()
   },
 
-  async updateGroup(groupId: number, title: string): Promise<GroupSummary> {
+  async updateGroup(
+    groupId: number,
+    data: { title?: string; brands?: BrandVariation[] | null }
+  ): Promise<GroupSummary> {
     const response = await fetchWithAuth(
       `/prompt-groups/api/v1/groups/${groupId}`,
       {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title }),
+        body: JSON.stringify(data),
       }
     )
     return response.json()
@@ -338,7 +343,7 @@ export const evaluationsApi = {
     assistantName: string,
     planName: string,
     promptIds: number[],
-    brands: BrandVariation[] | null
+    groupId: number
   ): Promise<EnrichedResultsResponse> {
     const params = new URLSearchParams()
     params.append("assistant_name", assistantName)
@@ -351,7 +356,7 @@ export const evaluationsApi = {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ brands }),
+        body: JSON.stringify({ group_id: groupId }),
       }
     )
     return response.json()

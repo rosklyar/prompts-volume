@@ -24,8 +24,13 @@ class PromptGroupService:
     def __init__(self, session: AsyncSession):
         self._session = session
 
-    async def create_group(self, user_id: str, title: str) -> PromptGroup:
+    async def create_group(self, user_id: str, title: str, brands: Optional[List[dict]] = None) -> PromptGroup:
         """Create a new named group for a user.
+
+        Args:
+            user_id: The user ID who owns the group
+            title: The group title
+            brands: Optional list of brand dictionaries with name and variations
 
         Raises:
             DuplicateGroupTitleError: If user already has a group with this title
@@ -34,7 +39,7 @@ class PromptGroupService:
         if existing is not None:
             raise DuplicateGroupTitleError(title)
 
-        group = PromptGroup(user_id=user_id, title=title)
+        group = PromptGroup(user_id=user_id, title=title, brands=brands)
         self._session.add(group)
         await self._session.flush()
         return group
@@ -59,10 +64,10 @@ class PromptGroupService:
             raise GroupAccessDeniedError(group_id, user_id)
         return group
 
-    async def get_user_groups(self, user_id: str) -> List[Tuple[PromptGroup, int]]:
-        """Get all groups for a user with prompt counts.
+    async def get_user_groups(self, user_id: str) -> List[Tuple[PromptGroup, int, int]]:
+        """Get all groups for a user with prompt counts and brand counts.
 
-        Returns list of (group, prompt_count) tuples, ordered by creation date.
+        Returns list of (group, prompt_count, brand_count) tuples, ordered by creation date.
         """
         stmt = (
             select(PromptGroup, func.count(PromptGroupBinding.id).label("prompt_count"))
@@ -74,12 +79,18 @@ class PromptGroupService:
             .order_by(PromptGroup.created_at)
         )
         result = await self._session.execute(stmt)
-        return [(row[0], row[1]) for row in result.all()]
+        return [(row[0], row[1], len(row[0].brands) if row[0].brands else 0) for row in result.all()]
 
     async def update_group(
-        self, group_id: int, user_id: str, title: str
+        self, group_id: int, user_id: str, title: Optional[str] = None, brands: Optional[List[dict]] = None
     ) -> PromptGroup:
-        """Update a group's title.
+        """Update a group's title and/or brands.
+
+        Args:
+            group_id: The group ID to update
+            user_id: The user ID who owns the group
+            title: Optional new title (None = no change)
+            brands: Optional brands list (None = no change, [] = clear brands)
 
         Raises:
             GroupNotFoundError: If group doesn't exist
@@ -88,11 +99,17 @@ class PromptGroupService:
         """
         group = await self.get_by_id_for_user(group_id, user_id)
 
-        existing = await self._get_by_user_and_title(user_id, title)
-        if existing is not None and existing.id != group_id:
-            raise DuplicateGroupTitleError(title)
+        # Only check title uniqueness if title is being changed
+        if title is not None and title != group.title:
+            existing = await self._get_by_user_and_title(user_id, title)
+            if existing is not None and existing.id != group_id:
+                raise DuplicateGroupTitleError(title)
+            group.title = title
 
-        group.title = title
+        # Update brands if provided (None means no change, [] means clear brands)
+        if brands is not None:
+            group.brands = brands
+
         group.updated_at = datetime.now(timezone.utc)
         await self._session.flush()
         return group
