@@ -58,6 +58,9 @@ async def seed_initial_data(session: AsyncSession) -> None:
     # 9. Seed Phone Evaluations (requires prompts and assistant plans)
     await _seed_phone_evaluations(session)
 
+    # 10. Seed Laptop Evaluations (requires prompts and assistant plans)
+    await _seed_laptop_evaluations(session)
+
     await session.commit()
 
 
@@ -329,6 +332,94 @@ async def _seed_phone_evaluations(session: AsyncSession) -> None:
 
         # Use first answer
         answer = answers[0]
+
+        # Skip if timestamp is missing
+        if "timestamp" not in answer:
+            continue
+
+        # Parse timestamp and calculate dates
+        completed_at = datetime.fromisoformat(answer["timestamp"])
+        claimed_at = completed_at - timedelta(hours=1)
+        created_at = completed_at - timedelta(hours=2)
+
+        # Build answer JSON
+        answer_json = {
+            "response": answer["response"],
+            "citations": answer["citations"],
+            "timestamp": answer["timestamp"]
+        }
+
+        # Create evaluation
+        evaluation = PromptEvaluation(
+            prompt_id=prompt.id,
+            assistant_plan_id=1,  # ChatGPT Free
+            status=EvaluationStatus.COMPLETED,
+            answer=answer_json,
+            created_at=created_at,
+            claimed_at=claimed_at,
+            completed_at=completed_at,
+        )
+        evaluations.append(evaluation)
+
+    # 5. Bulk insert
+    if evaluations:
+        session.add_all(evaluations)
+        await session.flush()
+
+        # 6. Reset sequence
+        await session.execute(
+            text(
+                "SELECT setval('prompt_evaluations_id_seq', "
+                "(SELECT MAX(id) FROM prompt_evaluations))"
+            )
+        )
+
+
+async def _seed_laptop_evaluations(session: AsyncSession) -> None:
+    """Seed laptop prompt evaluations from JSON data."""
+    # 1. Idempotency check
+    result = await session.execute(
+        select(PromptEvaluation)
+        .join(Prompt)
+        .where(
+            Prompt.topic_id == 2,
+            PromptEvaluation.assistant_plan_id == 1,
+        )
+        .limit(1)
+    )
+    if result.scalar_one_or_none() is not None:
+        return  # Already seeded
+
+    # 2. Load JSON data
+    json_path = Path(__file__).parent.parent / "data" / "results" / "laptops.json"
+    with open(json_path, "r", encoding="utf-8") as f:
+        laptops_data = json.load(f)
+
+    # 3. Get prompts from database (ordered by ID for consistent mapping)
+    result = await session.execute(
+        select(Prompt)
+        .where(Prompt.topic_id == 2)
+        .order_by(Prompt.id.asc())
+    )
+    prompts = result.scalars().all()
+
+    # 4. Build evaluations
+    evaluations = []
+    for idx, laptop_data in enumerate(laptops_data):
+        if idx >= len(prompts):
+            break  # Safety check
+
+        prompt = prompts[idx]
+        answers = laptop_data.get("answers", [])
+        if not answers:
+            continue  # Skip if no answers
+
+        # Use first answer
+        answer = answers[0]
+
+        # Skip if timestamp is missing
+        if "timestamp" not in answer:
+            continue
 
         # Parse timestamp and calculate dates
         completed_at = datetime.fromisoformat(answer["timestamp"])
