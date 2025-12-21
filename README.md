@@ -1,6 +1,6 @@
 # Prompts Volume
 
-> Full-stack AI-powered prompts management platform
+Full-stack AI-powered prompts management platform
 
 ## Overview
 
@@ -9,15 +9,15 @@
 
 ## Features
 
-- 🔐 User authentication (JWT-based)
-- 🤖 AI-powered prompt generation
-- 📊 Semantic search with vector similarity
-- 🌍 Multilingual support (Ukrainian, Russian, English)
-- 📈 Prompt evaluation tracking
+- User authentication (JWT-based)
+- AI-powered prompt generation
+- Semantic search with vector similarity in prompts database([paraphrase-multilingual-MiniLM-L12-v2 embedder supports 50+ languages](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2))
+- Prompts periodic evaluation
+- Priority evaluation for prompts not from db
 
 ## Architecture
 
-![Architecture Diagram](latest_arch.png)
+![Architecture Diagram](arhitecture.png)
 
 ## Quick Start
 
@@ -53,7 +53,7 @@ docker-compose up -d
 | Frontend | 5173 | React dev server |
 | Backend | 8000 | FastAPI application |
 | PostgreSQL | 5432 | Database with pgvector |
-
+| Chat-automation |    | Playwright dockerized bot for scrapping answers
 ## Development
 
 ### Backend Development
