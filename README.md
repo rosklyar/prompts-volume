@@ -19,6 +19,13 @@ Full-stack AI-powered prompts management platform
 
 ![Architecture Diagram](arhitecture.png)
 
+## Demo
+
+- Smartphones group with existing prompts
+https://github.com/user-attachments/assets/d46eee20-31be-448f-84e4-562162ec76f9
+- GEO group with new prompt
+https://github.com/user-attachments/assets/70568a80-b094-4a24-96ea-99367ea30b60
+
 ## Quick Start
 
 ### Prerequisites
