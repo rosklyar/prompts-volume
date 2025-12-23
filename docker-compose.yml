@@ -41,34 +41,34 @@ services:
       start_period: 5s
       retries: 3
 
-  frontend:
-    build: ./frontend
-    container_name: prompts-frontend
-    depends_on:
-      - backend
-    environment:
-      VITE_API_URL: http://localhost:8000
-    ports:
-      - "5173:5173"
-  chat-automation:
-    image: chat-automation:latest
-    container_name: chat-automation
-    depends_on:
-      backend:
-        condition: service_healthy
-    environment:
-      SESSIONS_DIR: /app/sessions
-      API_URL: http://prompts-backend:8000
-      RESULTS_API_URL: http://prompts-backend:8000
-      ASSISTANT_NAME: ChatGPT
-      PLAN_NAME: Free
-      MAX_ATTEMPTS: 1
-      PER_SESSION_RUNS: 2
-      POLL_RETRY_SECONDS: 10
-      IDLE_TIMEOUT_MINUTES: 30
-    volumes:
-      - ./sessions:/app/sessions:ro
-    restart: unless-stopped
+  # frontend:
+  #   build: ./frontend
+  #   container_name: prompts-frontend
+  #   depends_on:
+  #     - backend
+  #   environment:
+  #     VITE_API_URL: http://localhost:8000
+  #   ports:
+  #     - "5173:5173"
+  # chat-automation:
+  #   image: chat-automation:latest
+  #   container_name: chat-automation
+  #   depends_on:
+  #     backend:
+  #       condition: service_healthy
+  #   environment:
+  #     SESSIONS_DIR: /app/sessions
+  #     API_URL: http://prompts-backend:8000
+  #     RESULTS_API_URL: http://prompts-backend:8000
+  #     ASSISTANT_NAME: ChatGPT
+  #     PLAN_NAME: Free
+  #     MAX_ATTEMPTS: 1
+  #     PER_SESSION_RUNS: 2
+  #     POLL_RETRY_SECONDS: 10
+  #     IDLE_TIMEOUT_MINUTES: 30
+  #   volumes:
+  #     - ./sessions:/app/sessions:ro
+  #   restart: unless-stopped
 
 volumes:
   postgres_data:
