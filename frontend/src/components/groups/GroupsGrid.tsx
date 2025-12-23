@@ -1,9 +1,9 @@
 /**
  * GroupsGrid - Main grid container with drag-and-drop context
- * Includes quarantine space for staging prompts before organizing into groups
+ * Handles group-to-group prompt movement
  */
 
-import { useState, useMemo, useCallback, type ReactNode } from "react"
+import { useState, useMemo, useCallback } from "react"
 import {
   DndContext,
   DragOverlay,
@@ -19,7 +19,6 @@ import { sortableKeyboardCoordinates } from "@dnd-kit/sortable"
 
 import type { GroupDetail, PromptInGroup, EvaluationAnswer } from "@/client/api"
 import type {
-  QuarantinePrompt,
   BrandMentionResult,
   BrandVisibilityScore,
   CitationLeaderboard,
@@ -34,12 +33,11 @@ import {
   useRemovePromptsFromGroup,
   useMovePrompt,
   useLoadReport,
-  useAddPromptsToGroup,
 } from "@/hooks/useGroups"
 import { calculateVisibilityScores } from "@/lib/report-utils"
+import { saveReportCache, loadReportCache, clearReportCache } from "@/lib/report-storage"
 import { GroupCard } from "./GroupCard"
 import { AddGroupCard } from "./AddGroupCard"
-import { QuarantinePromptItem } from "./QuarantineCard"
 import { PromptItem } from "./PromptItem"
 import { MAX_GROUPS, getGroupColor } from "./constants"
 
@@ -57,19 +55,7 @@ interface GroupState {
   citationLeaderboard: CitationLeaderboard | null
 }
 
-interface GroupsGridProps {
-  quarantinePrompts: QuarantinePrompt[]
-  onRemoveFromQuarantine: (promptId: number) => void
-  renderQuarantine?: () => ReactNode
-}
-
-export function GroupsGrid({
-  quarantinePrompts: _quarantinePrompts,
-  onRemoveFromQuarantine,
-  renderQuarantine,
-}: GroupsGridProps) {
-  // quarantinePrompts is passed to QuarantineCard via renderQuarantine
-  void _quarantinePrompts
+export function GroupsGrid() {
   // Fetch groups list
   const { data: groupsData, isLoading: isLoadingGroups } = useGroups()
 
@@ -90,15 +76,14 @@ export function GroupsGrid({
   const removePrompts = useRemovePromptsFromGroup()
   const movePrompt = useMovePrompt()
   const loadReport = useLoadReport()
-  const addPromptsToGroup = useAddPromptsToGroup()
 
   // Local state for answers and report data
   const [groupStates, setGroupStates] = useState<Record<number, GroupState>>({})
 
   // Active drag item
   const [activePrompt, setActivePrompt] = useState<{
-    prompt: PromptWithAnswer | QuarantinePrompt
-    groupId: number | "quarantine"
+    prompt: PromptWithAnswer
+    groupId: number
   } | null>(null)
 
   // Sensors for drag
@@ -121,16 +106,59 @@ export function GroupsGrid({
     })
   }, [groupDetails])
 
+  // Load cached states from localStorage (computed, not stored in state)
+  const cachedGroupStates = useMemo(() => {
+    if (!groupDetails || groupDetails.length === 0) return {}
+
+    const cachedStates: Record<number, GroupState> = {}
+
+    groupDetails.forEach((group) => {
+      const cached = loadReportCache(group.id)
+      if (cached) {
+        cachedStates[group.id] = {
+          prompts: cached.prompts,
+          isLoadingAnswers: false,
+          answersLoaded: true,
+          visibilityScores: cached.visibilityScores,
+          citationLeaderboard: cached.citationLeaderboard,
+        }
+      }
+    })
+
+    return cachedStates
+  }, [groupDetails])
+
+  // Merge cached states with runtime states (runtime takes precedence)
+  const mergedGroupStates = useMemo(() => {
+    return { ...cachedGroupStates, ...groupStates }
+  }, [cachedGroupStates, groupStates])
+
   // Get prompts for a group with answers merged
+  // Always use group.prompts as the source of truth for which prompts exist,
+  // but merge in any cached answer data we have
   const getPromptsWithAnswers = useCallback(
     (group: GroupDetail): PromptWithAnswer[] => {
-      const state = groupStates[group.id]
+      const state = mergedGroupStates[group.id]
       if (!state) {
         return group.prompts.map((p) => ({ ...p }))
       }
-      return state.prompts
+
+      // Create a map of cached answers by prompt_id
+      const cachedAnswers = new Map(
+        state.prompts.map((p) => [p.prompt_id, { answer: p.answer, brand_mentions: p.brand_mentions }])
+      )
+
+      // Merge: use group.prompts as source of truth, but add cached answers
+      return group.prompts.map((p) => {
+        const cached = cachedAnswers.get(p.prompt_id)
+        return {
+          ...p,
+          answer: cached?.answer ?? null,
+          brand_mentions: cached?.brand_mentions ?? null,
+        }
+      })
     },
-    [groupStates]
+    [mergedGroupStates]
   )
 
   const canAddMore = sortedGroups.length < MAX_GROUPS
@@ -139,10 +167,10 @@ export function GroupsGrid({
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event
     const data = active.data.current
-    if (data?.type === "prompt") {
+    if (data?.type === "prompt" && data.groupId !== "quarantine") {
       setActivePrompt({
         prompt: data.prompt,
-        groupId: data.groupId,
+        groupId: data.groupId as number,
       })
     }
   }
@@ -162,37 +190,28 @@ export function GroupsGrid({
     const sourceGroupId = activeData.groupId
     const promptId = activeData.prompt.prompt_id
 
+    // Only handle group-to-group moves
+    if (sourceGroupId === "quarantine") return
+
     // Determine target group
     let targetGroupId: number | null = null
 
     if (overId.startsWith("group-")) {
       targetGroupId = parseInt(overId.replace("group-", ""), 10)
-    } else if (overId.includes("-") && !overId.startsWith("quarantine")) {
-      // Dropped on another prompt (not quarantine prompts)
+    } else if (overId.includes("-")) {
+      // Dropped on another prompt
       const [groupIdStr] = overId.split("-")
       targetGroupId = parseInt(groupIdStr, 10)
     }
 
-    if (!targetGroupId) return
+    if (!targetGroupId || targetGroupId === sourceGroupId) return
 
-    // Handle move from quarantine to group
-    if (sourceGroupId === "quarantine") {
-      addPromptsToGroup.mutate(
-        { groupId: targetGroupId, promptIds: [promptId] },
-        {
-          onSuccess: () => {
-            onRemoveFromQuarantine(promptId)
-          },
-        }
-      )
-    } else if (targetGroupId !== sourceGroupId) {
-      // Move between groups
-      movePrompt.mutate({
-        promptId,
-        sourceGroupId: sourceGroupId as number,
-        targetGroupId,
-      })
-    }
+    // Move between groups
+    movePrompt.mutate({
+      promptId,
+      sourceGroupId: sourceGroupId as number,
+      targetGroupId,
+    })
   }
 
   // Handle group creation
@@ -214,6 +233,8 @@ export function GroupsGrid({
       delete newState[groupId]
       return newState
     })
+    // Clear cached report data
+    clearReportCache(groupId)
   }
 
   // Handle prompt deletion
@@ -290,6 +311,14 @@ export function GroupsGrid({
           citationLeaderboard: result.citation_leaderboard,
         },
       }))
+
+      // Cache the report data in localStorage
+      saveReportCache(
+        group.id,
+        promptsWithAnswers,
+        visibilityScores,
+        result.citation_leaderboard
+      )
     } catch (error) {
       console.error("Failed to load report:", error)
       setGroupStates((prev) => ({
@@ -345,47 +374,46 @@ export function GroupsGrid({
       onDragEnd={handleDragEnd}
     >
       <div className="w-full space-y-6">
-        {/* Quarantine section - rendered via prop for layout flexibility */}
-        {renderQuarantine && renderQuarantine()}
-
         {/* Groups section */}
         <div>
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-['Fraunces'] text-xl text-[#1F2937]">
               Your Prompt Groups
             </h2>
-            <span className="text-xs text-[#9CA3AF]">
-              Drag prompts from staging to groups
-            </span>
+            {sortedGroups.length > 0 && (
+              <span className="text-xs text-[#9CA3AF]">
+                Drag prompts between groups to reorganize
+              </span>
+            )}
           </div>
           <div className="space-y-4">
             {/* User groups - each in its own row */}
             {sortedGroups.map((group, index) => {
-            const state = groupStates[group.id]
-            const prompts = getPromptsWithAnswers(group)
-            const brands = group.brands || []
+              const state = mergedGroupStates[group.id]
+              const prompts = getPromptsWithAnswers(group)
+              const brands = group.brands || []
 
-            return (
-              <GroupCard
-                key={group.id}
-                group={group}
-                colorIndex={index}
-                prompts={prompts}
-                isLoadingAnswers={state?.isLoadingAnswers || false}
-                answersLoaded={state?.answersLoaded || false}
-                brands={brands}
-                visibilityScores={state?.visibilityScores || null}
-                citationLeaderboard={state?.citationLeaderboard || null}
-                onUpdateTitle={(title) => handleUpdateGroup(group.id, title)}
-                onDeleteGroup={() => handleDeleteGroup(group.id)}
-                onDeletePrompt={(promptId) =>
-                  handleDeletePrompt(group.id, promptId)
-                }
-                onLoadReport={() => handleLoadReport(group)}
-                onBrandsChange={(brands) => handleBrandsChange(group.id, brands)}
-              />
-            )
-          })}
+              return (
+                <GroupCard
+                  key={group.id}
+                  group={group}
+                  colorIndex={index}
+                  prompts={prompts}
+                  isLoadingAnswers={state?.isLoadingAnswers || false}
+                  answersLoaded={state?.answersLoaded || false}
+                  brands={brands}
+                  visibilityScores={state?.visibilityScores || null}
+                  citationLeaderboard={state?.citationLeaderboard || null}
+                  onUpdateTitle={(title) => handleUpdateGroup(group.id, title)}
+                  onDeleteGroup={() => handleDeleteGroup(group.id)}
+                  onDeletePrompt={(promptId) =>
+                    handleDeletePrompt(group.id, promptId)
+                  }
+                  onLoadReport={() => handleLoadReport(group)}
+                  onBrandsChange={(brands) => handleBrandsChange(group.id, brands)}
+                />
+              )
+            })}
 
             {/* Add group card - only if under limit */}
             {canAddMore && (
@@ -394,35 +422,32 @@ export function GroupsGrid({
                 isLoading={createGroup.isPending}
               />
             )}
+
+            {/* Empty state when no groups */}
+            {sortedGroups.length === 0 && !canAddMore && (
+              <div className="text-center py-12 text-[#9CA3AF]">
+                <p className="text-sm">No groups yet</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Drag overlay */}
+      {/* Drag overlay - only for group prompts */}
       <DragOverlay>
         {activePrompt && (
           <div className="w-[300px]">
-            {activePrompt.groupId === "quarantine" ? (
-              <QuarantinePromptItem
-                prompt={activePrompt.prompt as QuarantinePrompt}
-                onDelete={() => {}}
-                isDragOverlay
-              />
-            ) : (
-              <PromptItem
-                prompt={activePrompt.prompt as PromptWithAnswer}
-                groupId={activePrompt.groupId as number}
-                accentColor={
-                  getGroupColor(
-                    sortedGroups.findIndex(
-                      (g) => g.id === activePrompt.groupId
-                    )
-                  ).accent
-                }
-                onDelete={() => {}}
-                isDragOverlay
-              />
-            )}
+            <PromptItem
+              prompt={activePrompt.prompt}
+              groupId={activePrompt.groupId}
+              accentColor={
+                getGroupColor(
+                  sortedGroups.findIndex((g) => g.id === activePrompt.groupId)
+                ).accent
+              }
+              onDelete={() => {}}
+              isDragOverlay
+            />
           </div>
         )}
       </DragOverlay>

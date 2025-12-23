@@ -61,7 +61,7 @@ export function GroupCard({
 }: GroupCardProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showBrandEditor, setShowBrandEditor] = useState(false)
-  const [isReportCollapsed, setIsReportCollapsed] = useState(false)
+  const [isReportCollapsed, setIsReportCollapsed] = useState(true)
   const colors = getGroupColor(colorIndex)
 
   const { setNodeRef, isOver } = useDroppable({
@@ -229,19 +229,6 @@ export function GroupCard({
             </div>
           </div>
 
-          {/* Report Panel - shown when report data is loaded */}
-          {hasReportData && (
-            <div className="mb-3">
-              <ReportPanel
-                visibilityScores={visibilityScores || []}
-                citationLeaderboard={citationLeaderboard || { items: [], total_citations: 0 }}
-                accentColor={colors.accent}
-                isCollapsed={isReportCollapsed}
-                onToggleCollapse={() => setIsReportCollapsed(!isReportCollapsed)}
-              />
-            </div>
-          )}
-
           {/* Body - Vertical prompt list */}
           <div ref={setNodeRef}>
             <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
@@ -276,7 +263,7 @@ export function GroupCard({
                   </div>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="max-h-[220px] overflow-y-auto space-y-2 prompts-scroll">
                   {prompts.map((prompt) => (
                     <PromptItem
                       key={prompt.prompt_id}
@@ -290,6 +277,19 @@ export function GroupCard({
               )}
             </SortableContext>
           </div>
+
+          {/* Report Panel - shown when report data is loaded (at bottom) */}
+          {hasReportData && (
+            <div className="mt-3">
+              <ReportPanel
+                visibilityScores={visibilityScores || []}
+                citationLeaderboard={citationLeaderboard || { items: [], total_citations: 0 }}
+                accentColor={colors.accent}
+                isCollapsed={isReportCollapsed}
+                onToggleCollapse={() => setIsReportCollapsed(!isReportCollapsed)}
+              />
+            </div>
+          )}
         </div>
       </section>
 

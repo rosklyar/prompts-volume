@@ -4,7 +4,7 @@
 
 export { GroupsGrid } from "./GroupsGrid"
 export { GroupCard } from "./GroupCard"
-export { QuarantineCard, QuarantinePromptItem } from "./QuarantineCard"
+export { GroupSelector } from "./GroupSelector"
 export { PromptItem } from "./PromptItem"
 export { AddGroupCard } from "./AddGroupCard"
 export { EditableTitle } from "./EditableTitle"

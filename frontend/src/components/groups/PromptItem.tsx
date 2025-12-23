@@ -87,15 +87,11 @@ export function PromptItem({
 
         {/* Prompt content */}
         <div className="flex-1 min-w-0">
-          <button
-            onClick={() => hasAnswer && setIsExpanded(!isExpanded)}
-            className={`text-left w-full text-[14px] leading-relaxed text-gray-800
-              ${hasAnswer ? "cursor-pointer hover:text-gray-600" : "cursor-default"}`}
-          >
-            <span className="line-clamp-2">{prompt.prompt_text}</span>
-          </button>
+          <p className="text-[14px] leading-relaxed text-gray-800 line-clamp-2">
+            {prompt.prompt_text}
+          </p>
 
-          {/* Answer indicator */}
+          {/* Loading indicator */}
           {prompt.isLoading && (
             <div className="mt-2 flex items-center gap-2 text-xs text-gray-400">
               <div
@@ -108,23 +104,27 @@ export function PromptItem({
               Loading answer...
             </div>
           )}
-
-          {hasAnswer && !isExpanded && (
-            <button
-              onClick={() => setIsExpanded(true)}
-              className="mt-2 flex items-center gap-1.5 text-xs transition-colors"
-              style={{ color: accentColor }}
-            >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              View answer
-              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-          )}
         </div>
+
+        {/* Expand/collapse button - only show when answer exists */}
+        {hasAnswer && (
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="shrink-0 w-7 h-7 rounded-md flex items-center justify-center
+              transition-all duration-200 hover:bg-gray-100"
+            style={{ color: accentColor }}
+            aria-label={isExpanded ? "Collapse answer" : "Expand answer"}
+          >
+            <svg
+              className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+        )}
 
         {/* Delete button */}
         <button
@@ -150,16 +150,6 @@ export function PromptItem({
           className="border-t px-4 py-3 animate-in slide-in-from-top-2 duration-200"
           style={{ borderColor: `${accentColor}20`, backgroundColor: `${accentColor}05` }}
         >
-          <button
-            onClick={() => setIsExpanded(false)}
-            className="flex items-center gap-1 text-xs mb-2 transition-colors"
-            style={{ color: accentColor }}
-          >
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-            </svg>
-            Hide answer
-          </button>
 
           {/* Response */}
           {prompt.brand_mentions && prompt.brand_mentions.length > 0 ? (
