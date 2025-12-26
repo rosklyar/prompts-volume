@@ -11,6 +11,7 @@ import {
 } from "@/hooks/useGroups"
 import { Button } from "@/components/ui/button"
 import { GroupsGrid, GroupSelector } from "@/components/groups"
+import { BalanceIndicator } from "@/components/billing"
 import { Check } from "lucide-react"
 
 export const Route = createFileRoute("/")({
@@ -429,7 +430,8 @@ function PromptDiscovery() {
   return (
     <div className="min-h-screen bg-[#FDFBF7] font-['DM_Sans']">
       {/* Minimal header */}
-      <header className="absolute top-0 right-0 p-6 z-10">
+      <header className="absolute top-0 right-0 p-6 z-10 flex items-center gap-3">
+        <BalanceIndicator />
         <Button
           variant="ghost"
           onClick={logout}

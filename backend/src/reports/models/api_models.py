@@ -2,8 +2,12 @@
 
 from datetime import datetime
 from decimal import Decimal
+from typing import List, Optional
 
 from pydantic import BaseModel
+
+from src.reports.models.brand_models import BrandMentionResultModel
+from src.reports.models.citation_models import CitationLeaderboardModel
 
 
 class ReportPreviewResponse(BaseModel):
@@ -38,6 +42,7 @@ class ReportItemResponse(BaseModel):
     is_fresh: bool
     amount_charged: Decimal | None
     answer: dict | None  # Evaluation answer data if available
+    brand_mentions: Optional[List[BrandMentionResultModel]] = None
 
 
 class ReportResponse(BaseModel):
@@ -53,6 +58,7 @@ class ReportResponse(BaseModel):
     total_evaluations_loaded: int
     total_cost: Decimal
     items: list[ReportItemResponse]
+    citation_leaderboard: Optional[CitationLeaderboardModel] = None
 
 
 class ReportSummaryResponse(BaseModel):

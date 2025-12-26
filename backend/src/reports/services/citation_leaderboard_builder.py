@@ -25,9 +25,10 @@ class CitationCountItem:
 
 @dataclass
 class CitationLeaderboard:
-    """Aggregated citation counts."""
+    """Aggregated citation counts with separate domains and subpaths."""
 
-    items: List[CitationCountItem]
+    domains: List[CitationCountItem]
+    subpaths: List[CitationCountItem]
     total_citations: int
 
 
@@ -56,10 +57,10 @@ class CitationLeaderboardBuilder:
             citations: List of citation URLs from evaluation results
 
         Returns:
-            CitationLeaderboard with counts per domain and significant paths
+            CitationLeaderboard with counts per domain and significant paths (separated)
         """
         if not citations:
-            return CitationLeaderboard(items=[], total_citations=0)
+            return CitationLeaderboard(domains=[], subpaths=[], total_citations=0)
 
         domain_counts: Counter[str] = Counter()
         path_counts: Counter[str] = Counter()
@@ -76,22 +77,24 @@ class CitationLeaderboardBuilder:
             for path in paths[1:]:
                 path_counts[path] += 1
 
-        # Build items list
-        items = []
-
-        # Add domain-level counts
+        # Build domain items list
+        domain_items = []
         for path, count in domain_counts.items():
-            items.append(CitationCountItem(path=path, count=count, is_domain=True))
+            domain_items.append(CitationCountItem(path=path, count=count, is_domain=True))
 
-        # Add path-level counts
+        # Build subpath items list
+        subpath_items = []
         for path, count in path_counts.items():
-            items.append(CitationCountItem(path=path, count=count, is_domain=False))
+            subpath_items.append(CitationCountItem(path=path, count=count, is_domain=False))
 
         # Sort by count descending, then alphabetically
-        items.sort(key=lambda x: (-x.count, x.path))
+        domain_items.sort(key=lambda x: (-x.count, x.path))
+        subpath_items.sort(key=lambda x: (-x.count, x.path))
 
         return CitationLeaderboard(
-            items=items, total_citations=sum(domain_counts.values())
+            domains=domain_items,
+            subpaths=subpath_items,
+            total_citations=sum(domain_counts.values()),
         )
 
     def _extract_paths(self, url: str) -> List[str]:

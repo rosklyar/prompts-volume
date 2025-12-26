@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.evaluations.services.brand_mention_detector import (
+from src.reports.services.brand_mention_detector import (
     BrandInput,
     BrandMentionDetector,
 )

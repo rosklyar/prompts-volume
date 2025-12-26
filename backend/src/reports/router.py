@@ -19,9 +19,12 @@ from src.reports.models.api_models import (
     ReportSummaryResponse,
 )
 from src.reports.services import (
+    BrandInput,
     ComparisonService,
+    ReportEnricher,
     ReportService,
     get_comparison_service,
+    get_report_enricher,
     get_report_service,
 )
 
@@ -30,6 +33,7 @@ router = APIRouter(prefix="/reports/api/v1", tags=["reports"])
 ReportServiceDep = Annotated[ReportService, Depends(get_report_service)]
 ComparisonServiceDep = Annotated[ComparisonService, Depends(get_comparison_service)]
 PromptGroupServiceDep = Annotated[PromptGroupService, Depends(get_prompt_group_service)]
+ReportEnricherDep = Annotated[ReportEnricher, Depends(get_report_enricher)]
 
 
 @router.get("/groups/{group_id}/preview", response_model=ReportPreviewResponse)
@@ -66,17 +70,27 @@ async def generate_report(
     current_user: CurrentUser,
     report_service: ReportServiceDep,
     group_service: PromptGroupServiceDep,
+    enricher: ReportEnricherDep,
 ):
     """Generate a report for a prompt group.
 
     Charges for fresh (not previously consumed) evaluations.
     Already-consumed evaluations are included for free.
+    Returns enriched data with brand mentions and citation leaderboard.
     """
-    # Verify user owns the group
+    # Verify user owns the group and get group data for brands
     try:
-        await group_service.get_by_id_for_user(group_id, current_user.id)
+        group = await group_service.get_by_id_for_user(group_id, current_user.id)
     except Exception as e:
         raise to_http_exception(GroupNotFoundError(group_id))
+
+    # Extract brands from group
+    brands = None
+    if group.brands:
+        brands = [
+            BrandInput(name=b["name"], variations=b["variations"])
+            for b in group.brands
+        ]
 
     report = await report_service.generate_report(
         group_id=group_id,
@@ -89,8 +103,21 @@ async def generate_report(
     full_report = await report_service.get_report(report.id, current_user.id)
 
     items = []
+    all_answers = []
     if full_report and full_report.items:
         for item in full_report.items:
+            answer = item.evaluation.answer if item.evaluation else None
+            all_answers.append(answer)
+
+            # Detect brand mentions if we have brands and an answer with response
+            brand_mentions = None
+            if brands and answer:
+                response_text = answer.get("response")
+                if response_text:
+                    brand_mentions = enricher.detect_brand_mentions(response_text, brands)
+                    if not brand_mentions:
+                        brand_mentions = None
+
             items.append(
                 ReportItemResponse(
                     prompt_id=item.prompt_id,
@@ -99,9 +126,13 @@ async def generate_report(
                     status=item.status.value,
                     is_fresh=item.is_fresh,
                     amount_charged=item.amount_charged,
-                    answer=item.evaluation.answer if item.evaluation else None,
+                    answer=answer,
+                    brand_mentions=brand_mentions,
                 )
             )
+
+    # Build citation leaderboard from all answers
+    citation_leaderboard = enricher.build_citation_leaderboard(all_answers)
 
     return ReportResponse(
         id=report.id,
@@ -114,6 +145,7 @@ async def generate_report(
         total_evaluations_loaded=report.total_evaluations_loaded,
         total_cost=report.total_cost,
         items=items,
+        citation_leaderboard=citation_leaderboard,
     )
 
 
@@ -165,11 +197,12 @@ async def get_report(
     current_user: CurrentUser,
     report_service: ReportServiceDep,
     group_service: PromptGroupServiceDep,
+    enricher: ReportEnricherDep,
 ):
-    """Get a specific report with all items."""
-    # Verify user owns the group
+    """Get a specific report with all items, enriched with brand mentions and citations."""
+    # Verify user owns the group and get group data for brands
     try:
-        await group_service.get_by_id_for_user(group_id, current_user.id)
+        group = await group_service.get_by_id_for_user(group_id, current_user.id)
     except Exception as e:
         raise to_http_exception(GroupNotFoundError(group_id))
 
@@ -181,8 +214,29 @@ async def get_report(
             detail=f"Report {report_id} not found",
         )
 
+    # Extract brands from group
+    brands = None
+    if group.brands:
+        brands = [
+            BrandInput(name=b["name"], variations=b["variations"])
+            for b in group.brands
+        ]
+
     items = []
+    all_answers = []
     for item in report.items:
+        answer = item.evaluation.answer if item.evaluation else None
+        all_answers.append(answer)
+
+        # Detect brand mentions if we have brands and an answer with response
+        brand_mentions = None
+        if brands and answer:
+            response_text = answer.get("response")
+            if response_text:
+                brand_mentions = enricher.detect_brand_mentions(response_text, brands)
+                if not brand_mentions:
+                    brand_mentions = None
+
         items.append(
             ReportItemResponse(
                 prompt_id=item.prompt_id,
@@ -191,9 +245,13 @@ async def get_report(
                 status=item.status.value,
                 is_fresh=item.is_fresh,
                 amount_charged=item.amount_charged,
-                answer=item.evaluation.answer if item.evaluation else None,
+                answer=answer,
+                brand_mentions=brand_mentions,
             )
         )
+
+    # Build citation leaderboard from all answers
+    citation_leaderboard = enricher.build_citation_leaderboard(all_answers)
 
     return ReportResponse(
         id=report.id,
@@ -206,6 +264,7 @@ async def get_report(
         total_evaluations_loaded=report.total_evaluations_loaded,
         total_cost=report.total_cost,
         items=items,
+        citation_leaderboard=citation_leaderboard,
     )
 
 

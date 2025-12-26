@@ -10,6 +10,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 
 # revision identifiers, used by Alembic.
@@ -18,32 +19,31 @@ down_revision: Union[str, Sequence[str], None] = "4f7b27a2b1dd"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+# Define enum types
+creditsource_enum = postgresql.ENUM(
+    "signup_bonus", "payment", "promo_code", "referral", "admin_grant",
+    name="creditsource",
+    create_type=False,
+)
+transactiontype_enum = postgresql.ENUM(
+    "debit", "credit",
+    name="transactiontype",
+    create_type=False,
+)
+reportitemstatus_enum = postgresql.ENUM(
+    "included", "awaiting", "skipped",
+    name="reportitemstatus",
+    create_type=False,
+)
+
 
 def upgrade() -> None:
     """Add billing and report tables."""
 
-    # Create creditsource enum
-    op.execute(
-        """
-        CREATE TYPE creditsource AS ENUM (
-            'signup_bonus', 'payment', 'promo_code', 'referral', 'admin_grant'
-        )
-        """
-    )
-
-    # Create transactiontype enum
-    op.execute(
-        """
-        CREATE TYPE transactiontype AS ENUM ('debit', 'credit')
-        """
-    )
-
-    # Create reportitemstatus enum
-    op.execute(
-        """
-        CREATE TYPE reportitemstatus AS ENUM ('included', 'awaiting', 'skipped')
-        """
-    )
+    # Create enum types first
+    creditsource_enum.create(op.get_bind(), checkfirst=True)
+    transactiontype_enum.create(op.get_bind(), checkfirst=True)
+    reportitemstatus_enum.create(op.get_bind(), checkfirst=True)
 
     # Create credit_grants table
     op.create_table(
@@ -55,19 +55,7 @@ def upgrade() -> None:
             sa.ForeignKey("users.id", ondelete="CASCADE"),
             nullable=False,
         ),
-        sa.Column(
-            "source",
-            sa.Enum(
-                "signup_bonus",
-                "payment",
-                "promo_code",
-                "referral",
-                "admin_grant",
-                name="creditsource",
-                create_type=False,
-            ),
-            nullable=False,
-        ),
+        sa.Column("source", creditsource_enum, nullable=False),
         sa.Column("original_amount", sa.Numeric(12, 4), nullable=False),
         sa.Column("remaining_amount", sa.Numeric(12, 4), nullable=False),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
@@ -91,11 +79,7 @@ def upgrade() -> None:
             sa.ForeignKey("users.id", ondelete="CASCADE"),
             nullable=False,
         ),
-        sa.Column(
-            "transaction_type",
-            sa.Enum("debit", "credit", name="transactiontype", create_type=False),
-            nullable=False,
-        ),
+        sa.Column("transaction_type", transactiontype_enum, nullable=False),
         sa.Column("amount", sa.Numeric(12, 4), nullable=False),
         sa.Column("balance_after", sa.Numeric(12, 4), nullable=False),
         sa.Column("reason", sa.String(255), nullable=False),
@@ -206,17 +190,7 @@ def upgrade() -> None:
             sa.ForeignKey("prompt_evaluations.id", ondelete="SET NULL"),
             nullable=True,
         ),
-        sa.Column(
-            "status",
-            sa.Enum(
-                "included",
-                "awaiting",
-                "skipped",
-                name="reportitemstatus",
-                create_type=False,
-            ),
-            nullable=False,
-        ),
+        sa.Column("status", reportitemstatus_enum, nullable=False),
         sa.Column("is_fresh", sa.Boolean(), nullable=False, default=False),
         sa.Column("amount_charged", sa.Numeric(12, 4), nullable=True),
     )
@@ -239,6 +213,7 @@ def downgrade() -> None:
     op.drop_table("balance_transactions")
     op.drop_table("credit_grants")
 
-    op.execute("DROP TYPE reportitemstatus")
-    op.execute("DROP TYPE transactiontype")
-    op.execute("DROP TYPE creditsource")
+    # Drop enum types
+    reportitemstatus_enum.drop(op.get_bind(), checkfirst=True)
+    transactiontype_enum.drop(op.get_bind(), checkfirst=True)
+    creditsource_enum.drop(op.get_bind(), checkfirst=True)

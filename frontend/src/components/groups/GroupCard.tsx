@@ -20,6 +20,8 @@ import { EditableTitle } from "./EditableTitle"
 import { PromptItem } from "./PromptItem"
 import { ReportPanel } from "./ReportPanel"
 import { BrandEditor } from "./BrandEditor"
+import { ReportPreviewModal, LowBalanceModal } from "@/components/billing"
+import type { ReportPreview } from "@/types/billing"
 import { getGroupColor } from "./constants"
 
 interface PromptWithAnswer extends PromptInGroup {
@@ -40,7 +42,7 @@ interface GroupCardProps {
   onUpdateTitle: (title: string) => void
   onDeleteGroup: () => void
   onDeletePrompt: (promptId: number) => void
-  onLoadReport: () => void
+  onLoadReport: (includePrevious?: boolean) => void
   onBrandsChange: (brands: BrandVariation[]) => void
 }
 
@@ -62,7 +64,36 @@ export function GroupCard({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showBrandEditor, setShowBrandEditor] = useState(false)
   const [isReportCollapsed, setIsReportCollapsed] = useState(true)
+  const [showPreviewModal, setShowPreviewModal] = useState(false)
+  const [showLowBalanceModal, setShowLowBalanceModal] = useState(false)
+  const [lowBalancePreview, setLowBalancePreview] = useState<ReportPreview | null>(null)
   const colors = getGroupColor(colorIndex)
+
+  // Handle report button click - opens preview modal
+  const handleReportClick = () => {
+    if (prompts.length === 0) return
+    setShowPreviewModal(true)
+  }
+
+  // Handle preview confirm - proceed with loading
+  const handlePreviewConfirm = (includePrevious: boolean) => {
+    setShowPreviewModal(false)
+    onLoadReport(includePrevious)
+  }
+
+  // Handle low balance scenario from preview
+  const handleNeedsTopUp = (preview: ReportPreview) => {
+    setShowPreviewModal(false)
+    setLowBalancePreview(preview)
+    setShowLowBalanceModal(true)
+  }
+
+  // Handle partial load from low balance modal
+  const handleLoadPartial = () => {
+    setShowLowBalanceModal(false)
+    setLowBalancePreview(null)
+    onLoadReport(true) // Load what we can afford
+  }
 
   const { setNodeRef, isOver } = useDroppable({
     id: `group-${group.id}`,
@@ -119,9 +150,9 @@ export function GroupCard({
 
             {/* Actions */}
             <div className="flex items-center gap-2">
-              {/* Report button */}
+              {/* Report button - opens preview modal */}
               <button
-                onClick={onLoadReport}
+                onClick={handleReportClick}
                 disabled={isLoadingAnswers || prompts.length === 0}
                 className={`
                   py-2 px-4 rounded-lg text-sm font-medium
@@ -283,7 +314,7 @@ export function GroupCard({
             <div className="mt-3">
               <ReportPanel
                 visibilityScores={visibilityScores || []}
-                citationLeaderboard={citationLeaderboard || { items: [], total_citations: 0 }}
+                citationLeaderboard={citationLeaderboard || { domains: [], subpaths: [], total_citations: 0 }}
                 accentColor={colors.accent}
                 isCollapsed={isReportCollapsed}
                 onToggleCollapse={() => setIsReportCollapsed(!isReportCollapsed)}
@@ -300,6 +331,31 @@ export function GroupCard({
           onBrandsChange={onBrandsChange}
           accentColor={colors.accent}
           onClose={() => setShowBrandEditor(false)}
+        />
+      )}
+
+      {/* Report Preview Modal */}
+      <ReportPreviewModal
+        groupId={group.id}
+        groupTitle={group.title}
+        accentColor={colors.accent}
+        isOpen={showPreviewModal}
+        onClose={() => setShowPreviewModal(false)}
+        onConfirm={handlePreviewConfirm}
+        onNeedsTopUp={handleNeedsTopUp}
+      />
+
+      {/* Low Balance Modal */}
+      {lowBalancePreview && (
+        <LowBalanceModal
+          preview={lowBalancePreview}
+          accentColor={colors.accent}
+          isOpen={showLowBalanceModal}
+          onClose={() => {
+            setShowLowBalanceModal(false)
+            setLowBalancePreview(null)
+          }}
+          onLoadPartial={handleLoadPartial}
         />
       )}
     </>
