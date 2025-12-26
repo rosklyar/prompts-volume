@@ -1,15 +1,19 @@
 """CRUD operations for users."""
 
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.models import UserCreate, UserUpdate
 from src.auth.security import get_password_hash, verify_password
-from src.database.models import User
+from src.config.settings import settings
+from src.database.models import CreditGrant, CreditSource, User
 
 
 async def create_user(session: AsyncSession, user_create: UserCreate) -> User:
-    """Create a new user."""
+    """Create a new user with initial signup credits."""
     db_user = User(
         email=user_create.email,
         hashed_password=get_password_hash(user_create.password),
@@ -18,6 +22,21 @@ async def create_user(session: AsyncSession, user_create: UserCreate) -> User:
         is_superuser=user_create.is_superuser,
     )
     session.add(db_user)
+    await session.flush()  # Get the user ID
+
+    # Grant initial signup credits
+    expires_at = datetime.now(timezone.utc) + timedelta(
+        days=settings.billing_signup_credits_expiry_days
+    )
+    credit_grant = CreditGrant(
+        user_id=db_user.id,
+        source=CreditSource.SIGNUP_BONUS,
+        original_amount=Decimal(str(settings.billing_signup_credits)),
+        remaining_amount=Decimal(str(settings.billing_signup_credits)),
+        expires_at=expires_at,
+    )
+    session.add(credit_grant)
+
     await session.commit()
     await session.refresh(db_user)
     return db_user

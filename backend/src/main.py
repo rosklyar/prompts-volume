@@ -4,11 +4,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.auth.router import router as auth_router
+from src.billing.router import router as billing_router
 from src.config.settings import settings
 from src.database import close_db, get_session_maker, init_db, seed_initial_data, seed_superuser
 from src.evaluations.router import router as evaluations_router
 from src.prompt_groups.router import router as prompt_groups_router
 from src.prompts import router as prompts_router
+from src.reports.router import router as reports_router
 
 
 @asynccontextmanager
@@ -48,6 +50,8 @@ app.include_router(auth_router)
 app.include_router(prompts_router.router)
 app.include_router(evaluations_router)
 app.include_router(prompt_groups_router)
+app.include_router(billing_router)
+app.include_router(reports_router)
 
 
 @app.get("/health")
