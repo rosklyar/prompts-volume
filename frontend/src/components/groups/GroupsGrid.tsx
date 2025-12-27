@@ -32,8 +32,8 @@ import {
   useDeleteGroup,
   useRemovePromptsFromGroup,
   useMovePrompt,
-  useLoadReport,
 } from "@/hooks/useGroups"
+import { useGenerateReport } from "@/hooks/useBilling"
 import { calculateVisibilityScores } from "@/lib/report-utils"
 import { saveReportCache, loadReportCache, clearReportCache } from "@/lib/report-storage"
 import { GroupCard } from "./GroupCard"
@@ -75,7 +75,7 @@ export function GroupsGrid() {
   const deleteGroup = useDeleteGroup()
   const removePrompts = useRemovePromptsFromGroup()
   const movePrompt = useMovePrompt()
-  const loadReport = useLoadReport()
+  const generateReport = useGenerateReport()
 
   // Local state for answers and report data
   const [groupStates, setGroupStates] = useState<Record<number, GroupState>>({})
@@ -254,10 +254,9 @@ export function GroupsGrid() {
     })
   }
 
-  // Handle load report (enriched results)
-  const handleLoadReport = async (group: GroupDetail) => {
-    const promptIds = group.prompts.map((p) => p.prompt_id)
-    if (promptIds.length === 0) return
+  // Handle load report (using billing API with charging)
+  const handleLoadReport = async (group: GroupDetail, includePrevious: boolean = true) => {
+    if (group.prompts.length === 0) return
 
     // Get brands from group (from API)
     const brands = group.brands || []
@@ -277,28 +276,39 @@ export function GroupsGrid() {
     }))
 
     try {
-      const result = await loadReport.mutateAsync({
+      // Use the new billing-aware generate API
+      const result = await generateReport.mutateAsync({
         groupId: group.id,
-        promptIds,
+        request: { include_previous: includePrevious },
       })
 
-      // Merge answers and brand mentions into prompts
+      // Merge answers and brand mentions into prompts from the response
       const promptsWithAnswers = group.prompts.map((p) => {
-        const evaluation = result.results.find(
+        const item = result.items.find(
           (r) => r.prompt_id === p.prompt_id
         )
         return {
           ...p,
-          answer: evaluation?.answer || null,
-          brand_mentions: evaluation?.brand_mentions || null,
+          answer: item?.answer || null,
+          brand_mentions: item?.brand_mentions || null,
           isLoading: false,
         }
       })
 
-      // Calculate visibility scores
+      // Calculate visibility scores using the items from the response
+      const resultsForScoring = result.items.map((item) => ({
+        prompt_id: item.prompt_id,
+        prompt_text: item.prompt_text,
+        evaluation_id: item.evaluation_id,
+        status: item.status,
+        answer: item.answer,
+        completed_at: item.completed_at,
+        brand_mentions: item.brand_mentions,
+      }))
+
       const visibilityScores =
         brands.length > 0
-          ? calculateVisibilityScores(result.results, brands)
+          ? calculateVisibilityScores(resultsForScoring, brands)
           : null
 
       setGroupStates((prev) => ({
@@ -409,7 +419,7 @@ export function GroupsGrid() {
                   onDeletePrompt={(promptId) =>
                     handleDeletePrompt(group.id, promptId)
                   }
-                  onLoadReport={() => handleLoadReport(group)}
+                  onLoadReport={(includePrevious) => handleLoadReport(group, includePrevious)}
                   onBrandsChange={(brands) => handleBrandsChange(group.id, brands)}
                 />
               )

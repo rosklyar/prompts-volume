@@ -21,7 +21,9 @@ export function ReportPanel({
   onToggleCollapse,
 }: ReportPanelProps) {
   const hasVisibilityData = visibilityScores.length > 0
-  const hasCitationData = citationLeaderboard.items.length > 0
+  const hasDomainData = citationLeaderboard.domains.length > 0
+  const hasSubpathData = citationLeaderboard.subpaths.length > 0
+  const hasCitationData = hasDomainData || hasSubpathData
 
   if (!hasVisibilityData && !hasCitationData) {
     return null
@@ -128,15 +130,15 @@ export function ReportPanel({
             </div>
           )}
 
-          {/* Citation Leaderboard Section */}
-          {hasCitationData && (
+          {/* Domain Sources Section */}
+          {hasDomainData && (
             <div>
               <p className="text-[10px] uppercase tracking-[0.2em] text-gray-400 font-sans mb-2">
-                Citation Sources
+                Domain Sources
               </p>
               <div className="bg-white rounded-lg border overflow-hidden" style={{ borderColor: `${accentColor}15` }}>
                 <div className="max-h-[180px] overflow-y-auto">
-                  {citationLeaderboard.items.slice(0, 10).map((item, index) => (
+                  {citationLeaderboard.domains.slice(0, 10).map((item, index) => (
                     <div
                       key={item.path}
                       className={`flex items-center gap-3 px-3 py-2 transition-colors hover:bg-gray-50 ${
@@ -154,19 +156,13 @@ export function ReportPanel({
                         {index + 1}
                       </span>
 
-                      {/* Path with domain styling */}
+                      {/* Domain with styling */}
                       <div className="flex-1 min-w-0">
                         <p
-                          className={`text-sm truncate font-sans ${
-                            item.is_domain ? "font-medium" : ""
-                          }`}
-                          style={{
-                            color: item.is_domain ? accentColor : "#4B5563",
-                          }}
+                          className="text-sm truncate font-sans font-medium"
+                          style={{ color: accentColor }}
                         >
-                          {item.is_domain && (
-                            <span className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 -translate-y-px" style={{ backgroundColor: accentColor }} />
-                          )}
+                          <span className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 -translate-y-px" style={{ backgroundColor: accentColor }} />
                           {item.path}
                         </p>
                       </div>
@@ -186,10 +182,72 @@ export function ReportPanel({
                 </div>
 
                 {/* Show more indicator if truncated */}
-                {citationLeaderboard.items.length > 10 && (
+                {citationLeaderboard.domains.length > 10 && (
                   <div className="px-3 py-2 border-t text-center" style={{ borderColor: `${accentColor}10` }}>
                     <span className="text-xs text-gray-400 font-sans italic">
-                      +{citationLeaderboard.items.length - 10} more sources
+                      +{citationLeaderboard.domains.length - 10} more domains
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Page Paths Section */}
+          {hasSubpathData && (
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.2em] text-gray-400 font-sans mb-2">
+                Page Paths
+              </p>
+              <div className="bg-white rounded-lg border overflow-hidden" style={{ borderColor: `${accentColor}15` }}>
+                <div className="max-h-[180px] overflow-y-auto">
+                  {citationLeaderboard.subpaths.slice(0, 10).map((item, index) => (
+                    <div
+                      key={item.path}
+                      className={`flex items-center gap-3 px-3 py-2 transition-colors hover:bg-gray-50 ${
+                        index !== 0 ? "border-t border-gray-50" : ""
+                      }`}
+                    >
+                      {/* Rank indicator */}
+                      <span
+                        className="text-xs font-sans tabular-nums w-5 text-center"
+                        style={{
+                          color: index < 3 ? accentColor : "#9CA3AF",
+                          fontWeight: index < 3 ? 600 : 400,
+                        }}
+                      >
+                        {index + 1}
+                      </span>
+
+                      {/* Path styling */}
+                      <div className="flex-1 min-w-0">
+                        <p
+                          className="text-sm truncate font-sans"
+                          style={{ color: "#4B5563" }}
+                        >
+                          {item.path}
+                        </p>
+                      </div>
+
+                      {/* Count badge */}
+                      <span
+                        className="text-xs font-sans font-medium px-2 py-0.5 rounded-full"
+                        style={{
+                          backgroundColor: `${accentColor}15`,
+                          color: accentColor,
+                        }}
+                      >
+                        {item.count}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Show more indicator if truncated */}
+                {citationLeaderboard.subpaths.length > 10 && (
+                  <div className="px-3 py-2 border-t text-center" style={{ borderColor: `${accentColor}10` }}>
+                    <span className="text-xs text-gray-400 font-sans italic">
+                      +{citationLeaderboard.subpaths.length - 10} more paths
                     </span>
                   </div>
                 )}

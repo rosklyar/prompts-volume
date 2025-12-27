@@ -1,7 +1,13 @@
+import type { BrandVariation } from "@/types/groups"
 import type {
-  BrandVariation,
-  EnrichedResultsResponse,
-} from "@/types/groups"
+  UserBalance,
+  ReportPreview,
+  GenerateReportRequest,
+  GenerateReportResponse,
+  TopUpRequest,
+  TopUpResponse,
+  TransactionsResponse,
+} from "@/types/billing"
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000"
 
@@ -194,19 +200,6 @@ export interface EvaluationAnswer {
   timestamp: string
 }
 
-export interface EvaluationResultItem {
-  prompt_id: number
-  prompt_text: string
-  evaluation_id: number | null
-  status: string | null
-  answer: EvaluationAnswer | null
-  completed_at: string | null
-}
-
-export interface GetResultsResponse {
-  results: EvaluationResultItem[]
-}
-
 export interface PriorityPromptResult {
   prompt_id: number
   prompt_text: string
@@ -302,25 +295,6 @@ export const groupsApi = {
 // ===== Evaluations API =====
 
 export const evaluationsApi = {
-  async getResults(
-    assistantName: string,
-    planName: string,
-    promptIds: number[]
-  ): Promise<GetResultsResponse> {
-    const params = new URLSearchParams({
-      assistant_name: assistantName,
-      plan_name: planName,
-      prompt_ids: promptIds.join(','),
-    })
-    const response = await fetchWithAuth(
-      `/evaluations/api/v1/results?${params.toString()}`,
-      {
-        method: "GET",
-      }
-    )
-    return response.json()
-  },
-
   async addPriorityPrompts(
     prompts: string[],
     topicId?: number
@@ -338,25 +312,75 @@ export const evaluationsApi = {
     )
     return response.json()
   },
+}
 
-  async getEnrichedResults(
-    assistantName: string,
-    planName: string,
-    promptIds: number[],
-    groupId: number
-  ): Promise<EnrichedResultsResponse> {
-    const params = new URLSearchParams()
-    params.append("assistant_name", assistantName)
-    params.append("plan_name", planName)
-    // Backend expects multiple prompt_ids params, not comma-separated
-    promptIds.forEach((id) => params.append("prompt_ids", id.toString()))
+// ===== Billing API =====
 
+export const billingApi = {
+  /**
+   * Get current user balance
+   */
+  async getBalance(): Promise<UserBalance> {
+    const response = await fetchWithAuth("/billing/api/v1/balance")
+    return response.json()
+  },
+
+  /**
+   * Top up user balance
+   */
+  async topUp(request: TopUpRequest): Promise<TopUpResponse> {
+    const response = await fetchWithAuth("/billing/api/v1/top-up", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    })
+    return response.json()
+  },
+
+  /**
+   * Get transaction history
+   */
+  async getTransactions(
+    limit: number = 20,
+    offset: number = 0
+  ): Promise<TransactionsResponse> {
+    const params = new URLSearchParams({
+      limit: limit.toString(),
+      offset: offset.toString(),
+    })
     const response = await fetchWithAuth(
-      `/evaluations/api/v1/results/enriched?${params.toString()}`,
+      `/billing/api/v1/transactions?${params}`
+    )
+    return response.json()
+  },
+}
+
+// ===== Reports API =====
+
+export const reportsApi = {
+  /**
+   * Get report preview with cost breakdown (no charge)
+   */
+  async getPreview(groupId: number): Promise<ReportPreview> {
+    const response = await fetchWithAuth(
+      `/reports/api/v1/groups/${groupId}/preview`
+    )
+    return response.json()
+  },
+
+  /**
+   * Generate report (charges for fresh evaluations)
+   */
+  async generate(
+    groupId: number,
+    request: GenerateReportRequest = {}
+  ): Promise<GenerateReportResponse> {
+    const response = await fetchWithAuth(
+      `/reports/api/v1/groups/${groupId}/generate`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ group_id: groupId }),
+        body: JSON.stringify(request),
       }
     )
     return response.json()

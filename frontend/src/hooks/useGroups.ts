@@ -250,27 +250,3 @@ export function useAddPriorityPrompt() {
   })
 }
 
-// ===== Load Report =====
-
-export function useLoadReport() {
-  return useMutation({
-    mutationFn: async ({
-      groupId,
-      promptIds,
-      assistantName = "ChatGPT",
-      planName = "FREE",
-    }: {
-      groupId: number
-      promptIds: number[]
-      assistantName?: string
-      planName?: string
-    }) => {
-      return evaluationsApi.getEnrichedResults(
-        assistantName,
-        planName,
-        promptIds,
-        groupId
-      )
-    },
-  })
-}

@@ -68,6 +68,11 @@ class Settings(BaseSettings):
     # CORS configuration
     frontend_url: str = "http://localhost:5173"
 
+    # Billing configuration
+    billing_price_per_evaluation: float = 1.00  # Price in dollars per evaluation
+    billing_signup_credits: float = 10.00  # Initial credits for new users
+    billing_signup_credits_expiry_days: int = 30  # Days until signup credits expire
+
 
 # Singleton settings instance
 settings = Settings()

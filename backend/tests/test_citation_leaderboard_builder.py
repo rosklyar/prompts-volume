@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.evaluations.services.citation_leaderboard_builder import (
+from src.reports.services.citation_leaderboard_builder import (
     CitationInput,
     CitationLeaderboardBuilder,
 )
@@ -27,10 +27,9 @@ class TestCitationLeaderboardBuilder:
         assert result.total_citations == 2
 
         # Find domain-level item
-        domain_items = [i for i in result.items if i.is_domain]
-        assert len(domain_items) == 1
-        assert domain_items[0].path == "rozetka.com.ua"
-        assert domain_items[0].count == 2
+        assert len(result.domains) == 1
+        assert result.domains[0].path == "rozetka.com.ua"
+        assert result.domains[0].count == 2
 
     def test_aggregate_multiple_path_levels(self):
         """Test aggregation at multiple path levels."""
@@ -42,10 +41,11 @@ class TestCitationLeaderboardBuilder:
 
         result = self.builder.aggregate(citations)
 
-        paths = [item.path for item in result.items]
-        assert "rozetka.com.ua" in paths
-        assert "rozetka.com.ua/ua" in paths
-        assert "rozetka.com.ua/ua/mobile-phones" in paths
+        domain_paths = [item.path for item in result.domains]
+        subpath_paths = [item.path for item in result.subpaths]
+        assert "rozetka.com.ua" in domain_paths
+        assert "rozetka.com.ua/ua" in subpath_paths
+        assert "rozetka.com.ua/ua/mobile-phones" in subpath_paths
 
     def test_aggregate_path_frequency(self):
         """Test that sub-paths are counted correctly."""
@@ -63,25 +63,25 @@ class TestCitationLeaderboardBuilder:
 
         # Domain level
         domain_item = next(
-            i for i in result.items if i.path == "rozetka.com.ua" and i.is_domain
+            i for i in result.domains if i.path == "rozetka.com.ua"
         )
         assert domain_item.count == 3
 
         # Sub-path: /ua should have 3
         ua_item = next(
-            i for i in result.items if i.path == "rozetka.com.ua/ua"
+            i for i in result.subpaths if i.path == "rozetka.com.ua/ua"
         )
         assert ua_item.count == 3
 
         # Sub-path: /ua/mobile-phones should have 2
         mobile_item = next(
-            i for i in result.items if i.path == "rozetka.com.ua/ua/mobile-phones"
+            i for i in result.subpaths if i.path == "rozetka.com.ua/ua/mobile-phones"
         )
         assert mobile_item.count == 2
 
         # Sub-path: /ua/laptops should have 1
         laptops_item = next(
-            i for i in result.items if i.path == "rozetka.com.ua/ua/laptops"
+            i for i in result.subpaths if i.path == "rozetka.com.ua/ua/laptops"
         )
         assert laptops_item.count == 1
 
@@ -97,8 +97,7 @@ class TestCitationLeaderboardBuilder:
 
         assert result.total_citations == 3
 
-        domain_items = [i for i in result.items if i.is_domain]
-        domain_paths = {i.path: i.count for i in domain_items}
+        domain_paths = {i.path: i.count for i in result.domains}
 
         assert domain_paths["rozetka.com.ua"] == 2
         assert domain_paths["moyo.ua"] == 1
@@ -117,8 +116,7 @@ class TestCitationLeaderboardBuilder:
         result = self.builder.aggregate(citations)
 
         # Domain items should be sorted by count desc
-        domain_items = [i for i in result.items if i.is_domain]
-        counts = [i.count for i in domain_items]
+        counts = [i.count for i in result.domains]
         assert counts == sorted(counts, reverse=True)
 
     def test_aggregate_empty_citations(self):
@@ -126,7 +124,8 @@ class TestCitationLeaderboardBuilder:
         result = self.builder.aggregate([])
 
         assert result.total_citations == 0
-        assert result.items == []
+        assert result.domains == []
+        assert result.subpaths == []
 
     def test_aggregate_malformed_url(self):
         """Test handling of malformed URLs."""
@@ -138,7 +137,7 @@ class TestCitationLeaderboardBuilder:
         result = self.builder.aggregate(citations)
 
         assert result.total_citations == 1
-        assert len([i for i in result.items if i.is_domain]) == 1
+        assert len(result.domains) == 1
 
     def test_aggregate_url_without_scheme(self):
         """Test URL without scheme (should be handled gracefully)."""
@@ -162,10 +161,12 @@ class TestCitationLeaderboardBuilder:
 
         result = builder.aggregate(citations)
 
-        paths = [item.path for item in result.items]
-        assert "example.com" in paths
-        assert "example.com/a" in paths
-        assert "example.com/a/b" not in paths
+        domain_paths = [item.path for item in result.domains]
+        subpath_paths = [item.path for item in result.subpaths]
+        all_paths = domain_paths + subpath_paths
+        assert "example.com" in domain_paths
+        assert "example.com/a" in subpath_paths
+        assert "example.com/a/b" not in all_paths
 
     def test_aggregate_case_insensitive_domain(self):
         """Test that domain is case-insensitive."""
@@ -176,10 +177,9 @@ class TestCitationLeaderboardBuilder:
 
         result = self.builder.aggregate(citations)
 
-        domain_items = [i for i in result.items if i.is_domain]
-        assert len(domain_items) == 1
-        assert domain_items[0].path == "rozetka.com.ua"
-        assert domain_items[0].count == 2
+        assert len(result.domains) == 1
+        assert result.domains[0].path == "rozetka.com.ua"
+        assert result.domains[0].count == 2
 
     def test_aggregate_url_with_query_params(self):
         """Test that query params are not included in path."""
@@ -191,11 +191,13 @@ class TestCitationLeaderboardBuilder:
 
         result = self.builder.aggregate(citations)
 
-        paths = [item.path for item in result.items]
-        assert "example.com" in paths
-        assert "example.com/page" in paths
+        domain_paths = [item.path for item in result.domains]
+        subpath_paths = [item.path for item in result.subpaths]
+        all_paths = domain_paths + subpath_paths
+        assert "example.com" in domain_paths
+        assert "example.com/page" in subpath_paths
         # Query params should not be part of path
-        assert not any("?" in p for p in paths)
+        assert not any("?" in p for p in all_paths)
 
     def test_aggregate_url_with_trailing_slash(self):
         """Test URLs with trailing slashes."""
@@ -205,9 +207,10 @@ class TestCitationLeaderboardBuilder:
 
         result = self.builder.aggregate(citations)
 
-        paths = [item.path for item in result.items]
-        assert "example.com" in paths
-        assert "example.com/page" in paths
+        domain_paths = [item.path for item in result.domains]
+        subpath_paths = [item.path for item in result.subpaths]
+        assert "example.com" in domain_paths
+        assert "example.com/page" in subpath_paths
 
     def test_is_domain_flag(self):
         """Test that is_domain flag is set correctly."""
@@ -217,13 +220,12 @@ class TestCitationLeaderboardBuilder:
 
         result = self.builder.aggregate(citations)
 
-        domain_items = [i for i in result.items if i.is_domain]
-        path_items = [i for i in result.items if not i.is_domain]
+        assert len(result.domains) == 1
+        assert result.domains[0].path == "example.com"
+        assert result.domains[0].is_domain is True
 
-        assert len(domain_items) == 1
-        assert domain_items[0].path == "example.com"
-
-        assert len(path_items) == 2
-        path_paths = [i.path for i in path_items]
+        assert len(result.subpaths) == 2
+        path_paths = [i.path for i in result.subpaths]
         assert "example.com/path" in path_paths
         assert "example.com/path/subpath" in path_paths
+        assert all(not i.is_domain for i in result.subpaths)
