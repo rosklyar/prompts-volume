@@ -87,25 +87,6 @@ class ReleaseResponse(BaseModel):
     action: str = Field(..., description="Action taken: 'deleted' or 'marked_failed'")
 
 
-# ===== RESULTS API =====
-
-class EvaluationResultItem(BaseModel):
-    """Single evaluation result."""
-
-    prompt_id: int = Field(..., description="Prompt ID")
-    prompt_text: str = Field(..., description="The prompt text")
-    evaluation_id: Optional[int] = Field(None, description="Evaluation record ID (null if no evaluation)")
-    status: Optional[str] = Field(None, description="Evaluation status (null if no evaluation)")
-    answer: Optional[dict] = Field(None, description="Evaluation answer (response, citations, timestamp)")
-    completed_at: Optional[datetime] = Field(None, description="When evaluation was completed (null if no evaluation)")
-
-
-class GetResultsResponse(BaseModel):
-    """Response with latest evaluation results."""
-
-    results: List[EvaluationResultItem] = Field(..., description="List of evaluation results")
-
-
 # ===== PRIORITY PROMPTS API =====
 
 class PriorityPromptItem(BaseModel):

@@ -17,9 +17,12 @@ class CitationCountItemModel(BaseModel):
 
 
 class CitationLeaderboardModel(BaseModel):
-    """Aggregated citation counts."""
+    """Aggregated citation counts with separate domains and subpaths."""
 
-    items: List[CitationCountItemModel] = Field(
-        ..., description="Citation counts, sorted by count descending"
+    domains: List[CitationCountItemModel] = Field(
+        ..., description="Domain-level citation counts, sorted by count descending"
+    )
+    subpaths: List[CitationCountItemModel] = Field(
+        ..., description="Subpath-level citation counts, sorted by count descending"
     )
     total_citations: int = Field(..., description="Total citations processed")

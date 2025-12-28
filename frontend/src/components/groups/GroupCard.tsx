@@ -16,10 +16,15 @@ import type {
   BrandVisibilityScore,
   CitationLeaderboard,
 } from "@/types/groups"
+import { useHasFreshData, useReportHistory, useReport } from "@/hooks/useReports"
+import { calculateVisibilityScores } from "@/lib/report-utils"
 import { EditableTitle } from "./EditableTitle"
 import { PromptItem } from "./PromptItem"
 import { ReportPanel } from "./ReportPanel"
+import { ReportHistoryPanel } from "./ReportHistoryPanel"
 import { BrandEditor } from "./BrandEditor"
+import { ReportPreviewModal, LowBalanceModal } from "@/components/billing"
+import type { ReportPreview } from "@/types/billing"
 import { getGroupColor } from "./constants"
 
 interface PromptWithAnswer extends PromptInGroup {
@@ -37,10 +42,12 @@ interface GroupCardProps {
   brands: BrandVariation[]
   visibilityScores: BrandVisibilityScore[] | null
   citationLeaderboard: CitationLeaderboard | null
+  selectedReportId: number | null
+  onSelectReport: (reportId: number | null) => void
   onUpdateTitle: (title: string) => void
   onDeleteGroup: () => void
   onDeletePrompt: (promptId: number) => void
-  onLoadReport: () => void
+  onLoadReport: (includePrevious?: boolean) => void
   onBrandsChange: (brands: BrandVariation[]) => void
 }
 
@@ -53,6 +60,8 @@ export function GroupCard({
   brands,
   visibilityScores,
   citationLeaderboard,
+  selectedReportId,
+  onSelectReport,
   onUpdateTitle,
   onDeleteGroup,
   onDeletePrompt,
@@ -62,7 +71,104 @@ export function GroupCard({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showBrandEditor, setShowBrandEditor] = useState(false)
   const [isReportCollapsed, setIsReportCollapsed] = useState(true)
+  const [showPreviewModal, setShowPreviewModal] = useState(false)
+  const [showLowBalanceModal, setShowLowBalanceModal] = useState(false)
+  const [lowBalancePreview, setLowBalancePreview] = useState<ReportPreview | null>(null)
   const colors = getGroupColor(colorIndex)
+
+  // Check for fresh data (for disabling Report button when no new data)
+  const { hasFreshData } = useHasFreshData(
+    group.id,
+    prompts.length > 0
+  )
+
+  // Fetch report history to know if reports exist
+  const { data: reportHistory } = useReportHistory(group.id, prompts.length > 0)
+  const hasExistingReports = (reportHistory?.total ?? 0) > 0
+
+  // Fetch selected report data when a report is selected
+  const { data: selectedReport } = useReport(
+    group.id,
+    selectedReportId,
+    selectedReportId !== null
+  )
+
+  // Merge answers from selected report into prompts
+  const promptsWithSelectedReportAnswers = selectedReport
+    ? prompts.map((p) => {
+        const reportItem = selectedReport.items.find(
+          (item) => item.prompt_id === p.prompt_id
+        )
+        return {
+          ...p,
+          answer: reportItem?.answer || null,
+          brand_mentions: reportItem?.brand_mentions || null,
+        }
+      })
+    : prompts
+
+  // Calculate visibility scores from selected report
+  const selectedReportVisibilityScores = selectedReport && brands.length > 0
+    ? calculateVisibilityScores(
+        selectedReport.items.map((item) => ({
+          prompt_id: item.prompt_id,
+          prompt_text: item.prompt_text,
+          evaluation_id: item.evaluation_id,
+          status: item.status,
+          answer: item.answer,
+          completed_at: null,
+          brand_mentions: item.brand_mentions,
+        })),
+        brands
+      )
+    : null
+
+  // Use selected report's data or passed props
+  const displayVisibilityScores = selectedReportId ? selectedReportVisibilityScores : visibilityScores
+  const displayCitationLeaderboard = selectedReportId ? selectedReport?.citation_leaderboard : citationLeaderboard
+  const displayPrompts = selectedReportId ? promptsWithSelectedReportAnswers : prompts
+
+  // State for no new data modal
+  const [showNoNewDataModal, setShowNoNewDataModal] = useState(false)
+
+  // Report button only disabled when loading or no prompts
+  const isReportDisabled = isLoadingAnswers || prompts.length === 0
+
+  // Check if there's no new data available
+  const isNoNewData = hasFreshData === false && hasExistingReports
+
+  // Handle report button click - check for fresh data first
+  const handleReportClick = () => {
+    if (prompts.length === 0) return
+
+    // If no new data, show the no-new-data modal instead
+    if (isNoNewData) {
+      setShowNoNewDataModal(true)
+      return
+    }
+
+    setShowPreviewModal(true)
+  }
+
+  // Handle preview confirm - proceed with loading
+  const handlePreviewConfirm = (includePrevious: boolean) => {
+    setShowPreviewModal(false)
+    onLoadReport(includePrevious)
+  }
+
+  // Handle low balance scenario from preview
+  const handleNeedsTopUp = (preview: ReportPreview) => {
+    setShowPreviewModal(false)
+    setLowBalancePreview(preview)
+    setShowLowBalanceModal(true)
+  }
+
+  // Handle partial load from low balance modal
+  const handleLoadPartial = () => {
+    setShowLowBalanceModal(false)
+    setLowBalancePreview(null)
+    onLoadReport(true) // Load what we can afford
+  }
 
   const { setNodeRef, isOver } = useDroppable({
     id: `group-${group.id}`,
@@ -72,9 +178,9 @@ export function GroupCard({
     },
   })
 
-  const sortableIds = prompts.map((p) => `${group.id}-${p.prompt_id}`)
+  const sortableIds = displayPrompts.map((p) => `${group.id}-${p.prompt_id}`)
 
-  const hasReportData = visibilityScores !== null || citationLeaderboard !== null
+  const hasReportData = displayVisibilityScores !== null || displayCitationLeaderboard !== null
 
   return (
     <>
@@ -119,10 +225,10 @@ export function GroupCard({
 
             {/* Actions */}
             <div className="flex items-center gap-2">
-              {/* Report button */}
+              {/* Report button - opens preview modal or no-data modal */}
               <button
-                onClick={onLoadReport}
-                disabled={isLoadingAnswers || prompts.length === 0}
+                onClick={handleReportClick}
+                disabled={isReportDisabled}
                 className={`
                   py-2 px-4 rounded-lg text-sm font-medium
                   transition-all duration-200 flex items-center gap-2
@@ -133,32 +239,32 @@ export function GroupCard({
                   color: answersLoaded ? colors.accent : "white",
                 }}
               >
-                {isLoadingAnswers ? (
-                  <>
-                    <div
-                      className="w-4 h-4 border-2 rounded-full animate-spin"
-                      style={{
-                        borderColor: answersLoaded ? `${colors.accent}30` : "rgba(255,255,255,0.3)",
-                        borderTopColor: answersLoaded ? colors.accent : "white",
-                      }}
-                    />
-                    Loading...
-                  </>
-                ) : answersLoaded ? (
-                  <>
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                    Refresh
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    Report
-                  </>
-                )}
+                  {isLoadingAnswers ? (
+                    <>
+                      <div
+                        className="w-4 h-4 border-2 rounded-full animate-spin"
+                        style={{
+                          borderColor: answersLoaded ? `${colors.accent}30` : "rgba(255,255,255,0.3)",
+                          borderTopColor: answersLoaded ? colors.accent : "white",
+                        }}
+                      />
+                      Loading...
+                    </>
+                  ) : answersLoaded ? (
+                    <>
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Refresh
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      Report
+                    </>
+                  )}
               </button>
 
               {/* Brand config button */}
@@ -264,7 +370,7 @@ export function GroupCard({
                 </div>
               ) : (
                 <div className="max-h-[220px] overflow-y-auto space-y-2 prompts-scroll">
-                  {prompts.map((prompt) => (
+                  {displayPrompts.map((prompt) => (
                     <PromptItem
                       key={prompt.prompt_id}
                       prompt={prompt}
@@ -278,12 +384,22 @@ export function GroupCard({
             </SortableContext>
           </div>
 
+          {/* Report History Panel - shows list of past reports */}
+          {prompts.length > 0 && (
+            <ReportHistoryPanel
+              groupId={group.id}
+              selectedReportId={selectedReportId}
+              onSelectReport={onSelectReport}
+              accentColor={colors.accent}
+            />
+          )}
+
           {/* Report Panel - shown when report data is loaded (at bottom) */}
           {hasReportData && (
             <div className="mt-3">
               <ReportPanel
-                visibilityScores={visibilityScores || []}
-                citationLeaderboard={citationLeaderboard || { items: [], total_citations: 0 }}
+                visibilityScores={displayVisibilityScores || []}
+                citationLeaderboard={displayCitationLeaderboard || { domains: [], subpaths: [], total_citations: 0 }}
                 accentColor={colors.accent}
                 isCollapsed={isReportCollapsed}
                 onToggleCollapse={() => setIsReportCollapsed(!isReportCollapsed)}
@@ -301,6 +417,96 @@ export function GroupCard({
           accentColor={colors.accent}
           onClose={() => setShowBrandEditor(false)}
         />
+      )}
+
+      {/* Report Preview Modal */}
+      <ReportPreviewModal
+        groupId={group.id}
+        groupTitle={group.title}
+        accentColor={colors.accent}
+        isOpen={showPreviewModal}
+        onClose={() => setShowPreviewModal(false)}
+        onConfirm={handlePreviewConfirm}
+        onNeedsTopUp={handleNeedsTopUp}
+      />
+
+      {/* Low Balance Modal */}
+      {lowBalancePreview && (
+        <LowBalanceModal
+          preview={lowBalancePreview}
+          accentColor={colors.accent}
+          isOpen={showLowBalanceModal}
+          onClose={() => {
+            setShowLowBalanceModal(false)
+            setLowBalancePreview(null)
+          }}
+          onLoadPartial={handleLoadPartial}
+        />
+      )}
+
+      {/* No New Data Modal */}
+      {showNoNewDataModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => setShowNoNewDataModal(false)}
+          />
+
+          {/* Modal */}
+          <div
+            className="relative bg-white rounded-2xl shadow-xl max-w-sm w-full mx-4 overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+          >
+            {/* Accent bar */}
+            <div
+              className="h-1.5 w-full"
+              style={{ backgroundColor: colors.accent }}
+            />
+
+            <div className="p-6">
+              {/* Icon */}
+              <div
+                className="w-12 h-12 rounded-full mx-auto mb-4 flex items-center justify-center"
+                style={{ backgroundColor: `${colors.accent}15` }}
+              >
+                <svg
+                  className="w-6 h-6"
+                  style={{ color: colors.accent }}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+              </div>
+
+              {/* Title */}
+              <h3 className="text-lg font-semibold text-gray-900 text-center mb-2">
+                No New Data Available
+              </h3>
+
+              {/* Description */}
+              <p className="text-sm text-gray-500 text-center mb-6">
+                There are no new evaluations since your last report.
+                You can still view your previous reports from the history below.
+              </p>
+
+              {/* Action */}
+              <button
+                onClick={() => setShowNoNewDataModal(false)}
+                className="w-full py-2.5 px-4 rounded-lg text-sm font-medium text-white transition-colors"
+                style={{ backgroundColor: colors.accent }}
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   )

@@ -1369,7 +1369,441 @@ This gives clients the complete picture: known data (DB) + intelligent guesses (
             │ responses       |
             └─────────────────┘
 ```
-So, while client selects prompts that returned instantly from DB - service has a time to prepare for him more or less relevant prompts generated based on search engines keywords. 
+So, while client selects prompts that returned instantly from DB - service has a time to prepare for him more or less relevant prompts generated based on search engines keywords.
+
+---
+
+### 3.9 Billing Endpoints
+
+**Purpose**: Pay-as-you-go billing system for consuming evaluation data
+
+The billing system provides:
+- **Credit grants** with FIFO expiration (signup credits expire first)
+- **Consumption tracking** per evaluation (users pay once per evaluation)
+- **Balance management** with transaction history
+
+**Authentication**: All billing endpoints require JWT authentication via `Authorization: Bearer {token}` header.
+
+**Configuration** (in `.env` or settings):
+```bash
+BILLING_SIGNUP_CREDITS=10.00              # Credits granted on signup
+BILLING_SIGNUP_CREDITS_EXPIRY_DAYS=30     # Days until signup credits expire
+BILLING_PRICE_PER_EVALUATION=1.00         # Cost per evaluation consumed
+```
+
+---
+
+#### 3.9.1 Get Balance
+
+```http
+GET /billing/api/v1/balance
+```
+
+**Purpose**: Get current user balance and expiration info
+
+**Headers**:
+```
+Authorization: Bearer {jwt_token}
+```
+
+**Response**:
+```json
+{
+  "user_id": "abc123",
+  "available_balance": "8.00",
+  "expiring_soon_amount": "8.00",
+  "expiring_soon_at": "2025-01-25T10:00:00Z"
+}
+```
+
+**Example**:
+```bash
+curl -H "Authorization: Bearer eyJhbGc..." \
+  "http://localhost:8000/billing/api/v1/balance"
+```
+
+**Key Features**:
+- Returns total available balance (sum of non-expired credit grants)
+- Shows amount expiring within 7 days and earliest expiration date
+- Balance is FIFO: oldest expiring credits consumed first
+
+---
+
+#### 3.9.2 Top Up Balance
+
+```http
+POST /billing/api/v1/top-up
+```
+
+**Purpose**: Add credits to user account (typically from payment webhook)
+
+**Headers**:
+```
+Authorization: Bearer {jwt_token}
+Content-Type: application/json
+```
+
+**Request**:
+```json
+{
+  "amount": "25.00",
+  "source": "payment",
+  "expires_at": null
+}
+```
+
+**Parameters**:
+- `amount` (required): Credit amount to add
+- `source` (optional): Credit source (default: "payment")
+- `expires_at` (optional): Expiration datetime (null = never expires)
+
+**Response**:
+```json
+{
+  "new_balance": "33.00",
+  "transaction_id": 456
+}
+```
+
+**Example**:
+```bash
+curl -X POST "http://localhost:8000/billing/api/v1/top-up" \
+  -H "Authorization: Bearer eyJhbGc..." \
+  -H "Content-Type: application/json" \
+  -d '{"amount": "25.00"}'
+```
+
+---
+
+#### 3.9.3 Get Transactions
+
+```http
+GET /billing/api/v1/transactions
+```
+
+**Purpose**: Get transaction history for auditing
+
+**Headers**:
+```
+Authorization: Bearer {jwt_token}
+```
+
+**Query Parameters**:
+- `limit` (optional, default: 50): Max records to return
+- `offset` (optional, default: 0): Pagination offset
+
+**Response**:
+```json
+{
+  "transactions": [
+    {
+      "id": 123,
+      "transaction_type": "debit",
+      "amount": "2.00",
+      "balance_after": "8.00",
+      "reason": "Report generation",
+      "reference_type": "report",
+      "reference_id": "42",
+      "created_at": "2025-12-25T14:30:00Z"
+    }
+  ],
+  "total": 15
+}
+```
+
+**Example**:
+```bash
+curl -H "Authorization: Bearer eyJhbGc..." \
+  "http://localhost:8000/billing/api/v1/transactions?limit=20"
+```
+
+---
+
+### 3.10 Reports Endpoints
+
+**Purpose**: Generate and manage prompt group reports with billing integration
+
+The reports system provides:
+- **Report preview**: See cost before generating
+- **Report generation**: Charges for fresh (unconsumed) evaluations only
+- **Historical snapshots**: Track what data was available at report time
+- **Comparison**: See what's new since last report
+
+**Key Concepts**:
+- **Fresh evaluation**: An evaluation the user hasn't paid for yet
+- **Consumed evaluation**: An evaluation already paid for (free to view again)
+- **Report snapshot**: Point-in-time record of prompts and their evaluations
+
+**Authentication**: All reports endpoints require JWT authentication.
+
+---
+
+#### 3.10.1 Preview Report
+
+```http
+GET /reports/api/v1/groups/{group_id}/preview
+```
+
+**Purpose**: Preview what generating a report would cost before committing
+
+**Headers**:
+```
+Authorization: Bearer {jwt_token}
+```
+
+**Response**:
+```json
+{
+  "group_id": 5,
+  "total_prompts": 10,
+  "prompts_with_data": 8,
+  "prompts_awaiting": 2,
+  "fresh_evaluations": 5,
+  "already_consumed": 3,
+  "estimated_cost": "5.00",
+  "user_balance": "10.00",
+  "affordable_count": 10,
+  "needs_top_up": false
+}
+```
+
+**Example**:
+```bash
+curl -H "Authorization: Bearer eyJhbGc..." \
+  "http://localhost:8000/reports/api/v1/groups/5/preview"
+```
+
+**Key Features**:
+- Shows how many prompts have evaluation data vs awaiting
+- Calculates cost for fresh (uncharged) evaluations only
+- Indicates if user has sufficient balance
+
+---
+
+#### 3.10.2 Generate Report
+
+```http
+POST /reports/api/v1/groups/{group_id}/generate
+```
+
+**Purpose**: Generate a report and charge for fresh evaluations
+
+**Headers**:
+```
+Authorization: Bearer {jwt_token}
+Content-Type: application/json
+```
+
+**Request**:
+```json
+{
+  "title": "December Report",
+  "include_previous": true
+}
+```
+
+**Parameters**:
+- `title` (optional): Custom report title
+- `include_previous` (optional, default: true): Include previously consumed evaluations
+
+**Response**:
+```json
+{
+  "id": 42,
+  "group_id": 5,
+  "title": "December Report",
+  "created_at": "2025-12-25T15:00:00Z",
+  "total_prompts": 10,
+  "prompts_with_data": 8,
+  "prompts_awaiting": 2,
+  "total_evaluations_loaded": 8,
+  "total_cost": "5.00",
+  "items": [
+    {
+      "prompt_id": 1,
+      "prompt_text": "Best smartphone under $500?",
+      "evaluation_id": 123,
+      "status": "included",
+      "is_fresh": true,
+      "amount_charged": "1.00",
+      "answer": {
+        "response": "Based on current reviews...",
+        "citations": [...],
+        "timestamp": "2025-12-24T10:00:00Z"
+      }
+    }
+  ]
+}
+```
+
+**Example**:
+```bash
+curl -X POST "http://localhost:8000/reports/api/v1/groups/5/generate" \
+  -H "Authorization: Bearer eyJhbGc..." \
+  -H "Content-Type: application/json" \
+  -d '{"include_previous": true}'
+```
+
+**Key Features**:
+- Charges only for fresh evaluations (not previously consumed)
+- Second report generation for same data is FREE (0.00 cost)
+- Creates immutable snapshot of data at generation time
+- Marks consumed evaluations so user won't be charged again
+
+---
+
+#### 3.10.3 Compare with Latest Report
+
+```http
+GET /reports/api/v1/groups/{group_id}/compare
+```
+
+**Purpose**: See what's changed since the last report
+
+**Headers**:
+```
+Authorization: Bearer {jwt_token}
+```
+
+**Response**:
+```json
+{
+  "group_id": 5,
+  "last_report_at": "2025-12-20T10:00:00Z",
+  "current_prompts_count": 12,
+  "current_evaluations_count": 15,
+  "new_prompts_added": 2,
+  "new_evaluations_available": 4,
+  "fresh_data_count": 4,
+  "estimated_cost": "4.00",
+  "user_balance": "10.00",
+  "affordable_count": 10,
+  "needs_top_up": false
+}
+```
+
+**Example**:
+```bash
+curl -H "Authorization: Bearer eyJhbGc..." \
+  "http://localhost:8000/reports/api/v1/groups/5/compare"
+```
+
+**Use Case**: Show "X fresh answers available" badge in UI
+
+---
+
+#### 3.10.4 List Reports
+
+```http
+GET /reports/api/v1/groups/{group_id}/reports
+```
+
+**Purpose**: List all reports for a group
+
+**Headers**:
+```
+Authorization: Bearer {jwt_token}
+```
+
+**Query Parameters**:
+- `limit` (optional, default: 20): Max reports to return
+- `offset` (optional, default: 0): Pagination offset
+
+**Response**:
+```json
+{
+  "reports": [
+    {
+      "id": 42,
+      "group_id": 5,
+      "title": "December Report",
+      "created_at": "2025-12-25T15:00:00Z",
+      "total_prompts": 10,
+      "prompts_with_data": 8,
+      "prompts_awaiting": 2,
+      "total_cost": "5.00"
+    }
+  ],
+  "total": 3
+}
+```
+
+---
+
+#### 3.10.5 Get Report Details
+
+```http
+GET /reports/api/v1/groups/{group_id}/reports/{report_id}
+```
+
+**Purpose**: Get a specific report with all items
+
+**Headers**:
+```
+Authorization: Bearer {jwt_token}
+```
+
+**Response**: Same as generate response (full report with items)
+
+---
+
+#### 3.10.6 Complete Reports Workflow
+
+**Example: User generates reports over time**
+
+```bash
+# 1. User signs up (gets 10.00 credits)
+# 2. Creates prompt group with 5 prompts
+# 3. Evaluations complete for 3 prompts
+
+# Preview report (see cost before generating)
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8000/reports/api/v1/groups/5/preview"
+# Response: fresh_evaluations=3, estimated_cost=3.00
+
+# Generate first report (charges 3.00)
+curl -X POST "http://localhost:8000/reports/api/v1/groups/5/generate" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"include_previous": true}'
+# Response: total_cost=3.00
+
+# Check balance
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8000/billing/api/v1/balance"
+# Response: available_balance=7.00
+
+# Generate same report again - FREE!
+curl -X POST "http://localhost:8000/reports/api/v1/groups/5/generate" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"include_previous": true}'
+# Response: total_cost=0.00 (no fresh data)
+
+# Time passes... 2 more evaluations complete
+
+# Compare with latest report
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8000/reports/api/v1/groups/5/compare"
+# Response: fresh_data_count=2, estimated_cost=2.00
+
+# Generate updated report (charges 2.00 for new data only)
+curl -X POST "http://localhost:8000/reports/api/v1/groups/5/generate" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"include_previous": true}'
+# Response: total_cost=2.00
+
+# Final balance: 5.00 (10 - 3 - 2)
+```
+
+**Key Billing Rules**:
+1. **First report**: Charges for all available evaluations
+2. **Same data again**: FREE (already consumed)
+3. **New data added**: Charges only for fresh evaluations
+4. **Previously consumed**: Always free to include
+
+---
 
 **Example Client Code** (Python):
 
@@ -1639,6 +2073,25 @@ prompts-volume/
 │   │   └── services/
 │   │       ├── prompt_group_service.py         # Group CRUD, brand management
 │   │       └── prompt_group_binding_service.py # Prompt-group bindings
+│   │
+│   ├── billing/                         # Pay-as-you-go billing system
+│   │   ├── router.py                    # API endpoints (balance, top-up, transactions)
+│   │   ├── models/
+│   │   │   ├── api_models.py            # Request/response models
+│   │   │   └── domain.py                # Domain models (BalanceInfo, ChargeResult)
+│   │   └── services/
+│   │       ├── balance_service.py       # Credit grants with FIFO expiration
+│   │       ├── consumption_service.py   # Tracks consumed evaluations
+│   │       ├── charge_service.py        # Orchestrator for charging
+│   │       └── pricing.py               # Pricing strategies
+│   │
+│   ├── reports/                         # Report generation and management
+│   │   ├── router.py                    # API endpoints (preview, generate, compare)
+│   │   ├── models/
+│   │   │   └── api_models.py            # Request/response models
+│   │   └── services/
+│   │       ├── report_service.py        # Report generation with billing
+│   │       └── comparison_service.py    # Fresh data detection
 │   │
 │   ├── embeddings/                      # ML pipeline (local models)
 │   │   ├── embeddings_service.py        # sentence-transformers

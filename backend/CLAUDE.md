@@ -91,6 +91,22 @@ The project follows Domain-Driven Design (DDD) with clear separation of concerns
   - `services/prompt_group_binding_service.py` - PromptGroupBindingService (prompt-group bindings)
   - `exceptions.py` - Domain exceptions (GroupNotFoundError, CommonGroupDeletionError, etc.)
 
+- **`src/billing/`** - Pay-as-you-go billing system
+  - `router.py` - API endpoints (balance, top-up, transactions, charge)
+  - `models/api_models.py` - Request/response models (BalanceResponse, TopUpRequest, ChargeRequest)
+  - `models/domain.py` - Domain models (BalanceInfo, ChargeResult, TransactionRecord)
+  - `services/balance_service.py` - BalanceService (credit grants with FIFO expiration)
+  - `services/consumption_service.py` - ConsumptionService (tracks consumed evaluations)
+  - `services/charge_service.py` - ChargeService (orchestrator for charging)
+  - `services/pricing.py` - PricingStrategy implementations (FixedPricingStrategy)
+  - `exceptions.py` - Domain exceptions (InsufficientBalanceError)
+
+- **`src/reports/`** - Report generation and management
+  - `router.py` - API endpoints (preview, generate, compare, list reports)
+  - `models/api_models.py` - Request/response models (ReportPreviewResponse, ReportResponse, ComparisonResponse)
+  - `services/report_service.py` - ReportService (report generation with billing integration)
+  - `services/comparison_service.py` - ComparisonService (fresh data detection)
+
 ### Infrastructure Modules
 
 - **`src/embeddings/`** - ML pipeline (local models)

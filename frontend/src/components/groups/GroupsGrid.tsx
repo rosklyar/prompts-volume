@@ -3,7 +3,7 @@
  * Handles group-to-group prompt movement
  */
 
-import { useState, useMemo, useCallback } from "react"
+import { useState, useMemo, useCallback, useEffect } from "react"
 import {
   DndContext,
   DragOverlay,
@@ -32,10 +32,10 @@ import {
   useDeleteGroup,
   useRemovePromptsFromGroup,
   useMovePrompt,
-  useLoadReport,
 } from "@/hooks/useGroups"
+import { useGenerateReport } from "@/hooks/useBilling"
+import { useInvalidateReportQueries } from "@/hooks/useReports"
 import { calculateVisibilityScores } from "@/lib/report-utils"
-import { saveReportCache, loadReportCache, clearReportCache } from "@/lib/report-storage"
 import { GroupCard } from "./GroupCard"
 import { AddGroupCard } from "./AddGroupCard"
 import { PromptItem } from "./PromptItem"
@@ -53,6 +53,36 @@ interface GroupState {
   answersLoaded: boolean
   visibilityScores: BrandVisibilityScore[] | null
   citationLeaderboard: CitationLeaderboard | null
+}
+
+// LocalStorage key for persisting selected reports
+const SELECTED_REPORTS_KEY = "selected_reports"
+
+// Load selected reports from localStorage
+function loadSelectedReports(): Record<number, number | null> {
+  try {
+    const saved = localStorage.getItem(SELECTED_REPORTS_KEY)
+    if (!saved) return {}
+    return JSON.parse(saved)
+  } catch {
+    return {}
+  }
+}
+
+// Save selected reports to localStorage
+function saveSelectedReports(reports: Record<number, number | null>): void {
+  try {
+    // Only save non-null values
+    const toSave: Record<number, number> = {}
+    for (const [groupId, reportId] of Object.entries(reports)) {
+      if (reportId !== null) {
+        toSave[Number(groupId)] = reportId
+      }
+    }
+    localStorage.setItem(SELECTED_REPORTS_KEY, JSON.stringify(toSave))
+  } catch {
+    // Silently fail if localStorage is unavailable
+  }
 }
 
 export function GroupsGrid() {
@@ -75,10 +105,24 @@ export function GroupsGrid() {
   const deleteGroup = useDeleteGroup()
   const removePrompts = useRemovePromptsFromGroup()
   const movePrompt = useMovePrompt()
-  const loadReport = useLoadReport()
+  const generateReport = useGenerateReport()
 
   // Local state for answers and report data
   const [groupStates, setGroupStates] = useState<Record<number, GroupState>>({})
+
+  // Track which report is selected per group (for viewing historical reports)
+  // Initialize from localStorage to persist across page refreshes
+  const [selectedReports, setSelectedReports] = useState<Record<number, number | null>>(
+    loadSelectedReports
+  )
+
+  // Persist selected reports to localStorage when they change
+  useEffect(() => {
+    saveSelectedReports(selectedReports)
+  }, [selectedReports])
+
+  // Invalidate report queries after generating
+  const invalidateReportQueries = useInvalidateReportQueries()
 
   // Active drag item
   const [activePrompt, setActivePrompt] = useState<{
@@ -106,60 +150,40 @@ export function GroupsGrid() {
     })
   }, [groupDetails])
 
-  // Load cached states from localStorage (computed, not stored in state)
-  const cachedGroupStates = useMemo(() => {
-    if (!groupDetails || groupDetails.length === 0) return {}
-
-    const cachedStates: Record<number, GroupState> = {}
-
-    groupDetails.forEach((group) => {
-      const cached = loadReportCache(group.id)
-      if (cached) {
-        cachedStates[group.id] = {
-          prompts: cached.prompts,
-          isLoadingAnswers: false,
-          answersLoaded: true,
-          visibilityScores: cached.visibilityScores,
-          citationLeaderboard: cached.citationLeaderboard,
-        }
-      }
-    })
-
-    return cachedStates
-  }, [groupDetails])
-
-  // Merge cached states with runtime states (runtime takes precedence)
-  const mergedGroupStates = useMemo(() => {
-    return { ...cachedGroupStates, ...groupStates }
-  }, [cachedGroupStates, groupStates])
-
-  // Get prompts for a group with answers merged
-  // Always use group.prompts as the source of truth for which prompts exist,
-  // but merge in any cached answer data we have
+  // Get prompts for a group with answers merged from selected report
+  // Answers are only shown when a report is selected
   const getPromptsWithAnswers = useCallback(
     (group: GroupDetail): PromptWithAnswer[] => {
-      const state = mergedGroupStates[group.id]
+      const state = groupStates[group.id]
       if (!state) {
         return group.prompts.map((p) => ({ ...p }))
       }
 
-      // Create a map of cached answers by prompt_id
-      const cachedAnswers = new Map(
+      // Create a map of answers by prompt_id from the loaded report
+      const answersByPromptId = new Map(
         state.prompts.map((p) => [p.prompt_id, { answer: p.answer, brand_mentions: p.brand_mentions }])
       )
 
-      // Merge: use group.prompts as source of truth, but add cached answers
+      // Merge: use group.prompts as source of truth, but add answers from selected report
       return group.prompts.map((p) => {
-        const cached = cachedAnswers.get(p.prompt_id)
+        const reportData = answersByPromptId.get(p.prompt_id)
         return {
           ...p,
-          answer: cached?.answer ?? null,
-          brand_mentions: cached?.brand_mentions ?? null,
+          answer: reportData?.answer ?? null,
+          brand_mentions: reportData?.brand_mentions ?? null,
         }
       })
     },
-    [mergedGroupStates]
+    [groupStates]
   )
+
+  // Handle selecting a report to view
+  const handleSelectReport = useCallback((groupId: number, reportId: number | null) => {
+    setSelectedReports((prev) => ({
+      ...prev,
+      [groupId]: reportId,
+    }))
+  }, [])
 
   const canAddMore = sortedGroups.length < MAX_GROUPS
 
@@ -233,8 +257,12 @@ export function GroupsGrid() {
       delete newState[groupId]
       return newState
     })
-    // Clear cached report data
-    clearReportCache(groupId)
+    // Clean up selected report state
+    setSelectedReports((prev) => {
+      const newState = { ...prev }
+      delete newState[groupId]
+      return newState
+    })
   }
 
   // Handle prompt deletion
@@ -254,10 +282,9 @@ export function GroupsGrid() {
     })
   }
 
-  // Handle load report (enriched results)
-  const handleLoadReport = async (group: GroupDetail) => {
-    const promptIds = group.prompts.map((p) => p.prompt_id)
-    if (promptIds.length === 0) return
+  // Handle load report (using billing API with charging)
+  const handleLoadReport = async (group: GroupDetail, includePrevious: boolean = true) => {
+    if (group.prompts.length === 0) return
 
     // Get brands from group (from API)
     const brands = group.brands || []
@@ -277,28 +304,39 @@ export function GroupsGrid() {
     }))
 
     try {
-      const result = await loadReport.mutateAsync({
+      // Use the new billing-aware generate API
+      const result = await generateReport.mutateAsync({
         groupId: group.id,
-        promptIds,
+        request: { include_previous: includePrevious },
       })
 
-      // Merge answers and brand mentions into prompts
+      // Merge answers and brand mentions into prompts from the response
       const promptsWithAnswers = group.prompts.map((p) => {
-        const evaluation = result.results.find(
+        const item = result.items.find(
           (r) => r.prompt_id === p.prompt_id
         )
         return {
           ...p,
-          answer: evaluation?.answer || null,
-          brand_mentions: evaluation?.brand_mentions || null,
+          answer: item?.answer || null,
+          brand_mentions: item?.brand_mentions || null,
           isLoading: false,
         }
       })
 
-      // Calculate visibility scores
+      // Calculate visibility scores using the items from the response
+      const resultsForScoring = result.items.map((item) => ({
+        prompt_id: item.prompt_id,
+        prompt_text: item.prompt_text,
+        evaluation_id: item.evaluation_id,
+        status: item.status,
+        answer: item.answer,
+        completed_at: item.completed_at,
+        brand_mentions: item.brand_mentions,
+      }))
+
       const visibilityScores =
         brands.length > 0
-          ? calculateVisibilityScores(result.results, brands)
+          ? calculateVisibilityScores(resultsForScoring, brands)
           : null
 
       setGroupStates((prev) => ({
@@ -312,13 +350,11 @@ export function GroupsGrid() {
         },
       }))
 
-      // Cache the report data in localStorage
-      saveReportCache(
-        group.id,
-        promptsWithAnswers,
-        visibilityScores,
-        result.citation_leaderboard
-      )
+      // Auto-select the newly generated report
+      handleSelectReport(group.id, result.report_id)
+
+      // Invalidate report history and comparison queries
+      invalidateReportQueries(group.id)
     } catch (error) {
       console.error("Failed to load report:", error)
       setGroupStates((prev) => ({
@@ -389,7 +425,7 @@ export function GroupsGrid() {
           <div className="space-y-4">
             {/* User groups - each in its own row */}
             {sortedGroups.map((group, index) => {
-              const state = mergedGroupStates[group.id]
+              const state = groupStates[group.id]
               const prompts = getPromptsWithAnswers(group)
               const brands = group.brands || []
 
@@ -404,12 +440,14 @@ export function GroupsGrid() {
                   brands={brands}
                   visibilityScores={state?.visibilityScores || null}
                   citationLeaderboard={state?.citationLeaderboard || null}
+                  selectedReportId={selectedReports[group.id] ?? null}
+                  onSelectReport={(reportId) => handleSelectReport(group.id, reportId)}
                   onUpdateTitle={(title) => handleUpdateGroup(group.id, title)}
                   onDeleteGroup={() => handleDeleteGroup(group.id)}
                   onDeletePrompt={(promptId) =>
                     handleDeletePrompt(group.id, promptId)
                   }
-                  onLoadReport={() => handleLoadReport(group)}
+                  onLoadReport={(includePrevious) => handleLoadReport(group, includePrevious)}
                   onBrandsChange={(brands) => handleBrandsChange(group.id, brands)}
                 />
               )

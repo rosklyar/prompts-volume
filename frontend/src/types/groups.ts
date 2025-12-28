@@ -107,7 +107,8 @@ export interface CitationCountItem {
 }
 
 export interface CitationLeaderboard {
-  items: CitationCountItem[]
+  domains: CitationCountItem[]
+  subpaths: CitationCountItem[]
   total_citations: number
 }
 

@@ -6,7 +6,9 @@ from datetime import datetime
 from typing import List, Optional
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, text
+from decimal import Decimal
+
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -423,3 +425,268 @@ class PromptGroupBinding(Base):
 
     def __repr__(self) -> str:
         return f"<PromptGroupBinding(id={self.id}, group_id={self.group_id}, prompt_id={self.prompt_id})>"
+
+
+# =============================================================================
+# Billing Models
+# =============================================================================
+
+
+class CreditSource(str, enum.Enum):
+    """Source of credit grants."""
+    SIGNUP_BONUS = "signup_bonus"
+    PAYMENT = "payment"
+    PROMO_CODE = "promo_code"
+    REFERRAL = "referral"
+    ADMIN_GRANT = "admin_grant"
+
+
+class TransactionType(str, enum.Enum):
+    """Type of balance transaction."""
+    DEBIT = "debit"
+    CREDIT = "credit"
+
+
+class CreditGrant(Base):
+    """Individual credit grants with expiration tracking.
+
+    Credits are consumed using FIFO (oldest expiring first).
+    Signup credits expire, paid credits don't.
+    """
+
+    __tablename__ = "credit_grants"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    source: Mapped[CreditSource] = mapped_column(
+        Enum(
+            CreditSource,
+            values_callable=lambda x: [e.value for e in x],
+            name="creditsource",
+        ),
+        nullable=False,
+    )
+    original_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 4),
+        nullable=False,
+    )
+    remaining_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 4),
+        nullable=False,
+    )
+    expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,  # NULL = never expires
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("NOW()"),
+    )
+
+    # Relationship
+    user: Mapped["User"] = relationship()
+
+    def __repr__(self) -> str:
+        return f"<CreditGrant(id={self.id}, user_id='{self.user_id}', source='{self.source.value}', remaining={self.remaining_amount})>"
+
+
+class BalanceTransaction(Base):
+    """Audit log of all balance changes."""
+
+    __tablename__ = "balance_transactions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    transaction_type: Mapped[TransactionType] = mapped_column(
+        Enum(
+            TransactionType,
+            values_callable=lambda x: [e.value for e in x],
+            name="transactiontype",
+        ),
+        nullable=False,
+    )
+    amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 4),
+        nullable=False,
+    )
+    balance_after: Mapped[Decimal] = mapped_column(
+        Numeric(12, 4),
+        nullable=False,
+    )
+    reason: Mapped[str] = mapped_column(String(255), nullable=False)
+    reference_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    reference_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("NOW()"),
+        index=True,
+    )
+
+    # Relationship
+    user: Mapped["User"] = relationship()
+
+    def __repr__(self) -> str:
+        return f"<BalanceTransaction(id={self.id}, user_id='{self.user_id}', type='{self.transaction_type.value}', amount={self.amount})>"
+
+
+class ConsumedEvaluation(Base):
+    """Tracks which evaluations a user has paid for."""
+
+    __tablename__ = "consumed_evaluations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    evaluation_id: Mapped[int] = mapped_column(
+        ForeignKey("prompt_evaluations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    amount_charged: Mapped[Decimal] = mapped_column(
+        Numeric(12, 4),
+        nullable=False,
+    )
+    consumed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("NOW()"),
+    )
+
+    # Relationships
+    user: Mapped["User"] = relationship()
+    evaluation: Mapped["PromptEvaluation"] = relationship()
+
+    # Constraints - each evaluation can only be consumed once per user
+    __table_args__ = (
+        UniqueConstraint("user_id", "evaluation_id", name="uq_consumed_eval_user_eval"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<ConsumedEvaluation(id={self.id}, user_id='{self.user_id}', evaluation_id={self.evaluation_id})>"
+
+
+# =============================================================================
+# Report Models
+# =============================================================================
+
+
+class GroupReport(Base):
+    """Report snapshot for a prompt group."""
+
+    __tablename__ = "group_reports"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("prompt_groups.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # Report metadata
+    title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("NOW()"),
+        index=True,
+    )
+
+    # Stats snapshot
+    total_prompts: Mapped[int] = mapped_column(Integer, nullable=False)
+    prompts_with_data: Mapped[int] = mapped_column(Integer, nullable=False)
+    prompts_awaiting: Mapped[int] = mapped_column(Integer, nullable=False)
+    total_evaluations_loaded: Mapped[int] = mapped_column(Integer, nullable=False)
+    total_cost: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+
+    # Relationships
+    group: Mapped["PromptGroup"] = relationship()
+    user: Mapped["User"] = relationship()
+    items: Mapped[List["GroupReportItem"]] = relationship(
+        back_populates="report",
+        cascade="all, delete-orphan"
+    )
+
+    def __repr__(self) -> str:
+        return f"<GroupReport(id={self.id}, group_id={self.group_id}, created_at='{self.created_at}')>"
+
+
+class ReportItemStatus(str, enum.Enum):
+    """Status of a report item."""
+    INCLUDED = "included"
+    AWAITING = "awaiting"
+    SKIPPED = "skipped"
+
+
+class GroupReportItem(Base):
+    """Individual prompt/evaluation reference in a report."""
+
+    __tablename__ = "group_report_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    report_id: Mapped[int] = mapped_column(
+        ForeignKey("group_reports.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    prompt_id: Mapped[int] = mapped_column(
+        ForeignKey("prompts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    evaluation_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("prompt_evaluations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    # Status at time of report
+    status: Mapped[ReportItemStatus] = mapped_column(
+        Enum(
+            ReportItemStatus,
+            values_callable=lambda x: [e.value for e in x],
+            name="reportitemstatus",
+        ),
+        nullable=False,
+    )
+    is_fresh: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+    )
+
+    # Amount charged (for this specific item in this report)
+    amount_charged: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(12, 4),
+        nullable=True,
+    )
+
+    # Relationships
+    report: Mapped["GroupReport"] = relationship(back_populates="items")
+    prompt: Mapped["Prompt"] = relationship()
+    evaluation: Mapped[Optional["PromptEvaluation"]] = relationship()
+
+    def __repr__(self) -> str:
+        return f"<GroupReportItem(id={self.id}, report_id={self.report_id}, prompt_id={self.prompt_id}, status='{self.status.value}')>"
