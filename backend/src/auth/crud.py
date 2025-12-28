@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.auth.models import UserCreate, UserUpdate
 from src.auth.security import get_password_hash, verify_password
 from src.config.settings import settings
-from src.database.models import CreditGrant, CreditSource, User
+from src.database.users_models import CreditGrant, CreditSource, User
 
 
 async def create_user(session: AsyncSession, user_create: UserCreate) -> User:
@@ -52,6 +52,8 @@ async def authenticate(session: AsyncSession, email: str, password: str) -> User
     """Authenticate a user by email and password."""
     user = await get_user_by_email(session, email)
     if not user:
+        return None
+    if user.is_deleted:
         return None
     if not verify_password(password, user.hashed_password):
         return None

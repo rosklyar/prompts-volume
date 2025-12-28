@@ -8,7 +8,6 @@ from sqlalchemy.orm import selectinload
 
 from src.billing.services.charge_service import ChargeService
 from src.database.models import (
-    ConsumedEvaluation,
     EvaluationStatus,
     GroupReport,
     GroupReportItem,

@@ -6,6 +6,7 @@ from datetime import timedelta
 import pytest
 import pytest_asyncio
 import src.database.session as db_session
+import src.database.users_session as users_db_session
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -13,6 +14,7 @@ from sqlalchemy.pool import NullPool
 from testcontainers.postgres import PostgresContainer
 
 from src.database import Base, seed_initial_data
+from src.database.users_session import UsersBase
 from src.main import app
 from src.auth.crud import create_user
 from src.auth.models import UserCreate
@@ -43,6 +45,7 @@ def db_url(postgres_container):
 async def test_engine(db_url):
     """
     Function-scoped fixture that provides an async engine connected to the test database.
+    Creates tables for both prompts_db (Base) and users_db (UsersBase).
     """
     # Create async engine
     engine = create_async_engine(db_url, echo=False, poolclass=NullPool)
@@ -51,9 +54,10 @@ async def test_engine(db_url):
     async with engine.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
 
-    # Create all tables
+    # Create all tables for both databases (using same engine for tests)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(UsersBase.metadata.create_all)
 
     yield engine
 
@@ -107,19 +111,21 @@ def override_get_db(test_session):
 def client(test_engine):
     """
     Fixture that provides a FastAPI TestClient with database dependency overridden.
-    Also sets the global database engine to use the test engine.
+    Also sets the global database engine to use the test engine for both databases.
 
     Note: This is a sync fixture that creates its own session for TestClient's event loop.
     The test_session fixture is for async tests only.
     """
-    # Store original engine and session maker
+    # Store original engine and session maker for prompts_db
     original_engine = db_session._engine
     original_session_maker = db_session._async_session_maker
 
-    # Override global database engine and session maker BEFORE creating TestClient
-    # This ensures app lifespan uses test database
-    db_session._engine = test_engine
-    db_session._async_session_maker = async_sessionmaker(
+    # Store original engine and session maker for users_db
+    original_users_engine = users_db_session._users_engine
+    original_users_session_maker = users_db_session._users_async_session_maker
+
+    # Create shared session maker for test engine
+    test_session_maker = async_sessionmaker(
         bind=test_engine,
         class_=AsyncSession,
         expire_on_commit=False,
@@ -127,15 +133,28 @@ def client(test_engine):
         autoflush=False,
     )
 
+    # Override global database engine and session maker BEFORE creating TestClient
+    # This ensures app lifespan uses test database
+    db_session._engine = test_engine
+    db_session._async_session_maker = test_session_maker
+
+    # Override users_db engine and session maker (using same test engine)
+    users_db_session._users_engine = test_engine
+    users_db_session._users_async_session_maker = test_session_maker
+
     # TestClient will use the overridden engine via get_async_session dependency
     # No need to override get_async_session - it will use the overridden engine
 
     with TestClient(app) as test_client:
         yield test_client
 
-    # Restore original engine and session maker
+    # Restore original engine and session maker for prompts_db
     db_session._engine = original_engine
     db_session._async_session_maker = original_session_maker
+
+    # Restore original engine and session maker for users_db
+    users_db_session._users_engine = original_users_engine
+    users_db_session._users_async_session_maker = original_users_session_maker
 
     # Clear overrides
     app.dependency_overrides.clear()

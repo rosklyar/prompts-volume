@@ -1,36 +1,16 @@
 """SQLAlchemy ORM models for database tables."""
 
 import enum
-import uuid as uuid_module
 from datetime import datetime
+from decimal import Decimal
 from typing import List, Optional
 
 from pgvector.sqlalchemy import Vector
-from decimal import Decimal
-
 from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.database.session import Base
-
-
-class User(Base):
-    """User model for authentication."""
-
-    __tablename__ = "users"
-
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=lambda: str(uuid_module.uuid4())
-    )
-    email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
-    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
-    full_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    is_superuser: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-
-    def __repr__(self) -> str:
-        return f"<User(id={self.id}, email='{self.email}', is_superuser={self.is_superuser})>"
 
 
 class Language(Base):
@@ -353,10 +333,9 @@ class PromptGroup(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[str] = mapped_column(
         String(36),
-        ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
-    )
+    )  # No FK - user is in users_db
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -427,121 +406,6 @@ class PromptGroupBinding(Base):
         return f"<PromptGroupBinding(id={self.id}, group_id={self.group_id}, prompt_id={self.prompt_id})>"
 
 
-# =============================================================================
-# Billing Models
-# =============================================================================
-
-
-class CreditSource(str, enum.Enum):
-    """Source of credit grants."""
-    SIGNUP_BONUS = "signup_bonus"
-    PAYMENT = "payment"
-    PROMO_CODE = "promo_code"
-    REFERRAL = "referral"
-    ADMIN_GRANT = "admin_grant"
-
-
-class TransactionType(str, enum.Enum):
-    """Type of balance transaction."""
-    DEBIT = "debit"
-    CREDIT = "credit"
-
-
-class CreditGrant(Base):
-    """Individual credit grants with expiration tracking.
-
-    Credits are consumed using FIFO (oldest expiring first).
-    Signup credits expire, paid credits don't.
-    """
-
-    __tablename__ = "credit_grants"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[str] = mapped_column(
-        String(36),
-        ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    source: Mapped[CreditSource] = mapped_column(
-        Enum(
-            CreditSource,
-            values_callable=lambda x: [e.value for e in x],
-            name="creditsource",
-        ),
-        nullable=False,
-    )
-    original_amount: Mapped[Decimal] = mapped_column(
-        Numeric(12, 4),
-        nullable=False,
-    )
-    remaining_amount: Mapped[Decimal] = mapped_column(
-        Numeric(12, 4),
-        nullable=False,
-    )
-    expires_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,  # NULL = never expires
-        index=True,
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=text("NOW()"),
-    )
-
-    # Relationship
-    user: Mapped["User"] = relationship()
-
-    def __repr__(self) -> str:
-        return f"<CreditGrant(id={self.id}, user_id='{self.user_id}', source='{self.source.value}', remaining={self.remaining_amount})>"
-
-
-class BalanceTransaction(Base):
-    """Audit log of all balance changes."""
-
-    __tablename__ = "balance_transactions"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[str] = mapped_column(
-        String(36),
-        ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    transaction_type: Mapped[TransactionType] = mapped_column(
-        Enum(
-            TransactionType,
-            values_callable=lambda x: [e.value for e in x],
-            name="transactiontype",
-        ),
-        nullable=False,
-    )
-    amount: Mapped[Decimal] = mapped_column(
-        Numeric(12, 4),
-        nullable=False,
-    )
-    balance_after: Mapped[Decimal] = mapped_column(
-        Numeric(12, 4),
-        nullable=False,
-    )
-    reason: Mapped[str] = mapped_column(String(255), nullable=False)
-    reference_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    reference_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=text("NOW()"),
-        index=True,
-    )
-
-    # Relationship
-    user: Mapped["User"] = relationship()
-
-    def __repr__(self) -> str:
-        return f"<BalanceTransaction(id={self.id}, user_id='{self.user_id}', type='{self.transaction_type.value}', amount={self.amount})>"
-
-
 class ConsumedEvaluation(Base):
     """Tracks which evaluations a user has paid for."""
 
@@ -550,10 +414,9 @@ class ConsumedEvaluation(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[str] = mapped_column(
         String(36),
-        ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
-    )
+    )  # No FK - user is in users_db
     evaluation_id: Mapped[int] = mapped_column(
         ForeignKey("prompt_evaluations.id", ondelete="CASCADE"),
         nullable=False,
@@ -570,7 +433,6 @@ class ConsumedEvaluation(Base):
     )
 
     # Relationships
-    user: Mapped["User"] = relationship()
     evaluation: Mapped["PromptEvaluation"] = relationship()
 
     # Constraints - each evaluation can only be consumed once per user
@@ -600,10 +462,9 @@ class GroupReport(Base):
     )
     user_id: Mapped[str] = mapped_column(
         String(36),
-        ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
-    )
+    )  # No FK - user is in users_db
 
     # Report metadata
     title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
@@ -623,7 +484,6 @@ class GroupReport(Base):
 
     # Relationships
     group: Mapped["PromptGroup"] = relationship()
-    user: Mapped["User"] = relationship()
     items: Mapped[List["GroupReportItem"]] = relationship(
         back_populates="report",
         cascade="all, delete-orphan"

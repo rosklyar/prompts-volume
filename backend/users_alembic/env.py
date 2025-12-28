@@ -1,4 +1,4 @@
-"""Alembic environment configuration for async SQLAlchemy."""
+"""Alembic environment configuration for users_db (async SQLAlchemy)."""
 
 import asyncio
 from logging.config import fileConfig
@@ -10,25 +10,13 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 
 from src.config.settings import settings
-from src.database.session import Base
+from src.database.users_session import UsersBase
 
-# Import all models to ensure they are registered with Base.metadata
-from src.database.models import (  # noqa: F401
-    AIAssistant,
-    AIAssistantPlan,
-    BusinessDomain,
-    ConsumedEvaluation,
-    Country,
-    CountryLanguage,
-    GroupReport,
-    GroupReportItem,
-    Language,
-    Prompt,
-    PromptEvaluation,
-    PromptGroup,
-    PromptGroupBinding,
-    PriorityPromptQueue,
-    Topic,
+# Import all models to ensure they are registered with UsersBase.metadata
+from src.database.users_models import (  # noqa: F401
+    User,
+    CreditGrant,
+    BalanceTransaction,
 )
 
 # this is the Alembic Config object, which provides
@@ -36,7 +24,7 @@ from src.database.models import (  # noqa: F401
 config = context.config
 
 # Override sqlalchemy.url with value from settings
-config.set_main_option("sqlalchemy.url", settings.database_url)
+config.set_main_option("sqlalchemy.url", settings.users_database_url)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
@@ -44,7 +32,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # add your model's MetaData object here for 'autogenerate' support
-target_metadata = Base.metadata
+target_metadata = UsersBase.metadata
 
 
 def run_migrations_offline() -> None:
