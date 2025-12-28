@@ -106,3 +106,63 @@ export interface TransactionsResponse {
   transactions: Transaction[]
   total: number
 }
+
+// ===== Report History Types =====
+
+export interface ReportSummary {
+  id: number
+  group_id: number
+  title: string | null
+  created_at: string
+  total_prompts: number
+  prompts_with_data: number
+  prompts_awaiting: number
+  total_cost: number
+}
+
+export interface ReportListResponse {
+  reports: ReportSummary[]
+  total: number
+}
+
+export interface ComparisonResponse {
+  group_id: number
+  last_report_at: string | null
+  current_prompts_count: number
+  current_evaluations_count: number
+  new_prompts_added: number
+  new_evaluations_available: number
+  fresh_data_count: number
+  estimated_cost: number
+  user_balance: number
+  affordable_count: number
+  needs_top_up: boolean
+}
+
+// ===== Full Report Types (for viewing historical reports) =====
+
+export interface FullReportResponse {
+  id: number
+  group_id: number
+  title: string | null
+  created_at: string
+  total_prompts: number
+  prompts_with_data: number
+  prompts_awaiting: number
+  total_evaluations_loaded: number
+  total_cost: number
+  items: GeneratedReportItem[]
+  citation_leaderboard: {
+    domains: Array<{
+      path: string
+      count: number
+      is_domain: boolean
+    }>
+    subpaths: Array<{
+      path: string
+      count: number
+      is_domain: boolean
+    }>
+    total_citations: number
+  } | null
+}

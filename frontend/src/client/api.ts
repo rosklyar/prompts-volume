@@ -7,6 +7,9 @@ import type {
   TopUpRequest,
   TopUpResponse,
   TransactionsResponse,
+  ReportListResponse,
+  FullReportResponse,
+  ComparisonResponse,
 } from "@/types/billing"
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000"
@@ -382,6 +385,47 @@ export const reportsApi = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
       }
+    )
+    return response.json()
+  },
+
+  /**
+   * List all reports for a group with pagination
+   */
+  async listReports(
+    groupId: number,
+    limit: number = 20,
+    offset: number = 0
+  ): Promise<ReportListResponse> {
+    const params = new URLSearchParams({
+      limit: limit.toString(),
+      offset: offset.toString(),
+    })
+    const response = await fetchWithAuth(
+      `/reports/api/v1/groups/${groupId}/reports?${params}`
+    )
+    return response.json()
+  },
+
+  /**
+   * Get a specific report with full items and data
+   */
+  async getReport(
+    groupId: number,
+    reportId: number
+  ): Promise<FullReportResponse> {
+    const response = await fetchWithAuth(
+      `/reports/api/v1/groups/${groupId}/reports/${reportId}`
+    )
+    return response.json()
+  },
+
+  /**
+   * Compare current data with latest report (for "no diff" detection)
+   */
+  async compare(groupId: number): Promise<ComparisonResponse> {
+    const response = await fetchWithAuth(
+      `/reports/api/v1/groups/${groupId}/compare`
     )
     return response.json()
   },
