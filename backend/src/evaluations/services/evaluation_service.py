@@ -222,7 +222,13 @@ class EvaluationService:
         locked_prompt_ids = list(locked_result.scalars().all())
 
         # Query prompts_db for available prompts
-        query = select(Prompt).limit(1).with_for_update(skip_locked=True)
+        # Use ORDER BY RANDOM() to distribute load across prompts and avoid hot spots
+        query = (
+            select(Prompt)
+            .order_by(func.random())
+            .limit(1)
+            .with_for_update(skip_locked=True)
+        )
         if locked_prompt_ids:
             query = query.where(Prompt.id.not_in(locked_prompt_ids))
 
