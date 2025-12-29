@@ -7,7 +7,7 @@ from datetime import datetime
 import pytest
 from sqlalchemy import select
 
-from src.database.models import PromptEvaluation
+from src.database.evals_models import PromptEvaluation
 from src.evaluations.services.evaluation_service import EvaluationService
 
 
@@ -184,7 +184,8 @@ async def test_evaluation_timeout_makes_prompt_available(client, test_session):
     """
     # Create service with short timeout (0.001 hours = 3.6 seconds)
     service = EvaluationService(
-        session=test_session,
+        evals_session=test_session,
+        prompts_session=test_session,
         min_days_since_last_evaluation=1,
         evaluation_timeout_hours=0.001
     )
@@ -245,7 +246,8 @@ async def test_fresh_evaluation_remains_locked(client, test_session):
     """
     # Create service with normal timeout (2 hours)
     service = EvaluationService(
-        session=test_session,
+        evals_session=test_session,
+        prompts_session=test_session,
         min_days_since_last_evaluation=1,
         evaluation_timeout_hours=2
     )
@@ -255,20 +257,22 @@ async def test_fresh_evaluation_remains_locked(client, test_session):
     assert assistant_plan_id is not None
 
     # Bot 1: Poll for prompt
-    evaluation1 = await service.poll_for_prompt(
+    result1 = await service.poll_for_prompt(
         assistant_plan_id=assistant_plan_id
     )
 
-    assert evaluation1 is not None
+    assert result1 is not None
+    evaluation1, prompt1 = result1
     prompt_id_1 = evaluation1.prompt_id
 
     # Bot 2: Poll immediately (within 2-hour timeout)
-    evaluation2 = await service.poll_for_prompt(
+    result2 = await service.poll_for_prompt(
         assistant_plan_id=assistant_plan_id
     )
 
     # Bot 2 should get a DIFFERENT prompt (Bot 1's is still locked)
-    if evaluation2 is not None:  # If there are more prompts available
+    if result2 is not None:  # If there are more prompts available
+        evaluation2, prompt2 = result2
         assert evaluation2.prompt_id != prompt_id_1, "Bot 2 should get different prompt while Bot 1's is fresh"
 
 
@@ -396,7 +400,8 @@ async def test_poll_all_chatgpt_plans(client):
 async def test_validation_service_method_directly(test_session):
     """Test the validation service method directly."""
     service = EvaluationService(
-        session=test_session,
+        evals_session=test_session,
+        prompts_session=test_session,
         min_days_since_last_evaluation=1,
         evaluation_timeout_hours=2
     )

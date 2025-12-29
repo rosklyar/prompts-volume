@@ -6,20 +6,28 @@ from typing import List, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.database.models import Prompt, PriorityPromptQueue
+from src.database.evals_models import PriorityPromptQueue
+from src.database.models import Prompt
 from src.embeddings.embeddings_service import EmbeddingsService
 
 
 class PriorityPromptService:
-    """Service for managing priority prompt queue."""
+    """Service for managing priority prompt queue.
+
+    Uses dual session pattern:
+    - prompts_session: for creating Prompt records (prompts_db)
+    - evals_session: for PriorityPromptQueue operations (evals_db)
+    """
 
     def __init__(
         self,
-        session: AsyncSession,
+        prompts_session: AsyncSession,
+        evals_session: AsyncSession,
         embeddings_service: EmbeddingsService,
         max_prompts_per_request: int,
     ):
-        self.session = session
+        self.prompts_session = prompts_session
+        self.evals_session = evals_session
         self.embeddings_service = embeddings_service
         self.max_prompts_per_request = max_prompts_per_request
 
@@ -74,14 +82,14 @@ class PriorityPromptService:
                 was_duplicate = True
                 reused_count += 1
             else:
-                # Create new prompt
+                # Create new prompt in prompts_db
                 new_prompt = Prompt(
                     prompt_text=prompt_text,
                     embedding=embedding.tolist(),
                     topic_id=topic_id,
                 )
-                self.session.add(new_prompt)
-                await self.session.flush()
+                self.prompts_session.add(new_prompt)
+                await self.prompts_session.flush()
                 prompt_id = new_prompt.id
                 was_duplicate = False
                 similarity = None
@@ -95,11 +103,11 @@ class PriorityPromptService:
                 "similarity_score": similarity,
             })
 
-        # Step 4: Add all prompt_ids to priority queue
+        # Step 4: Add all prompt_ids to priority queue (in evals_db)
         request_id = str(uuid.uuid4())
         for result in results:
             # Check if already in queue (unique constraint)
-            existing = await self.session.execute(
+            existing = await self.evals_session.execute(
                 select(PriorityPromptQueue).where(
                     PriorityPromptQueue.prompt_id == result["prompt_id"]
                 )
@@ -109,9 +117,9 @@ class PriorityPromptService:
                     prompt_id=result["prompt_id"],
                     request_id=request_id,
                 )
-                self.session.add(queue_entry)
+                self.evals_session.add(queue_entry)
 
-        await self.session.flush()
+        await self.evals_session.flush()
 
         return {
             "created_count": created_count,
@@ -135,7 +143,6 @@ class PriorityPromptService:
         # Cosine similarity = 1 - cosine_distance
         # So we want: 1 - distance >= threshold
         # => distance <= 1 - threshold
-        max_distance = 1.0 - similarity_threshold
 
         query = (
             select(Prompt)
@@ -143,7 +150,7 @@ class PriorityPromptService:
             .limit(1)
         )
 
-        result = await self.session.execute(query)
+        result = await self.prompts_session.execute(query)
         closest_prompt = result.scalar_one_or_none()
 
         if closest_prompt:
@@ -158,7 +165,6 @@ class PriorityPromptService:
             cosine_similarity = np.dot(prompt_emb, query_emb) / (
                 np.linalg.norm(prompt_emb) * np.linalg.norm(query_emb)
             )
-            distance = 1.0 - cosine_similarity
             similarity = cosine_similarity
 
             if similarity >= similarity_threshold:
@@ -168,9 +174,15 @@ class PriorityPromptService:
 
 
 def get_priority_prompt_service(
-    session: AsyncSession,
+    prompts_session: AsyncSession,
+    evals_session: AsyncSession,
     embeddings_service: EmbeddingsService,
     max_prompts: int,
 ) -> PriorityPromptService:
     """Dependency injection for PriorityPromptService."""
-    return PriorityPromptService(session, embeddings_service, max_prompts)
+    return PriorityPromptService(
+        prompts_session,
+        evals_session,
+        embeddings_service,
+        max_prompts,
+    )

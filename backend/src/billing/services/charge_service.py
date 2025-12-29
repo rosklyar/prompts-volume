@@ -2,8 +2,6 @@
 
 from decimal import Decimal
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from src.billing.models.domain import ChargeResult
 from src.billing.protocols.balance import BalanceModifier, BalanceReader
 from src.billing.protocols.consumption import ConsumptionTracker
@@ -14,8 +12,8 @@ class ChargeService:
     """Orchestrator service for charging users for evaluations.
 
     Coordinates between:
-    - BalanceService (check and debit balance)
-    - ConsumptionService (track what's been paid for)
+    - BalanceService (uses users_db for balance operations)
+    - ConsumptionService (uses prompts_db for consumption tracking)
     - PricingStrategy (determine prices)
 
     Supports partial loads: returns what user can afford.
@@ -23,13 +21,11 @@ class ChargeService:
 
     def __init__(
         self,
-        session: AsyncSession,
         balance_reader: BalanceReader,
         balance_modifier: BalanceModifier,
         consumption_tracker: ConsumptionTracker,
         pricing_strategy: PricingStrategy,
     ):
-        self._session = session
         self._balance_reader = balance_reader
         self._balance_modifier = balance_modifier
         self._consumption_tracker = consumption_tracker

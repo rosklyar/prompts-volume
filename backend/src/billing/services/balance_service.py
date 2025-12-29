@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.billing.exceptions import InsufficientBalanceError
 from src.billing.models.domain import BalanceInfo, TransactionRecord, TransactionType
-from src.database.models import BalanceTransaction, CreditGrant, CreditSource
+from src.database.users_models import BalanceTransaction, CreditGrant, CreditSource
 
 
 class BalanceService:

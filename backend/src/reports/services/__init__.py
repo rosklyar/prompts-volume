@@ -3,6 +3,7 @@
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.database.evals_session import get_evals_session
 from src.database.session import get_async_session
 from src.billing.services import get_charge_service, ChargeService
 from src.reports.services.report_service import ReportService
@@ -23,18 +24,20 @@ from src.reports.services.results_enricher import (
 
 
 def get_report_service(
-    session: AsyncSession = Depends(get_async_session),
+    prompts_session: AsyncSession = Depends(get_async_session),
+    evals_session: AsyncSession = Depends(get_evals_session),
     charge_service: ChargeService = Depends(get_charge_service),
 ) -> ReportService:
     """Dependency injection for ReportService."""
-    return ReportService(session, charge_service)
+    return ReportService(prompts_session, evals_session, charge_service)
 
 
 def get_comparison_service(
-    session: AsyncSession = Depends(get_async_session),
+    prompts_session: AsyncSession = Depends(get_async_session),
+    evals_session: AsyncSession = Depends(get_evals_session),
 ) -> ComparisonService:
     """Dependency injection for ComparisonService."""
-    return ComparisonService(session)
+    return ComparisonService(prompts_session, evals_session)
 
 
 __all__ = [

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.billing.exceptions import DuplicateConsumptionError
 from src.billing.models.domain import ConsumptionRecord
-from src.database.models import ConsumedEvaluation
+from src.database.evals_models import ConsumedEvaluation
 
 
 class ConsumptionService:

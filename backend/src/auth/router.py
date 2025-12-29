@@ -8,7 +8,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import func, select
 
 from src.auth import crud, security
-from src.auth.deps import CurrentUser, SessionDep, get_current_active_superuser
+from src.auth.deps import CurrentUser, UsersSessionDep, get_current_active_superuser
 from src.auth.models import (
     Message,
     Token,
@@ -21,7 +21,7 @@ from src.auth.models import (
     UserUpdateMe,
 )
 from src.config.settings import settings
-from src.database.models import User
+from src.database.users_models import User
 
 router = APIRouter(prefix="/api/v1", tags=["auth"])
 
@@ -29,7 +29,7 @@ router = APIRouter(prefix="/api/v1", tags=["auth"])
 # Login endpoints
 @router.post("/login/access-token")
 async def login_access_token(
-    session: SessionDep,
+    session: UsersSessionDep,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
 ) -> Token:
     """OAuth2 compatible token login, get an access token for future requests."""
@@ -58,7 +58,7 @@ async def test_token(current_user: CurrentUser) -> Any:
     dependencies=[Depends(get_current_active_superuser)],
     response_model=UsersPublic,
 )
-async def read_users(session: SessionDep, skip: int = 0, limit: int = 100) -> Any:
+async def read_users(session: UsersSessionDep, skip: int = 0, limit: int = 100) -> Any:
     """Retrieve users (superuser only)."""
     count = await session.scalar(select(func.count()).select_from(User))
     result = await session.execute(select(User).offset(skip).limit(limit))
@@ -71,7 +71,7 @@ async def read_users(session: SessionDep, skip: int = 0, limit: int = 100) -> An
     dependencies=[Depends(get_current_active_superuser)],
     response_model=UserPublic,
 )
-async def create_user(session: SessionDep, user_in: UserCreate) -> Any:
+async def create_user(session: UsersSessionDep, user_in: UserCreate) -> Any:
     """Create new user (superuser only)."""
     user = await crud.get_user_by_email(session, user_in.email)
     if user:
@@ -83,7 +83,7 @@ async def create_user(session: SessionDep, user_in: UserCreate) -> Any:
 
 
 @router.post("/users/signup", response_model=UserPublic)
-async def register_user(session: SessionDep, user_in: UserRegister) -> Any:
+async def register_user(session: UsersSessionDep, user_in: UserRegister) -> Any:
     """Create new user without the need to be logged in (public registration)."""
     user = await crud.get_user_by_email(session, user_in.email)
     if user:
@@ -107,7 +107,7 @@ async def read_user_me(current_user: CurrentUser) -> Any:
 
 @router.patch("/users/me", response_model=UserPublic)
 async def update_user_me(
-    session: SessionDep, user_in: UserUpdateMe, current_user: CurrentUser
+    session: UsersSessionDep, user_in: UserUpdateMe, current_user: CurrentUser
 ) -> Any:
     """Update own user."""
     if user_in.email:
@@ -125,7 +125,7 @@ async def update_user_me(
 
 @router.patch("/users/me/password", response_model=Message)
 async def update_password_me(
-    session: SessionDep, body: UpdatePassword, current_user: CurrentUser
+    session: UsersSessionDep, body: UpdatePassword, current_user: CurrentUser
 ) -> Any:
     """Update own password."""
     if not security.verify_password(body.current_password, current_user.hashed_password):
@@ -141,7 +141,7 @@ async def update_password_me(
 
 
 @router.delete("/users/me", response_model=Message)
-async def delete_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
+async def delete_user_me(session: UsersSessionDep, current_user: CurrentUser) -> Any:
     """Delete own user."""
     if current_user.is_superuser:
         raise HTTPException(
@@ -154,7 +154,7 @@ async def delete_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
 
 @router.get("/users/{user_id}", response_model=UserPublic)
 async def read_user_by_id(
-    user_id: str, session: SessionDep, current_user: CurrentUser
+    user_id: str, session: UsersSessionDep, current_user: CurrentUser
 ) -> Any:
     """Get a specific user by id."""
     user = await session.get(User, user_id)
@@ -174,7 +174,7 @@ async def read_user_by_id(
     response_model=UserPublic,
 )
 async def update_user(
-    session: SessionDep,
+    session: UsersSessionDep,
     user_id: str,
     user_in: UserUpdate,
 ) -> Any:
@@ -198,7 +198,7 @@ async def update_user(
     response_model=Message,
 )
 async def delete_user(
-    session: SessionDep, current_user: CurrentUser, user_id: str
+    session: UsersSessionDep, current_user: CurrentUser, user_id: str
 ) -> Message:
     """Delete a user (superuser only)."""
     user = await session.get(User, user_id)

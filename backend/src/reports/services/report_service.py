@@ -7,27 +7,48 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.billing.services.charge_service import ChargeService
-from src.database.models import (
-    ConsumedEvaluation,
+from src.database.evals_models import (
     EvaluationStatus,
     GroupReport,
     GroupReportItem,
-    Prompt,
     PromptEvaluation,
+    ReportItemStatus,
+)
+from src.database.models import (
+    Prompt,
     PromptGroup,
     PromptGroupBinding,
-    ReportItemStatus,
 )
 from src.reports.services.comparison_service import ComparisonService
 
 
 class ReportService:
-    """Service for generating and managing prompt group reports."""
+    """Service for generating and managing prompt group reports.
 
-    def __init__(self, session: AsyncSession, charge_service: ChargeService):
-        self._session = session
+    Uses dual session pattern:
+    - prompts_session: for PromptGroup, Prompt, PromptGroupBinding (prompts_db)
+    - evals_session: for GroupReport, GroupReportItem, PromptEvaluation (evals_db)
+    """
+
+    def __init__(
+        self,
+        prompts_session: AsyncSession,
+        evals_session: AsyncSession,
+        charge_service: ChargeService,
+    ):
+        self._prompts_session = prompts_session
+        self._evals_session = evals_session
         self._charge_service = charge_service
-        self._comparison_service = ComparisonService(session)
+        self._comparison_service = ComparisonService(prompts_session, evals_session)
+
+    async def _get_prompts_by_ids(self, prompt_ids: list[int]) -> dict[int, Prompt]:
+        """Fetch prompts from prompts_db, returns dict keyed by prompt_id."""
+        if not prompt_ids:
+            return {}
+        result = await self._prompts_session.execute(
+            select(Prompt).where(Prompt.id.in_(prompt_ids))
+        )
+        return {p.id: p for p in result.scalars().all()}
 
     async def preview_report(
         self,
@@ -65,7 +86,6 @@ class ReportService:
             user_balance = preview["user_balance"]
             affordable_count = preview["affordable_count"]
         else:
-            from src.billing.services import get_balance_service
             user_balance = Decimal("0")
             affordable_count = 0
 
@@ -96,20 +116,20 @@ class ReportService:
         3. Charges for fresh (not consumed) evaluations
         4. Creates report snapshot with all items
         """
-        # Get group to verify it exists
+        # Get group to verify it exists (from prompts_db)
         group_query = select(PromptGroup).where(PromptGroup.id == group_id)
-        group_result = await self._session.execute(group_query)
+        group_result = await self._prompts_session.execute(group_query)
         group = group_result.scalar_one_or_none()
         if not group:
             raise ValueError(f"Group {group_id} not found")
 
-        # Get prompts in group with their texts
+        # Get prompts in group with their texts (from prompts_db)
         prompts_query = (
             select(Prompt)
             .join(PromptGroupBinding, Prompt.id == PromptGroupBinding.prompt_id)
             .where(PromptGroupBinding.group_id == group_id)
         )
-        prompts_result = await self._session.execute(prompts_query)
+        prompts_result = await self._prompts_session.execute(prompts_query)
         prompts = list(prompts_result.scalars().all())
         prompt_ids = [p.id for p in prompts]
 
@@ -125,20 +145,19 @@ class ReportService:
                 total_evaluations_loaded=0,
                 total_cost=Decimal("0"),
             )
-            self._session.add(report)
-            await self._session.flush()
+            self._evals_session.add(report)
+            await self._evals_session.flush()
             return report
 
-        # Get completed evaluations for these prompts
+        # Get completed evaluations for these prompts (from evals_db)
         evals_query = (
             select(PromptEvaluation)
             .where(
                 PromptEvaluation.prompt_id.in_(prompt_ids),
                 PromptEvaluation.status == EvaluationStatus.COMPLETED,
             )
-            .options(selectinload(PromptEvaluation.prompt))
         )
-        evals_result = await self._session.execute(evals_query)
+        evals_result = await self._evals_session.execute(evals_query)
         evaluations = list(evals_result.scalars().all())
         evaluation_ids = [e.id for e in evaluations]
 
@@ -173,7 +192,7 @@ class ReportService:
         )
         total_cost = charge_result.total_charged if charge_result else Decimal("0")
 
-        # Create report
+        # Create report (in evals_db)
         report = GroupReport(
             group_id=group_id,
             user_id=user_id,
@@ -184,10 +203,10 @@ class ReportService:
             total_evaluations_loaded=total_evaluations_loaded,
             total_cost=total_cost,
         )
-        self._session.add(report)
-        await self._session.flush()
+        self._evals_session.add(report)
+        await self._evals_session.flush()
 
-        # Create report items
+        # Create report items (in evals_db)
         charged_eval_ids = set(
             charge_result.charged_evaluation_ids if charge_result else []
         )
@@ -205,7 +224,7 @@ class ReportService:
                     is_fresh=False,
                     amount_charged=None,
                 )
-                self._session.add(item)
+                self._evals_session.add(item)
             else:
                 # Has evaluations - include them
                 for evaluation in evals_for_prompt:
@@ -222,13 +241,17 @@ class ReportService:
                             else None
                         ),
                     )
-                    self._session.add(item)
+                    self._evals_session.add(item)
 
-        await self._session.flush()
+        await self._evals_session.flush()
         return report
 
-    async def get_report(self, report_id: int, user_id: str) -> GroupReport | None:
-        """Get a report by ID with all items."""
+    async def get_report(self, report_id: int, user_id: str) -> dict | None:
+        """Get a report by ID with all items.
+
+        Returns dict with report and items (prompts fetched separately due to cross-db).
+        """
+        # Get report with items (from evals_db)
         query = (
             select(GroupReport)
             .where(
@@ -236,12 +259,23 @@ class ReportService:
                 GroupReport.user_id == user_id,
             )
             .options(
-                selectinload(GroupReport.items).selectinload(GroupReportItem.prompt),
                 selectinload(GroupReport.items).selectinload(GroupReportItem.evaluation),
             )
         )
-        result = await self._session.execute(query)
-        return result.scalar_one_or_none()
+        result = await self._evals_session.execute(query)
+        report = result.scalar_one_or_none()
+
+        if not report:
+            return None
+
+        # Fetch prompts for items (from prompts_db)
+        prompt_ids = [item.prompt_id for item in report.items]
+        prompts_map = await self._get_prompts_by_ids(prompt_ids)
+
+        return {
+            "report": report,
+            "prompts_map": prompts_map,
+        }
 
     async def list_reports(
         self,
@@ -251,15 +285,15 @@ class ReportService:
         offset: int = 0,
     ) -> tuple[list[GroupReport], int]:
         """List reports for a group."""
-        # Count total
+        # Count total (in evals_db)
         count_query = select(func.count(GroupReport.id)).where(
             GroupReport.group_id == group_id,
             GroupReport.user_id == user_id,
         )
-        count_result = await self._session.execute(count_query)
+        count_result = await self._evals_session.execute(count_query)
         total = count_result.scalar() or 0
 
-        # Get reports
+        # Get reports (from evals_db)
         query = (
             select(GroupReport)
             .where(
@@ -270,7 +304,7 @@ class ReportService:
             .limit(limit)
             .offset(offset)
         )
-        result = await self._session.execute(query)
+        result = await self._evals_session.execute(query)
         reports = list(result.scalars().all())
 
         return reports, total

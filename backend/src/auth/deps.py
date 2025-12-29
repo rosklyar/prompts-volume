@@ -11,16 +11,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.auth import security
 from src.auth.models import TokenPayload
 from src.config.settings import settings
-from src.database.models import User
+from src.database.users_models import User
+from src.database.users_session import get_users_session
 from src.database.session import get_async_session
 
 reusable_oauth2 = OAuth2PasswordBearer(tokenUrl="/api/v1/login/access-token")
 
-SessionDep = Annotated[AsyncSession, Depends(get_async_session)]
+# Session dependencies
+SessionDep = Annotated[AsyncSession, Depends(get_async_session)]  # prompts_db
+UsersSessionDep = Annotated[AsyncSession, Depends(get_users_session)]  # users_db
 TokenDep = Annotated[str, Depends(reusable_oauth2)]
 
 
-async def get_current_user(session: SessionDep, token: TokenDep) -> User:
+async def get_current_user(session: UsersSessionDep, token: TokenDep) -> User:
     """Get the current authenticated user from JWT token."""
     try:
         payload = jwt.decode(
@@ -44,6 +47,8 @@ async def get_current_user(session: SessionDep, token: TokenDep) -> User:
         raise HTTPException(status_code=404, detail="User not found")
     if not user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
+    if user.is_deleted:
+        raise HTTPException(status_code=400, detail="User account deleted")
     return user
 
 

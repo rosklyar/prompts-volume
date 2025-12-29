@@ -9,27 +9,29 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models import (
-    AIAssistant,
-    AIAssistantPlan,
     BusinessDomain,
     Country,
     CountryLanguage,
-    EvaluationStatus,
     Language,
     Prompt,
-    PromptEvaluation,
     Topic,
+)
+from src.database.evals_models import (
+    AIAssistant,
+    AIAssistantPlan,
+    EvaluationStatus,
+    PromptEvaluation,
 )
 from src.embeddings.embeddings_service import get_embeddings_service
 
 
 async def seed_initial_data(session: AsyncSession) -> None:
     """
-    Seed initial data into the database.
+    Seed initial data into prompts_db.
     This function is idempotent - it will only insert data if it doesn't exist.
 
     Args:
-        session: AsyncSession to use for database operations
+        session: AsyncSession for prompts_db
     """
     # 1. Seed Languages
     await _seed_languages(session)
@@ -49,19 +51,34 @@ async def seed_initial_data(session: AsyncSession) -> None:
     # 6. Seed Prompts (requires topics)
     await _seed_prompts(session)
 
-    # 7. Seed AI Assistants
-    await _seed_ai_assistants(session)
-
-    # 8. Seed AI Assistant Plans (requires assistants)
-    await _seed_ai_assistant_plans(session)
-
-    # 9. Seed Phone Evaluations (requires prompts and assistant plans)
-    await _seed_phone_evaluations(session)
-
-    # 10. Seed Laptop Evaluations (requires prompts and assistant plans)
-    await _seed_laptop_evaluations(session)
-
     await session.commit()
+
+
+async def seed_evals_data(
+    prompts_session: AsyncSession,
+    evals_session: AsyncSession,
+) -> None:
+    """
+    Seed initial data into evals_db.
+    This function is idempotent - it will only insert data if it doesn't exist.
+
+    Args:
+        prompts_session: AsyncSession for prompts_db (read-only for Prompt lookup)
+        evals_session: AsyncSession for evals_db (write AI assistants, plans, evaluations)
+    """
+    # 1. Seed AI Assistants
+    await _seed_ai_assistants(evals_session)
+
+    # 2. Seed AI Assistant Plans (requires assistants)
+    await _seed_ai_assistant_plans(evals_session)
+
+    # 3. Seed Phone Evaluations (requires prompts and assistant plans)
+    await _seed_phone_evaluations(prompts_session, evals_session)
+
+    # 4. Seed Laptop Evaluations (requires prompts and assistant plans)
+    await _seed_laptop_evaluations(prompts_session, evals_session)
+
+    await evals_session.commit()
 
 
 async def _seed_languages(session: AsyncSession) -> None:
@@ -247,7 +264,7 @@ async def _seed_prompts(session: AsyncSession) -> None:
 
 
 async def _seed_ai_assistants(session: AsyncSession) -> None:
-    """Seed initial AI assistants."""
+    """Seed initial AI assistants into evals_db."""
     # Check if ChatGPT already exists
     result = await session.execute(
         select(AIAssistant).where(AIAssistant.name == "ChatGPT")
@@ -269,7 +286,7 @@ async def _seed_ai_assistants(session: AsyncSession) -> None:
 
 
 async def _seed_ai_assistant_plans(session: AsyncSession) -> None:
-    """Seed initial AI assistant plans."""
+    """Seed initial AI assistant plans into evals_db."""
     # Check if plans already exist for ChatGPT (assistant_id=1)
     result = await session.execute(
         select(AIAssistantPlan).where(AIAssistantPlan.assistant_id == 1)
@@ -291,16 +308,15 @@ async def _seed_ai_assistant_plans(session: AsyncSession) -> None:
         )
 
 
-async def _seed_phone_evaluations(session: AsyncSession) -> None:
-    """Seed phone prompt evaluations from JSON data."""
-    # 1. Idempotency check
-    result = await session.execute(
+async def _seed_phone_evaluations(
+    prompts_session: AsyncSession,
+    evals_session: AsyncSession,
+) -> None:
+    """Seed phone prompt evaluations from JSON data into evals_db."""
+    # 1. Idempotency check - check in evals_db
+    result = await evals_session.execute(
         select(PromptEvaluation)
-        .join(Prompt)
-        .where(
-            Prompt.topic_id == 1,
-            PromptEvaluation.assistant_plan_id == 1,
-        )
+        .where(PromptEvaluation.assistant_plan_id == 1)
         .limit(1)
     )
     if result.scalar_one_or_none() is not None:
@@ -308,18 +324,21 @@ async def _seed_phone_evaluations(session: AsyncSession) -> None:
 
     # 2. Load JSON data
     json_path = Path(__file__).parent.parent / "data" / "results" / "phones.json"
+    if not json_path.exists():
+        return  # No data file
+
     with open(json_path, "r", encoding="utf-8") as f:
         phones_data = json.load(f)
 
-    # 3. Get prompts from database (ordered by ID for consistent mapping)
-    result = await session.execute(
+    # 3. Get prompts from prompts_db (ordered by ID for consistent mapping)
+    result = await prompts_session.execute(
         select(Prompt)
         .where(Prompt.topic_id == 1)
         .order_by(Prompt.id.asc())
     )
     prompts = result.scalars().all()
 
-    # 4. Build evaluations
+    # 4. Build evaluations in evals_db
     evaluations = []
     for idx, phone_data in enumerate(phones_data):
         if idx >= len(prompts):
@@ -363,11 +382,11 @@ async def _seed_phone_evaluations(session: AsyncSession) -> None:
 
     # 5. Bulk insert
     if evaluations:
-        session.add_all(evaluations)
-        await session.flush()
+        evals_session.add_all(evaluations)
+        await evals_session.flush()
 
         # 6. Reset sequence
-        await session.execute(
+        await evals_session.execute(
             text(
                 "SELECT setval('prompt_evaluations_id_seq', "
                 "(SELECT MAX(id) FROM prompt_evaluations))"
@@ -375,35 +394,47 @@ async def _seed_phone_evaluations(session: AsyncSession) -> None:
         )
 
 
-async def _seed_laptop_evaluations(session: AsyncSession) -> None:
-    """Seed laptop prompt evaluations from JSON data."""
-    # 1. Idempotency check
-    result = await session.execute(
-        select(PromptEvaluation)
-        .join(Prompt)
-        .where(
-            Prompt.topic_id == 2,
-            PromptEvaluation.assistant_plan_id == 1,
-        )
-        .limit(1)
+async def _seed_laptop_evaluations(
+    prompts_session: AsyncSession,
+    evals_session: AsyncSession,
+) -> None:
+    """Seed laptop prompt evaluations from JSON data into evals_db."""
+    # 1. Idempotency check - check for topic 2 evaluations
+    # We need to check prompt_ids that belong to topic 2
+    result = await prompts_session.execute(
+        select(Prompt.id).where(Prompt.topic_id == 2).limit(1)
     )
-    if result.scalar_one_or_none() is not None:
-        return  # Already seeded
+    first_laptop_prompt_id = result.scalar_one_or_none()
+
+    if first_laptop_prompt_id:
+        result = await evals_session.execute(
+            select(PromptEvaluation)
+            .where(
+                PromptEvaluation.prompt_id == first_laptop_prompt_id,
+                PromptEvaluation.assistant_plan_id == 1,
+            )
+            .limit(1)
+        )
+        if result.scalar_one_or_none() is not None:
+            return  # Already seeded
 
     # 2. Load JSON data
     json_path = Path(__file__).parent.parent / "data" / "results" / "laptops.json"
+    if not json_path.exists():
+        return  # No data file
+
     with open(json_path, "r", encoding="utf-8") as f:
         laptops_data = json.load(f)
 
-    # 3. Get prompts from database (ordered by ID for consistent mapping)
-    result = await session.execute(
+    # 3. Get prompts from prompts_db (ordered by ID for consistent mapping)
+    result = await prompts_session.execute(
         select(Prompt)
         .where(Prompt.topic_id == 2)
         .order_by(Prompt.id.asc())
     )
     prompts = result.scalars().all()
 
-    # 4. Build evaluations
+    # 4. Build evaluations in evals_db
     evaluations = []
     for idx, laptop_data in enumerate(laptops_data):
         if idx >= len(prompts):
@@ -447,11 +478,11 @@ async def _seed_laptop_evaluations(session: AsyncSession) -> None:
 
     # 5. Bulk insert
     if evaluations:
-        session.add_all(evaluations)
-        await session.flush()
+        evals_session.add_all(evaluations)
+        await evals_session.flush()
 
         # 6. Reset sequence
-        await session.execute(
+        await evals_session.execute(
             text(
                 "SELECT setval('prompt_evaluations_id_seq', "
                 "(SELECT MAX(id) FROM prompt_evaluations))"

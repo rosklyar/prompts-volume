@@ -2,9 +2,12 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config.settings import settings
+from src.database.evals_session import get_evals_session
 from src.database.models import Topic
+from src.database.session import get_async_session
 from src.embeddings.embeddings_service import EmbeddingsService, get_embeddings_service
 from src.evaluations.models.api_models import (
     AddPriorityPromptsRequest,
@@ -22,7 +25,6 @@ from src.evaluations.services.evaluation_service import (
     get_evaluation_service,
 )
 from src.evaluations.services.priority_prompt_service import (
-    PriorityPromptService,
     get_priority_prompt_service,
 )
 
@@ -58,19 +60,22 @@ async def poll_for_evaluation(
             )
         )
 
-    evaluation = await evaluation_service.poll_for_prompt(
+    result = await evaluation_service.poll_for_prompt(
         assistant_plan_id=assistant_plan_id,
     )
 
-    if not evaluation:
+    if not result:
         # No prompts available
         return PollResponse()
+
+    # Unpack the tuple (evaluation, prompt) from dual session pattern
+    evaluation, prompt = result
 
     return PollResponse(
         evaluation_id=evaluation.id,
         prompt_id=evaluation.prompt_id,
-        prompt_text=evaluation.prompt.prompt_text,
-        topic_id=evaluation.prompt.topic_id,
+        prompt_text=prompt.prompt_text,
+        topic_id=prompt.topic_id,
         claimed_at=evaluation.claimed_at,
     )
 
@@ -129,7 +134,8 @@ async def release_evaluation(
 @router.post("/priority-prompts", response_model=AddPriorityPromptsResponse)
 async def add_priority_prompts(
     request: AddPriorityPromptsRequest,
-    evaluation_service: EvaluationService = Depends(get_evaluation_service),
+    prompts_session: AsyncSession = Depends(get_async_session),
+    evals_session: AsyncSession = Depends(get_evals_session),
     embeddings_service: EmbeddingsService = Depends(get_embeddings_service),
 ) -> AddPriorityPromptsResponse:
     """
@@ -151,19 +157,20 @@ async def add_priority_prompts(
             )
         )
 
-    # Validate topic_id if provided
+    # Validate topic_id if provided (topics are in prompts_db)
     if request.topic_id is not None:
         topic_query = select(Topic).where(Topic.id == request.topic_id)
-        result = await evaluation_service.session.execute(topic_query)
+        result = await prompts_session.execute(topic_query)
         if not result.scalar_one_or_none():
             raise HTTPException(
                 status_code=404,
                 detail=f"Topic with id={request.topic_id} not found"
             )
 
-    # Create service
+    # Create service with dual sessions
     priority_service = get_priority_prompt_service(
-        evaluation_service.session,
+        prompts_session,
+        evals_session,
         embeddings_service,
         settings.max_priority_prompts_per_request,
     )

@@ -57,6 +57,8 @@ class Settings(BaseSettings):
 
     # Database configuration
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/prompts"
+    users_database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/users"
+    evals_database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/evals"
     database_echo: bool = False
 
     # Auth configuration
