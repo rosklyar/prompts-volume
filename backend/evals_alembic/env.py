@@ -1,4 +1,4 @@
-"""Alembic environment configuration for async SQLAlchemy."""
+"""Alembic environment configuration for evals_db (async SQLAlchemy)."""
 
 import asyncio
 from logging.config import fileConfig
@@ -10,20 +10,19 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 
 from src.config.settings import settings
-from src.database.session import Base
+from src.database.evals_session import EvalsBase
 
-# Import all models to ensure they are registered with Base.metadata
-# Note: Evals entities (AIAssistant, AIAssistantPlan, PromptEvaluation, etc.)
-# have been moved to evals_db and are handled by evals_alembic
-from src.database.models import (  # noqa: F401
-    BusinessDomain,
-    Country,
-    CountryLanguage,
-    Language,
-    Prompt,
-    PromptGroup,
-    PromptGroupBinding,
-    Topic,
+# Import all models to ensure they are registered with EvalsBase.metadata
+from src.database.evals_models import (  # noqa: F401
+    AIAssistant,
+    AIAssistantPlan,
+    PriorityPromptQueue,
+    PromptEvaluation,
+    ConsumedEvaluation,
+    GroupReport,
+    GroupReportItem,
+    EvaluationStatus,
+    ReportItemStatus,
 )
 
 # this is the Alembic Config object, which provides
@@ -31,7 +30,7 @@ from src.database.models import (  # noqa: F401
 config = context.config
 
 # Override sqlalchemy.url with value from settings
-config.set_main_option("sqlalchemy.url", settings.database_url)
+config.set_main_option("sqlalchemy.url", settings.evals_database_url)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
@@ -39,7 +38,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # add your model's MetaData object here for 'autogenerate' support
-target_metadata = Base.metadata
+target_metadata = EvalsBase.metadata
 
 
 def run_migrations_offline() -> None:

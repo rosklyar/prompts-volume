@@ -1,26 +1,33 @@
 """Service for comparing current data with previous reports."""
 
-from datetime import datetime, timezone
-from decimal import Decimal
-
+from datetime import datetime
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.database.models import (
+from src.database.evals_models import (
     ConsumedEvaluation,
     EvaluationStatus,
     GroupReport,
-    Prompt,
     PromptEvaluation,
-    PromptGroupBinding,
 )
+from src.database.models import PromptGroupBinding
 
 
 class ComparisonService:
-    """Service for comparing current data with previous reports."""
+    """Service for comparing current data with previous reports.
 
-    def __init__(self, session: AsyncSession):
-        self._session = session
+    Uses dual session pattern:
+    - prompts_session: for PromptGroupBinding (prompts_db)
+    - evals_session: for GroupReport, PromptEvaluation, ConsumedEvaluation (evals_db)
+    """
+
+    def __init__(
+        self,
+        prompts_session: AsyncSession,
+        evals_session: AsyncSession,
+    ):
+        self._prompts_session = prompts_session
+        self._evals_session = evals_session
 
     async def get_latest_report(
         self, group_id: int, user_id: str
@@ -35,7 +42,7 @@ class ComparisonService:
             .order_by(GroupReport.created_at.desc())
             .limit(1)
         )
-        result = await self._session.execute(query)
+        result = await self._evals_session.execute(query)
         return result.scalar_one_or_none()
 
     async def get_prompt_ids_in_group(self, group_id: int) -> list[int]:
@@ -43,7 +50,7 @@ class ComparisonService:
         query = select(PromptGroupBinding.prompt_id).where(
             PromptGroupBinding.group_id == group_id
         )
-        result = await self._session.execute(query)
+        result = await self._prompts_session.execute(query)
         return list(result.scalars().all())
 
     async def count_completed_evaluations(self, prompt_ids: list[int]) -> int:
@@ -55,7 +62,7 @@ class ComparisonService:
             PromptEvaluation.prompt_id.in_(prompt_ids),
             PromptEvaluation.status == EvaluationStatus.COMPLETED,
         )
-        result = await self._session.execute(query)
+        result = await self._evals_session.execute(query)
         return result.scalar() or 0
 
     async def get_evaluation_ids_for_prompts(self, prompt_ids: list[int]) -> list[int]:
@@ -67,7 +74,7 @@ class ComparisonService:
             PromptEvaluation.prompt_id.in_(prompt_ids),
             PromptEvaluation.status == EvaluationStatus.COMPLETED,
         )
-        result = await self._session.execute(query)
+        result = await self._evals_session.execute(query)
         return list(result.scalars().all())
 
     async def get_consumed_evaluation_ids(
@@ -81,7 +88,7 @@ class ComparisonService:
             ConsumedEvaluation.user_id == user_id,
             ConsumedEvaluation.evaluation_id.in_(evaluation_ids),
         )
-        result = await self._session.execute(query)
+        result = await self._evals_session.execute(query)
         return set(result.scalars().all())
 
     async def get_prompts_with_evaluations(
@@ -99,7 +106,7 @@ class ComparisonService:
             )
             .distinct()
         )
-        result = await self._session.execute(query)
+        result = await self._evals_session.execute(query)
         return set(result.scalars().all())
 
     async def get_fresh_evaluation_count(

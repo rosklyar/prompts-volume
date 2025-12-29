@@ -7,14 +7,16 @@ import pytest
 import pytest_asyncio
 import src.database.session as db_session
 import src.database.users_session as users_db_session
+import src.database.evals_session as evals_db_session
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 from testcontainers.postgres import PostgresContainer
 
-from src.database import Base, seed_initial_data
+from src.database import Base, seed_initial_data, seed_evals_data
 from src.database.users_session import UsersBase
+from src.database.evals_session import EvalsBase
 from src.main import app
 from src.auth.crud import create_user
 from src.auth.models import UserCreate
@@ -45,7 +47,7 @@ def db_url(postgres_container):
 async def test_engine(db_url):
     """
     Function-scoped fixture that provides an async engine connected to the test database.
-    Creates tables for both prompts_db (Base) and users_db (UsersBase).
+    Creates tables for prompts_db (Base), users_db (UsersBase), and evals_db (EvalsBase).
     """
     # Create async engine
     engine = create_async_engine(db_url, echo=False, poolclass=NullPool)
@@ -54,10 +56,11 @@ async def test_engine(db_url):
     async with engine.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
 
-    # Create all tables for both databases (using same engine for tests)
+    # Create all tables for all three databases (using same engine for tests)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(UsersBase.metadata.create_all)
+        await conn.run_sync(EvalsBase.metadata.create_all)
 
     yield engine
 
@@ -81,8 +84,10 @@ async def test_session(test_engine):
     )
 
     async with async_session_maker() as session:
-        # Seed initial data for each test
+        # Seed initial data for each test (prompts_db)
         await seed_initial_data(session)
+        # Seed evals data (using same session since we use single test DB)
+        await seed_evals_data(session, session)
 
         yield session
 
@@ -111,7 +116,7 @@ def override_get_db(test_session):
 def client(test_engine):
     """
     Fixture that provides a FastAPI TestClient with database dependency overridden.
-    Also sets the global database engine to use the test engine for both databases.
+    Also sets the global database engine to use the test engine for all three databases.
 
     Note: This is a sync fixture that creates its own session for TestClient's event loop.
     The test_session fixture is for async tests only.
@@ -123,6 +128,10 @@ def client(test_engine):
     # Store original engine and session maker for users_db
     original_users_engine = users_db_session._users_engine
     original_users_session_maker = users_db_session._users_async_session_maker
+
+    # Store original engine and session maker for evals_db
+    original_evals_engine = evals_db_session._evals_engine
+    original_evals_session_maker = evals_db_session._evals_async_session_maker
 
     # Create shared session maker for test engine
     test_session_maker = async_sessionmaker(
@@ -142,6 +151,10 @@ def client(test_engine):
     users_db_session._users_engine = test_engine
     users_db_session._users_async_session_maker = test_session_maker
 
+    # Override evals_db engine and session maker (using same test engine)
+    evals_db_session._evals_engine = test_engine
+    evals_db_session._evals_async_session_maker = test_session_maker
+
     # TestClient will use the overridden engine via get_async_session dependency
     # No need to override get_async_session - it will use the overridden engine
 
@@ -155,6 +168,10 @@ def client(test_engine):
     # Restore original engine and session maker for users_db
     users_db_session._users_engine = original_users_engine
     users_db_session._users_async_session_maker = original_users_session_maker
+
+    # Restore original engine and session maker for evals_db
+    evals_db_session._evals_engine = original_evals_engine
+    evals_db_session._evals_async_session_maker = original_evals_session_maker
 
     # Clear overrides
     app.dependency_overrides.clear()
@@ -199,8 +216,10 @@ def evaluation_service_short_timeout(test_session):
     Useful for testing timeout behavior without long waits.
     """
     # Use 0.001 hours = 3.6 seconds for testing
+    # Pass same session for both evals and prompts since we use single test DB
     return EvaluationService(
-        session=test_session,
+        evals_session=test_session,
+        prompts_session=test_session,
         min_days_since_last_evaluation=1,
         evaluation_timeout_hours=0.001
     )

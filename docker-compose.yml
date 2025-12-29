@@ -26,6 +26,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/prompts
       USERS_DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/users
+      EVALS_DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/evals
       DATAFORSEO_USERNAME: ${DATAFORSEO_USERNAME}
       DATAFORSEO_PASSWORD: ${DATAFORSEO_PASSWORD}
       OPENAI_API_KEY: ${OPENAI_API_KEY}

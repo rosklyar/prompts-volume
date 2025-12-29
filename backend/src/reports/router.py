@@ -100,11 +100,13 @@ async def generate_report(
     )
 
     # Get full report with items
-    full_report = await report_service.get_report(report.id, current_user.id)
+    result = await report_service.get_report(report.id, current_user.id)
 
     items = []
     all_answers = []
-    if full_report and full_report.items:
+    if result:
+        full_report = result["report"]
+        prompts_map = result["prompts_map"]
         for item in full_report.items:
             answer = item.evaluation.answer if item.evaluation else None
             all_answers.append(answer)
@@ -118,10 +120,11 @@ async def generate_report(
                     if not brand_mentions:
                         brand_mentions = None
 
+            prompt = prompts_map.get(item.prompt_id)
             items.append(
                 ReportItemResponse(
                     prompt_id=item.prompt_id,
-                    prompt_text=item.prompt.prompt_text if item.prompt else "",
+                    prompt_text=prompt.prompt_text if prompt else "",
                     evaluation_id=item.evaluation_id,
                     status=item.status.value,
                     is_fresh=item.is_fresh,
@@ -206,13 +209,16 @@ async def get_report(
     except Exception as e:
         raise to_http_exception(GroupNotFoundError(group_id))
 
-    report = await report_service.get_report(report_id, current_user.id)
-    if not report or report.group_id != group_id:
+    result = await report_service.get_report(report_id, current_user.id)
+    if not result or result["report"].group_id != group_id:
         from fastapi import HTTPException, status
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Report {report_id} not found",
         )
+
+    report = result["report"]
+    prompts_map = result["prompts_map"]
 
     # Extract brands from group
     brands = None
@@ -237,10 +243,11 @@ async def get_report(
                 if not brand_mentions:
                     brand_mentions = None
 
+        prompt = prompts_map.get(item.prompt_id)
         items.append(
             ReportItemResponse(
                 prompt_id=item.prompt_id,
-                prompt_text=item.prompt.prompt_text if item.prompt else "",
+                prompt_text=prompt.prompt_text if prompt else "",
                 evaluation_id=item.evaluation_id,
                 status=item.status.value,
                 is_fresh=item.is_fresh,

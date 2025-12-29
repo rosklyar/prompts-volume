@@ -6,7 +6,7 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config.settings import settings
-from src.database.session import get_async_session
+from src.database.evals_session import get_evals_session
 from src.database.users_session import get_users_session
 
 from src.billing.services.balance_service import BalanceService
@@ -26,11 +26,11 @@ def get_balance_service(
 
 
 def get_consumption_service(
-    session: AsyncSession = Depends(get_async_session),
+    session: AsyncSession = Depends(get_evals_session),
 ) -> ConsumptionService:
     """Dependency injection for ConsumptionService.
 
-    Uses prompts_db session for ConsumedEvaluation.
+    Uses evals_db session for ConsumedEvaluation.
     """
     return ConsumptionService(session)
 
@@ -47,7 +47,7 @@ def get_charge_service(
 ) -> ChargeService:
     """Dependency injection for ChargeService.
 
-    Orchestrates across users_db (balance) and prompts_db (consumption).
+    Orchestrates across users_db (balance) and evals_db (consumption).
     """
     return ChargeService(
         balance_reader=balance_service,
