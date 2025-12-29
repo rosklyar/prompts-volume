@@ -8,6 +8,8 @@ import {
   evaluationsApi,
   type GroupDetail,
 } from "@/client/api"
+import { reportKeys } from "@/hooks/useReports"
+import { billingKeys } from "@/hooks/useBilling"
 import type { BrandVariation } from "@/types/groups"
 
 // ===== Query Keys =====
@@ -107,9 +109,13 @@ export function useAddPromptsToGroup() {
       groupId: number
       promptIds: number[]
     }) => groupsApi.addPromptsToGroup(groupId, promptIds),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      const { groupId } = variables
       // Invalidate all group queries to ensure UI updates
       queryClient.invalidateQueries({ queryKey: groupKeys.all })
+      // Invalidate report comparison to detect new data for Report button
+      queryClient.invalidateQueries({ queryKey: reportKeys.compare(groupId) })
+      queryClient.invalidateQueries({ queryKey: billingKeys.reportPreview(groupId) })
     },
   })
 }
@@ -125,9 +131,13 @@ export function useRemovePromptsFromGroup() {
       groupId: number
       promptIds: number[]
     }) => groupsApi.removePromptsFromGroup(groupId, promptIds),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      const { groupId } = variables
       // Invalidate all group queries to ensure UI updates
       queryClient.invalidateQueries({ queryKey: groupKeys.all })
+      // Invalidate report comparison since prompt count changed
+      queryClient.invalidateQueries({ queryKey: reportKeys.compare(groupId) })
+      queryClient.invalidateQueries({ queryKey: billingKeys.reportPreview(groupId) })
     },
   })
 }
@@ -212,9 +222,15 @@ export function useMovePrompt() {
         )
       }
     },
-    onSettled: () => {
+    onSettled: (_data, _error, variables) => {
+      const { sourceGroupId, targetGroupId } = variables
       // Invalidate all group queries to ensure UI updates
       queryClient.invalidateQueries({ queryKey: groupKeys.all })
+      // Invalidate report comparison for both groups
+      queryClient.invalidateQueries({ queryKey: reportKeys.compare(sourceGroupId) })
+      queryClient.invalidateQueries({ queryKey: reportKeys.compare(targetGroupId) })
+      queryClient.invalidateQueries({ queryKey: billingKeys.reportPreview(sourceGroupId) })
+      queryClient.invalidateQueries({ queryKey: billingKeys.reportPreview(targetGroupId) })
     },
   })
 }
@@ -243,9 +259,13 @@ export function useAddPriorityPrompt() {
 
       return result
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      const { targetGroupId } = variables
       // Invalidate all group queries to ensure UI updates
       queryClient.invalidateQueries({ queryKey: groupKeys.all })
+      // Invalidate report comparison to detect new data for Report button
+      queryClient.invalidateQueries({ queryKey: reportKeys.compare(targetGroupId) })
+      queryClient.invalidateQueries({ queryKey: billingKeys.reportPreview(targetGroupId) })
     },
   })
 }

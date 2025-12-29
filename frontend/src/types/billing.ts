@@ -57,7 +57,7 @@ export interface GeneratedReportItem {
 }
 
 export interface GenerateReportResponse {
-  report_id: number
+  id: number // Report ID
   total_cost: number // Only fresh evaluations charged
   items: GeneratedReportItem[]
   citation_leaderboard: {

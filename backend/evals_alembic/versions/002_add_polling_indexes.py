@@ -33,7 +33,7 @@ def upgrade() -> None:
     # Partial index for IN_PROGRESS claim detection
     # Covers: WHERE assistant_plan_id = ? AND status = 'in_progress' AND claimed_at > ?
     op.execute("""
-        CREATE INDEX CONCURRENTLY idx_pe_poll_in_progress
+        CREATE INDEX IF NOT EXISTS idx_pe_poll_in_progress
         ON prompt_evaluations(assistant_plan_id, prompt_id, claimed_at DESC)
         WHERE status = 'in_progress'
     """)
@@ -41,7 +41,7 @@ def upgrade() -> None:
     # Partial index for COMPLETED re-evaluation check
     # Covers: WHERE assistant_plan_id = ? AND status = 'completed' AND completed_at > ?
     op.execute("""
-        CREATE INDEX CONCURRENTLY idx_pe_poll_completed
+        CREATE INDEX IF NOT EXISTS idx_pe_poll_completed
         ON prompt_evaluations(assistant_plan_id, prompt_id, completed_at DESC)
         WHERE status = 'completed'
     """)
@@ -49,7 +49,7 @@ def upgrade() -> None:
     # Standalone index on claimed_at for timeout filtering
     # Useful for: WHERE status = 'in_progress' AND claimed_at > ?
     op.execute("""
-        CREATE INDEX CONCURRENTLY idx_pe_claimed_at
+        CREATE INDEX IF NOT EXISTS idx_pe_claimed_at
         ON prompt_evaluations(claimed_at DESC)
         WHERE status = 'in_progress'
     """)

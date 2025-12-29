@@ -351,7 +351,7 @@ export function GroupsGrid() {
       }))
 
       // Auto-select the newly generated report
-      handleSelectReport(group.id, result.report_id)
+      handleSelectReport(group.id, result.id)
 
       // Invalidate report history and comparison queries
       invalidateReportQueries(group.id)
