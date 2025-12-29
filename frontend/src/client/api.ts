@@ -1,5 +1,10 @@
 import type { BrandVariation } from "@/types/groups"
 import type {
+  BatchAnalyzeResponse,
+  BatchConfirmRequest,
+  BatchConfirmResponse,
+} from "@/types/batch-upload"
+import type {
   UserBalance,
   ReportPreview,
   GenerateReportRequest,
@@ -289,6 +294,36 @@ export const groupsApi = {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt_ids: promptIds }),
+      }
+    )
+    return response.json()
+  },
+
+  async analyzeBatch(
+    groupId: number,
+    prompts: string[]
+  ): Promise<BatchAnalyzeResponse> {
+    const response = await fetchWithAuth(
+      `/prompt-groups/api/v1/groups/${groupId}/batch/analyze`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompts }),
+      }
+    )
+    return response.json()
+  },
+
+  async confirmBatch(
+    groupId: number,
+    request: BatchConfirmRequest
+  ): Promise<BatchConfirmResponse> {
+    const response = await fetchWithAuth(
+      `/prompt-groups/api/v1/groups/${groupId}/batch/confirm`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
       }
     )
     return response.json()

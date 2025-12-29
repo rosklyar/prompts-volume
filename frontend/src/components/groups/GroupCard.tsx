@@ -26,6 +26,7 @@ import { BrandEditor } from "./BrandEditor"
 import { ReportPreviewModal, LowBalanceModal } from "@/components/billing"
 import type { ReportPreview } from "@/types/billing"
 import { getGroupColor } from "./constants"
+import { BatchUploadModal } from "./BatchUploadModal"
 
 interface PromptWithAnswer extends PromptInGroup {
   answer?: EvaluationAnswer | null
@@ -70,6 +71,7 @@ export function GroupCard({
 }: GroupCardProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showBrandEditor, setShowBrandEditor] = useState(false)
+  const [showBatchUpload, setShowBatchUpload] = useState(false)
   const [isReportCollapsed, setIsReportCollapsed] = useState(true)
   const [showPreviewModal, setShowPreviewModal] = useState(false)
   const [showLowBalanceModal, setShowLowBalanceModal] = useState(false)
@@ -267,6 +269,28 @@ export function GroupCard({
                   )}
               </button>
 
+              {/* Batch upload button */}
+              <button
+                onClick={() => setShowBatchUpload(true)}
+                className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-white/80 transition-colors"
+                aria-label="Upload prompts from CSV"
+                title="Upload prompts from CSV"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                  />
+                </svg>
+              </button>
+
               {/* Brand config button */}
               <button
                 onClick={() => setShowBrandEditor(true)}
@@ -418,6 +442,15 @@ export function GroupCard({
           onClose={() => setShowBrandEditor(false)}
         />
       )}
+
+      {/* Batch Upload Modal */}
+      <BatchUploadModal
+        groupId={group.id}
+        groupTitle={group.title}
+        accentColor={colors.accent}
+        isOpen={showBatchUpload}
+        onClose={() => setShowBatchUpload(false)}
+      />
 
       {/* Report Preview Modal */}
       <ReportPreviewModal

@@ -24,11 +24,9 @@ export function ReportHistoryPanel({
   const reports = historyData?.reports ?? []
   const hasReports = reports.length > 0
 
-  // Handle report card click - toggle selection
+  // Handle report card click - switch to another report (no deselection)
   const handleCardClick = (reportId: number) => {
-    if (selectedReportId === reportId) {
-      onSelectReport(null) // Deselect if already selected
-    } else {
+    if (selectedReportId !== reportId) {
       onSelectReport(reportId)
     }
   }

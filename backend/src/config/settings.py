@@ -55,6 +55,11 @@ class Settings(BaseSettings):
     similar_prompts_max_k: int = 100
     similar_prompts_min_similarity_threshold: float = 0.7
 
+    # Batch upload configuration
+    batch_upload_max_prompts: int = 100
+    batch_upload_similarity_threshold: float = 0.75
+    batch_upload_match_limit: int = 3
+
     # Database configuration
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/prompts"
     users_database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/users"
