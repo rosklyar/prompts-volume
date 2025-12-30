@@ -58,6 +58,9 @@ interface GroupState {
 // LocalStorage key for persisting selected reports
 const SELECTED_REPORTS_KEY = "selected_reports"
 
+// LocalStorage key for persisting expanded groups
+const EXPANDED_GROUPS_KEY = "expanded_groups"
+
 // Load selected reports from localStorage
 function loadSelectedReports(): Record<number, number | null> {
   try {
@@ -80,6 +83,26 @@ function saveSelectedReports(reports: Record<number, number | null>): void {
       }
     }
     localStorage.setItem(SELECTED_REPORTS_KEY, JSON.stringify(toSave))
+  } catch {
+    // Silently fail if localStorage is unavailable
+  }
+}
+
+// Load expanded groups from localStorage (only expanded groups are stored)
+function loadExpandedGroups(): Set<number> {
+  try {
+    const saved = localStorage.getItem(EXPANDED_GROUPS_KEY)
+    if (!saved) return new Set()
+    return new Set(JSON.parse(saved))
+  } catch {
+    return new Set()
+  }
+}
+
+// Save expanded groups to localStorage
+function saveExpandedGroups(expanded: Set<number>): void {
+  try {
+    localStorage.setItem(EXPANDED_GROUPS_KEY, JSON.stringify([...expanded]))
   } catch {
     // Silently fail if localStorage is unavailable
   }
@@ -116,10 +139,31 @@ export function GroupsGrid() {
     loadSelectedReports
   )
 
+  // Track which groups are expanded (collapsed by default)
+  const [expandedGroups, setExpandedGroups] = useState<Set<number>>(loadExpandedGroups)
+
   // Persist selected reports to localStorage when they change
   useEffect(() => {
     saveSelectedReports(selectedReports)
   }, [selectedReports])
+
+  // Persist expanded groups to localStorage when they change
+  useEffect(() => {
+    saveExpandedGroups(expandedGroups)
+  }, [expandedGroups])
+
+  // Toggle group expanded state
+  const handleToggleExpand = useCallback((groupId: number) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(groupId)) {
+        next.delete(groupId)
+      } else {
+        next.add(groupId)
+      }
+      return next
+    })
+  }, [])
 
   // Invalidate report queries after generating
   const invalidateReportQueries = useInvalidateReportQueries()
@@ -239,8 +283,8 @@ export function GroupsGrid() {
   }
 
   // Handle group creation
-  const handleCreateGroup = (title: string) => {
-    createGroup.mutate({ title })
+  const handleCreateGroup = (title: string, brands: BrandVariation[]) => {
+    createGroup.mutate({ title, brands })
   }
 
   // Handle group update
@@ -449,6 +493,8 @@ export function GroupsGrid() {
                   }
                   onLoadReport={(includePrevious) => handleLoadReport(group, includePrevious)}
                   onBrandsChange={(brands) => handleBrandsChange(group.id, brands)}
+                  isExpanded={expandedGroups.has(group.id)}
+                  onToggleExpand={() => handleToggleExpand(group.id)}
                 />
               )
             })}

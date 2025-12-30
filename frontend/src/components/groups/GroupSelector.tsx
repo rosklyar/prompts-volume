@@ -2,10 +2,11 @@
  * GroupSelector - Inline dropdown for selecting a target group when adding prompts
  * Editorial/magazine-inspired design matching the existing aesthetic
  * Supports keyboard navigation with Arrow keys and Enter
+ * Requires brands when creating new groups
  */
 
 import { useState, useRef, useEffect, useCallback } from "react"
-import type { GroupSummary } from "@/types/groups"
+import type { GroupSummary, BrandVariation } from "@/types/groups"
 import { getGroupColor, MAX_GROUPS } from "./constants"
 import { X, Plus, Check, Loader2, FolderPlus } from "lucide-react"
 
@@ -13,7 +14,7 @@ interface GroupSelectorProps {
   groups: GroupSummary[]
   isLoadingGroups: boolean
   onSelectGroup: (groupId: number) => void
-  onCreateGroup: (title: string) => Promise<void>
+  onCreateGroup: (title: string, brands: BrandVariation[]) => Promise<void>
   onCancel: () => void
   isAddingPrompt: boolean
   isCreatingGroup: boolean
@@ -34,9 +35,13 @@ export function GroupSelector({
 }: GroupSelectorProps) {
   const [isCreatingNew, setIsCreatingNew] = useState(false)
   const [newGroupTitle, setNewGroupTitle] = useState("")
+  const [brands, setBrands] = useState<BrandVariation[]>([])
+  const [newBrandName, setNewBrandName] = useState("")
+  const [newBrandVariations, setNewBrandVariations] = useState("")
   const [highlightedIndex, setHighlightedIndex] = useState(0) // Start with first group highlighted
   const [isReady, setIsReady] = useState(false) // Prevent capturing the Enter that opened this selector
   const inputRef = useRef<HTMLInputElement>(null)
+  const brandInputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
@@ -117,32 +122,69 @@ export function GroupSelector({
     return () => document.removeEventListener("keydown", handleKeyDown)
   }, [isCreatingNew, showEmptyState, isAddingPrompt, isReady, highlightedIndex, totalItems, groups, canCreateMore, isCreateOptionHighlighted, onSelectGroup, onCancel])
 
+  const handleAddBrand = useCallback(() => {
+    if (!newBrandName.trim()) return
+    const variations = newBrandVariations
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean)
+    setBrands((prev) => [...prev, { name: newBrandName.trim(), variations }])
+    setNewBrandName("")
+    setNewBrandVariations("")
+    // Focus back to brand name input for adding more
+    brandInputRef.current?.focus()
+  }, [newBrandName, newBrandVariations])
+
+  const handleRemoveBrand = useCallback((index: number) => {
+    setBrands((prev) => prev.filter((_, i) => i !== index))
+  }, [])
+
   const handleCreateGroup = useCallback(async () => {
     const trimmed = newGroupTitle.trim()
-    if (!trimmed) return
+    if (!trimmed || brands.length === 0) return
 
-    await onCreateGroup(trimmed)
+    await onCreateGroup(trimmed, brands)
     setNewGroupTitle("")
+    setBrands([])
+    setNewBrandName("")
+    setNewBrandVariations("")
     setIsCreatingNew(false)
-  }, [newGroupTitle, onCreateGroup])
+  }, [newGroupTitle, brands, onCreateGroup])
 
-  const handleCreateKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      e.preventDefault()
-      handleCreateGroup()
-    } else if (e.key === "Escape") {
+  const handleTitleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
       e.preventDefault()
       e.stopPropagation()
-      if (showEmptyState) {
-        onCancel()
-      } else {
-        setIsCreatingNew(false)
-        setNewGroupTitle("")
-      }
+      handleCancelCreate()
     }
   }
 
-  // Render inline form for creating a group
+  const handleBrandKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault()
+      handleAddBrand()
+    } else if (e.key === "Escape") {
+      e.preventDefault()
+      e.stopPropagation()
+      handleCancelCreate()
+    }
+  }
+
+  const handleCancelCreate = () => {
+    if (showEmptyState) {
+      onCancel()
+    } else {
+      setIsCreatingNew(false)
+      setNewGroupTitle("")
+      setBrands([])
+      setNewBrandName("")
+      setNewBrandVariations("")
+    }
+  }
+
+  const canCreate = newGroupTitle.trim() && brands.length > 0
+
+  // Render inline form for creating a group with required brands
   const renderCreateForm = (isEmptyState: boolean = false) => (
     <div className={`${isEmptyState ? "p-5" : "p-4 border-t border-[#F3F4F6]"}`}>
       {isEmptyState && (
@@ -158,34 +200,114 @@ export function GroupSelector({
           </p>
         </div>
       )}
-      <div className="flex items-center gap-3">
-        <input
-          ref={inputRef}
-          type="text"
-          value={newGroupTitle}
-          onChange={(e) => setNewGroupTitle(e.target.value)}
-          onKeyDown={handleCreateKeyDown}
-          placeholder="Enter group name..."
-          disabled={isCreatingGroup}
-          className="flex-1 px-4 py-2.5 font-['Fraunces'] text-base
-            bg-white border border-gray-200 rounded-lg
-            focus:outline-none focus:ring-2 focus:ring-[#C4553D]/30 focus:border-[#C4553D]
-            placeholder:text-gray-400 disabled:opacity-50
-            transition-all duration-200"
-          maxLength={50}
-        />
-        <div className="flex gap-2">
-          <button
-            onClick={() => {
-              if (isEmptyState) {
-                onCancel()
-              } else {
-                setIsCreatingNew(false)
-                setNewGroupTitle("")
-              }
-            }}
+      <div className="space-y-4">
+        {/* Title input */}
+        <div>
+          <label className="block text-xs uppercase tracking-widest text-gray-400 font-sans mb-1.5">
+            Group Name
+          </label>
+          <input
+            ref={inputRef}
+            type="text"
+            value={newGroupTitle}
+            onChange={(e) => setNewGroupTitle(e.target.value)}
+            onKeyDown={handleTitleKeyDown}
+            placeholder="Enter group name..."
             disabled={isCreatingGroup}
-            className="py-2.5 px-4 text-sm font-medium text-gray-600
+            className="w-full px-3 py-2 font-['Fraunces'] text-base
+              bg-white border border-gray-200 rounded-lg
+              focus:outline-none focus:ring-2 focus:ring-[#C4553D]/30 focus:border-[#C4553D]
+              placeholder:text-gray-400 disabled:opacity-50
+              transition-all duration-200"
+            maxLength={50}
+          />
+        </div>
+
+        {/* Brands section */}
+        <div>
+          <label className="block text-xs uppercase tracking-widest text-gray-400 font-sans mb-1.5">
+            Brands to Track <span className="text-[#C4553D]">*</span>
+          </label>
+
+          {/* Added brands */}
+          {brands.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {brands.map((brand, index) => (
+                <div
+                  key={index}
+                  className="flex items-center gap-1.5 px-2 py-1 bg-white border border-gray-200 rounded-md group"
+                >
+                  <span className="text-xs font-medium text-gray-700">{brand.name}</span>
+                  {brand.variations.length > 0 && (
+                    <span className="text-[10px] text-gray-400">
+                      +{brand.variations.length}
+                    </span>
+                  )}
+                  <button
+                    onClick={() => handleRemoveBrand(index)}
+                    className="p-0.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Add brand form */}
+          <div className="flex gap-2">
+            <div className="flex-1 space-y-1.5">
+              <input
+                ref={brandInputRef}
+                type="text"
+                value={newBrandName}
+                onChange={(e) => setNewBrandName(e.target.value)}
+                onKeyDown={handleBrandKeyDown}
+                placeholder="Brand name (e.g., Nike)"
+                disabled={isCreatingGroup}
+                className="w-full px-2.5 py-1.5 text-sm
+                  bg-white border border-gray-200 rounded-md
+                  focus:outline-none focus:ring-2 focus:ring-[#C4553D]/30 focus:border-[#C4553D]
+                  placeholder:text-gray-400 disabled:opacity-50"
+              />
+              <input
+                type="text"
+                value={newBrandVariations}
+                onChange={(e) => setNewBrandVariations(e.target.value)}
+                onKeyDown={handleBrandKeyDown}
+                placeholder="Variations (optional, comma-separated)"
+                disabled={isCreatingGroup}
+                className="w-full px-2.5 py-1.5 text-sm
+                  bg-white border border-gray-200 rounded-md
+                  focus:outline-none focus:ring-2 focus:ring-[#C4553D]/30 focus:border-[#C4553D]
+                  placeholder:text-gray-400 disabled:opacity-50"
+              />
+            </div>
+            <button
+              onClick={handleAddBrand}
+              disabled={!newBrandName.trim() || isCreatingGroup}
+              className="self-start px-3 py-1.5 text-sm font-medium
+                bg-white border border-gray-200 rounded-md
+                hover:bg-gray-50 hover:border-[#C4553D]/50 transition-colors
+                disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Add
+            </button>
+          </div>
+
+          {brands.length === 0 && (
+            <p className="mt-1.5 text-[10px] text-gray-400 italic">
+              Add at least one brand to track in reports
+            </p>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+          <button
+            onClick={handleCancelCreate}
+            disabled={isCreatingGroup}
+            className="py-2 px-3 text-sm font-medium text-gray-600
               bg-white border border-gray-200 rounded-lg
               hover:bg-gray-50 transition-colors disabled:opacity-50"
           >
@@ -193,8 +315,8 @@ export function GroupSelector({
           </button>
           <button
             onClick={handleCreateGroup}
-            disabled={isCreatingGroup || !newGroupTitle.trim()}
-            className="py-2.5 px-4 text-sm font-medium text-white
+            disabled={isCreatingGroup || !canCreate}
+            className="py-2 px-4 text-sm font-medium text-white
               bg-[#C4553D] rounded-lg hover:bg-[#B34835]
               transition-colors disabled:opacity-50 disabled:cursor-not-allowed
               flex items-center gap-2 min-w-[100px] justify-center"
@@ -205,7 +327,7 @@ export function GroupSelector({
                 <span>Creating...</span>
               </>
             ) : (
-              "Create"
+              "Create Group"
             )}
           </button>
         </div>

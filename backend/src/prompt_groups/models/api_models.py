@@ -14,9 +14,10 @@ class CreateGroupRequest(BaseModel):
     title: str = Field(
         ..., min_length=1, max_length=255, description="Group title (required)"
     )
-    brands: Optional[List[BrandVariationModel]] = Field(
-        None,
-        description="Optional brands to track"
+    brands: List[BrandVariationModel] = Field(
+        ...,
+        min_length=1,
+        description="Brands to track (required, at least one)"
     )
 
     @field_validator("title")
@@ -28,9 +29,9 @@ class CreateGroupRequest(BaseModel):
 
     @field_validator("brands")
     @classmethod
-    def validate_unique_brands(cls, v: Optional[List[BrandVariationModel]]) -> Optional[List[BrandVariationModel]]:
+    def validate_unique_brands(cls, v: List[BrandVariationModel]) -> List[BrandVariationModel]:
         """Ensure brand names are unique within the list."""
-        if v and len({b.name for b in v}) != len(v):
+        if len({b.name for b in v}) != len(v):
             raise ValueError("Brand names must be unique")
         return v
 

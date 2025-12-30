@@ -50,6 +50,8 @@ interface GroupCardProps {
   onDeletePrompt: (promptId: number) => void
   onLoadReport: (includePrevious?: boolean) => void
   onBrandsChange: (brands: BrandVariation[]) => void
+  isExpanded: boolean
+  onToggleExpand: () => void
 }
 
 export function GroupCard({
@@ -68,6 +70,8 @@ export function GroupCard({
   onDeletePrompt,
   onLoadReport,
   onBrandsChange,
+  isExpanded,
+  onToggleExpand,
 }: GroupCardProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showBrandEditor, setShowBrandEditor] = useState(false)
@@ -204,8 +208,25 @@ export function GroupCard({
 
         <div className="px-5 py-4">
           {/* Header - horizontal layout */}
-          <div className="flex items-center justify-between mb-3">
+          <div className={`flex items-center justify-between ${isExpanded ? "mb-3" : ""}`}>
             <div className="flex items-center gap-3">
+              {/* Expand/Collapse toggle */}
+              <button
+                onClick={onToggleExpand}
+                className="p-1.5 -ml-1.5 rounded-lg hover:bg-white/80 transition-colors"
+                aria-label={isExpanded ? "Collapse group" : "Expand group"}
+              >
+                <svg
+                  className="w-4 h-4 text-gray-400 transition-transform duration-200"
+                  style={{ transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
               <EditableTitle
                 title={group.title}
                 isEditable={true}
@@ -359,77 +380,86 @@ export function GroupCard({
             </div>
           </div>
 
-          {/* Body - Vertical prompt list */}
-          <div ref={setNodeRef}>
-            <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
-              {prompts.length === 0 ? (
-                <div
-                  className={`
-                    flex items-center justify-center py-6 rounded-xl border-2 border-dashed transition-colors
-                    ${isOver ? "border-solid" : ""}
-                  `}
-                  style={{
-                    borderColor: isOver ? colors.accent : `${colors.border}25`,
-                    backgroundColor: isOver ? `${colors.accent}10` : "rgba(255,255,255,0.5)",
-                  }}
-                >
-                  <div className="text-center">
-                    <svg
-                      className="w-8 h-8 mx-auto mb-2 text-gray-300"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={1.5}
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-                      />
-                    </svg>
-                    <p className="text-sm text-gray-400">
-                      {isOver ? "Drop here" : "Drag prompts from staging area"}
-                    </p>
+          {/* Collapsible content */}
+          <div
+            className="overflow-hidden transition-all duration-300"
+            style={{
+              maxHeight: isExpanded ? "2000px" : "0",
+              opacity: isExpanded ? 1 : 0,
+            }}
+          >
+            {/* Body - Vertical prompt list */}
+            <div ref={setNodeRef}>
+              <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
+                {prompts.length === 0 ? (
+                  <div
+                    className={`
+                      flex items-center justify-center py-6 rounded-xl border-2 border-dashed transition-colors
+                      ${isOver ? "border-solid" : ""}
+                    `}
+                    style={{
+                      borderColor: isOver ? colors.accent : `${colors.border}25`,
+                      backgroundColor: isOver ? `${colors.accent}10` : "rgba(255,255,255,0.5)",
+                    }}
+                  >
+                    <div className="text-center">
+                      <svg
+                        className="w-8 h-8 mx-auto mb-2 text-gray-300"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={1.5}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                        />
+                      </svg>
+                      <p className="text-sm text-gray-400">
+                        {isOver ? "Drop here" : "Drag prompts from staging area"}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <div className="max-h-[220px] overflow-y-auto space-y-2 prompts-scroll">
-                  {displayPrompts.map((prompt) => (
-                    <PromptItem
-                      key={prompt.prompt_id}
-                      prompt={prompt}
-                      groupId={group.id}
-                      accentColor={colors.accent}
-                      onDelete={onDeletePrompt}
-                    />
-                  ))}
-                </div>
-              )}
-            </SortableContext>
-          </div>
-
-          {/* Report History Panel - shows list of past reports */}
-          {prompts.length > 0 && (
-            <ReportHistoryPanel
-              groupId={group.id}
-              selectedReportId={selectedReportId}
-              onSelectReport={onSelectReport}
-              accentColor={colors.accent}
-            />
-          )}
-
-          {/* Report Panel - shown when report data is loaded (at bottom) */}
-          {hasReportData && (
-            <div className="mt-3">
-              <ReportPanel
-                visibilityScores={displayVisibilityScores || []}
-                citationLeaderboard={displayCitationLeaderboard || { domains: [], subpaths: [], total_citations: 0 }}
-                accentColor={colors.accent}
-                isCollapsed={isReportCollapsed}
-                onToggleCollapse={() => setIsReportCollapsed(!isReportCollapsed)}
-              />
+                ) : (
+                  <div className="max-h-[220px] overflow-y-auto space-y-2 prompts-scroll">
+                    {displayPrompts.map((prompt) => (
+                      <PromptItem
+                        key={prompt.prompt_id}
+                        prompt={prompt}
+                        groupId={group.id}
+                        accentColor={colors.accent}
+                        onDelete={onDeletePrompt}
+                      />
+                    ))}
+                  </div>
+                )}
+              </SortableContext>
             </div>
-          )}
+
+            {/* Report History Panel - shows list of past reports */}
+            {prompts.length > 0 && (
+              <ReportHistoryPanel
+                groupId={group.id}
+                selectedReportId={selectedReportId}
+                onSelectReport={onSelectReport}
+                accentColor={colors.accent}
+              />
+            )}
+
+            {/* Report Panel - shown when report data is loaded (at bottom) */}
+            {hasReportData && (
+              <div className="mt-3">
+                <ReportPanel
+                  visibilityScores={displayVisibilityScores || []}
+                  citationLeaderboard={displayCitationLeaderboard || { domains: [], subpaths: [], total_citations: 0 }}
+                  accentColor={colors.accent}
+                  isCollapsed={isReportCollapsed}
+                  onToggleCollapse={() => setIsReportCollapsed(!isReportCollapsed)}
+                />
+              </div>
+            )}
+          </div>
         </div>
       </section>
 

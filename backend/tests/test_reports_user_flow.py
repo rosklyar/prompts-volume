@@ -57,10 +57,13 @@ def test_complete_report_user_flow(client):
     initial_balance = Decimal(str(balance_response.json()["available_balance"]))
     assert initial_balance == Decimal("10.00"), f"Expected 10.00, got {initial_balance}"
 
-    # === STEP 4: Create group ===
+    # === STEP 4: Create group (brands are required) ===
     group_response = client.post(
         "/prompt-groups/api/v1/groups",
-        json={"title": "Report Test Group"},
+        json={
+            "title": "Report Test Group",
+            "brands": [{"name": "TestBrand", "variations": ["test"]}],
+        },
         headers=auth_headers,
     )
     assert group_response.status_code == 201, f"Group creation failed: {group_response.json()}"

@@ -23,17 +23,26 @@ def test_create_group_with_brands(client, auth_headers):
     assert data["prompt_count"] == 0
 
 
-def test_create_group_without_brands(client, auth_headers):
-    """Test creating a group without brands."""
+def test_create_group_without_brands_fails(client, auth_headers):
+    """Test that creating a group without brands fails validation."""
     response = client.post(
         "/prompt-groups/api/v1/groups",
         json={"title": "No Brands Group"},
         headers=auth_headers,
     )
-    assert response.status_code == 201
-    data = response.json()
-    assert data["title"] == "No Brands Group"
-    assert data["brand_count"] == 0
+    assert response.status_code == 422
+    assert "Field required" in response.json()["detail"][0]["msg"]
+
+
+def test_create_group_with_empty_brands_fails(client, auth_headers):
+    """Test that creating a group with empty brands list fails validation."""
+    response = client.post(
+        "/prompt-groups/api/v1/groups",
+        json={"title": "Empty Brands Group", "brands": []},
+        headers=auth_headers,
+    )
+    assert response.status_code == 422
+    # Should have at least one brand
 
 
 def test_brand_name_uniqueness_validation(client, auth_headers):
@@ -154,15 +163,19 @@ def test_get_groups_includes_brand_count(client, auth_headers):
 
 def test_update_group_brands(client, auth_headers):
     """Test updating group brands."""
-    # Create group without brands
+    # Create group with initial brands
     create_response = client.post(
         "/prompt-groups/api/v1/groups",
-        json={"title": "Update Brands Test"},
+        json={
+            "title": "Update Brands Test",
+            "brands": [{"name": "InitialBrand", "variations": ["initial"]}],
+        },
         headers=auth_headers,
     )
+    assert create_response.status_code == 201
     group_id = create_response.json()["id"]
 
-    # Update with brands
+    # Update with different brands
     update_response = client.patch(
         f"/prompt-groups/api/v1/groups/{group_id}",
         json={
