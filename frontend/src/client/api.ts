@@ -6,6 +6,7 @@ import type {
 } from "@/types/batch-upload"
 import type {
   UserBalance,
+  GenerationPrice,
   ReportPreview,
   GenerateReportRequest,
   GenerateReportResponse,
@@ -389,6 +390,14 @@ export const billingApi = {
     const response = await fetchWithAuth(
       `/billing/api/v1/transactions?${params}`
     )
+    return response.json()
+  },
+
+  /**
+   * Get generation price and affordability check
+   */
+  async getGenerationPrice(): Promise<GenerationPrice> {
+    const response = await fetchWithAuth("/billing/api/v1/generation/price")
     return response.json()
   },
 }

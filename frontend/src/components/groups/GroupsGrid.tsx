@@ -50,7 +50,6 @@ interface PromptWithAnswer extends PromptInGroup {
 interface GroupState {
   prompts: PromptWithAnswer[]
   isLoadingAnswers: boolean
-  answersLoaded: boolean
   visibilityScores: BrandVisibilityScore[] | null
   citationLeaderboard: CitationLeaderboard | null
 }
@@ -341,7 +340,6 @@ export function GroupsGrid() {
           prev[group.id]?.prompts ||
           group.prompts.map((p) => ({ ...p, isLoading: true })),
         isLoadingAnswers: true,
-        answersLoaded: prev[group.id]?.answersLoaded || false,
         visibilityScores: prev[group.id]?.visibilityScores || null,
         citationLeaderboard: prev[group.id]?.citationLeaderboard || null,
       },
@@ -388,7 +386,6 @@ export function GroupsGrid() {
         [group.id]: {
           prompts: promptsWithAnswers,
           isLoadingAnswers: false,
-          answersLoaded: true,
           visibilityScores,
           citationLeaderboard: result.citation_leaderboard,
         },
@@ -458,7 +455,7 @@ export function GroupsGrid() {
         <div>
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-['Fraunces'] text-xl text-[#1F2937]">
-              Your Prompt Groups
+              Your prompt groups
             </h2>
             {sortedGroups.length > 0 && (
               <span className="text-xs text-[#9CA3AF]">
@@ -480,7 +477,6 @@ export function GroupsGrid() {
                   colorIndex={index}
                   prompts={prompts}
                   isLoadingAnswers={state?.isLoadingAnswers || false}
-                  answersLoaded={state?.answersLoaded || false}
                   brands={brands}
                   visibilityScores={state?.visibilityScores || null}
                   citationLeaderboard={state?.citationLeaderboard || null}

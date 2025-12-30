@@ -89,7 +89,7 @@ export function BalanceCard({ className = "" }: BalanceCardProps) {
           <h3
             className="text-xs uppercase tracking-widest text-gray-400 font-['DM_Sans'] font-medium"
           >
-            Credits Balance
+            Credits balance
           </h3>
           <Link
             to="/top-up"
@@ -155,7 +155,7 @@ export function BalanceCard({ className = "" }: BalanceCardProps) {
         {/* Quick top-up buttons */}
         <div className="space-y-2">
           <p className="text-[10px] uppercase tracking-widest text-gray-300 font-['DM_Sans']">
-            Quick Top-up
+            Quick top-up
           </p>
           <div className="flex gap-2">
             {quickAmounts.map((amount) => (

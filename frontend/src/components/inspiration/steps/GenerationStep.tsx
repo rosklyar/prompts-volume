@@ -5,7 +5,9 @@
 
 import { useState } from "react"
 import { useGeneratePrompts, useBatchSimilarPrompts } from "@/hooks/useInspiration"
+import { ApiError } from "@/client/api"
 import { BrandVariationsEditor } from "../BrandVariationsEditor"
+import { GenerationConfirmModal } from "../GenerationConfirmModal"
 import {
   ArrowLeft,
   Sparkles,
@@ -31,6 +33,7 @@ export function GenerationStep({ state, dispatch, onClose }: GenerationStepProps
   const [isGenerating, setIsGenerating] = useState(false)
   const [progress, setProgress] = useState(0)
   const [progressMessage, setProgressMessage] = useState("")
+  const [showConfirmModal, setShowConfirmModal] = useState(false)
 
   const generatePrompts = useGeneratePrompts()
   const batchSimilarPrompts = useBatchSimilarPrompts()
@@ -59,10 +62,15 @@ export function GenerationStep({ state, dispatch, onClose }: GenerationStepProps
     })
   }
 
-  // Handle generation
-  const handleGenerate = async () => {
+  // Show confirmation modal before generating
+  const handleGenerateClick = () => {
     if (selectedCount === 0) return
+    setShowConfirmModal(true)
+  }
 
+  // Handle confirmed generation
+  const handleConfirmGenerate = async () => {
+    setShowConfirmModal(false)
     setIsGenerating(true)
     setProgress(10)
     setProgressMessage("Fetching keywords from DataForSEO...")
@@ -153,6 +161,13 @@ export function GenerationStep({ state, dispatch, onClose }: GenerationStepProps
       }, 500)
     } catch (error) {
       setIsGenerating(false)
+
+      // Handle insufficient balance (402) - show confirm modal again
+      if (error instanceof ApiError && error.status === 402) {
+        setShowConfirmModal(true)
+        return
+      }
+
       dispatch({
         type: "SET_ERROR",
         error:
@@ -185,7 +200,7 @@ export function GenerationStep({ state, dispatch, onClose }: GenerationStepProps
               <div className="absolute inset-0 rounded-full border-4 border-[#C4553D]/30 animate-ping" />
             </div>
             <h2 className="font-['Fraunces'] text-xl font-semibold text-[#1F2937] mb-2">
-              Generating Prompts
+              Generating prompts
             </h2>
             <p className="text-[#6B7280] font-['DM_Sans'] text-sm">
               This may take 30-60 seconds
@@ -287,7 +302,7 @@ export function GenerationStep({ state, dispatch, onClose }: GenerationStepProps
             </div>
             <div>
               <h2 className="font-['Fraunces'] text-lg font-semibold text-[#1F2937]">
-                Generate New Prompts
+                Generate new prompts
               </h2>
               <p className="text-sm text-[#6B7280] font-['DM_Sans']">
                 Select topics to generate AI-powered prompts from DataForSEO data
@@ -300,7 +315,7 @@ export function GenerationStep({ state, dispatch, onClose }: GenerationStepProps
         <div className="p-6">
           <div className="flex items-center justify-between mb-4">
             <span className="text-sm font-medium text-[#374151] font-['DM_Sans']">
-              Available Topics ({unmatchedTopics.length})
+              Available topics ({unmatchedTopics.length})
             </span>
             <button
               onClick={selectedCount === unmatchedTopics.length ? handleDeselectAll : handleSelectAll}
@@ -363,7 +378,7 @@ export function GenerationStep({ state, dispatch, onClose }: GenerationStepProps
       <div className="bg-white rounded-2xl shadow-lg shadow-black/5 border border-[#E5E7EB]/60 overflow-hidden">
         <div className="px-6 py-4 border-b border-[#E5E7EB]/60">
           <h3 className="font-['Fraunces'] text-base font-semibold text-[#1F2937]">
-            Brand Variations
+            Brand variations
           </h3>
           <p className="text-sm text-[#6B7280] font-['DM_Sans'] mt-0.5">
             These keywords will be filtered from the generated prompts
@@ -411,7 +426,7 @@ export function GenerationStep({ state, dispatch, onClose }: GenerationStepProps
             Skip
           </button>
           <button
-            onClick={handleGenerate}
+            onClick={handleGenerateClick}
             disabled={selectedCount === 0}
             className={`
               px-6 py-3 text-sm font-medium text-white rounded-xl font-['DM_Sans']
@@ -428,6 +443,15 @@ export function GenerationStep({ state, dispatch, onClose }: GenerationStepProps
           </button>
         </div>
       </div>
+
+      {/* Confirmation Modal */}
+      <GenerationConfirmModal
+        isOpen={showConfirmModal}
+        topicsCount={selectedCount}
+        onClose={() => setShowConfirmModal(false)}
+        onConfirm={handleConfirmGenerate}
+        onNeedsTopUp={onClose}
+      />
     </div>
   )
 }

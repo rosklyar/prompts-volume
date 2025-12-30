@@ -60,7 +60,7 @@ export function ReportPanel({
             className="text-sm font-medium tracking-wide"
             style={{ color: accentColor }}
           >
-            Report Summary
+            Report summary
           </span>
         </div>
         <div className="flex items-center gap-3 text-xs font-sans text-gray-400">
@@ -84,7 +84,7 @@ export function ReportPanel({
           {hasVisibilityData && (
             <div>
               <p className="text-[10px] uppercase tracking-[0.2em] text-gray-400 font-sans mb-2">
-                Brand Visibility
+                Brand visibility
               </p>
               <div className="flex flex-wrap gap-2">
                 {visibilityScores.map((score) => (
@@ -134,7 +134,7 @@ export function ReportPanel({
           {hasDomainData && (
             <div>
               <p className="text-[10px] uppercase tracking-[0.2em] text-gray-400 font-sans mb-2">
-                Domain Sources
+                Domain sources
               </p>
               <div className="bg-white rounded-lg border overflow-hidden" style={{ borderColor: `${accentColor}15` }}>
                 <div className="max-h-[180px] overflow-y-auto">
@@ -197,7 +197,7 @@ export function ReportPanel({
           {hasSubpathData && (
             <div>
               <p className="text-[10px] uppercase tracking-[0.2em] text-gray-400 font-sans mb-2">
-                Page Paths
+                Page paths
               </p>
               <div className="bg-white rounded-lg border overflow-hidden" style={{ borderColor: `${accentColor}15` }}>
                 <div className="max-h-[180px] overflow-y-auto">

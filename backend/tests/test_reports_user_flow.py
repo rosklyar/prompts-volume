@@ -137,10 +137,11 @@ def test_complete_report_user_flow(client):
     assert report["prompts_with_data"] == 2
     assert report["prompts_awaiting"] == 0
 
-    # Cost should match the fresh count (1.00 per evaluation)
+    # Cost should match the fresh count (0.01 per evaluation per config)
     first_report_cost = Decimal(str(report["total_cost"]))
-    assert first_report_cost == Decimal(str(initial_fresh_count)), \
-        f"Expected cost {initial_fresh_count}.00, got {first_report_cost}"
+    expected_cost = Decimal("0.01") * initial_fresh_count
+    assert first_report_cost == expected_cost, \
+        f"Expected cost {expected_cost}, got {first_report_cost}"
 
     # === STEP 9: Check balance after first report ===
     balance_response = client.get("/billing/api/v1/balance", headers=auth_headers)
@@ -226,10 +227,11 @@ def test_complete_report_user_flow(client):
     assert report3["prompts_with_data"] == 3
     assert report3["prompts_awaiting"] == 0
 
-    # Should charge for fresh evaluations
+    # Should charge for fresh evaluations (0.01 per evaluation per config)
     third_report_cost = Decimal(str(report3["total_cost"]))
-    assert third_report_cost == Decimal(str(new_fresh_count)), \
-        f"Expected {new_fresh_count}.00, got {third_report_cost}"
+    expected_third_cost = Decimal("0.01") * new_fresh_count
+    assert third_report_cost == expected_third_cost, \
+        f"Expected {expected_third_cost}, got {third_report_cost}"
 
     # === STEP 14: Check final balance ===
     balance_response = client.get("/billing/api/v1/balance", headers=auth_headers)

@@ -98,7 +98,7 @@ function TopUpPage() {
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
-            Back to Dashboard
+            Back to dashboard
           </Link>
         </div>
       </header>
@@ -107,10 +107,10 @@ function TopUpPage() {
         {/* Page title */}
         <div className="text-center mb-12">
           <h1 className="font-['Fraunces'] text-3xl md:text-4xl font-medium text-[#1F2937] tracking-tight mb-3">
-            Add Credits
+            Add credits
           </h1>
           <p className="text-gray-500 max-w-md mx-auto">
-            Credits are used to load fresh evaluation data in your reports
+            Credits are used to load fresh answers in your reports
           </p>
         </div>
 
@@ -154,7 +154,7 @@ function TopUpPage() {
                 {/* Amount selection */}
                 <div className="mb-8">
                   <label className="block text-xs uppercase tracking-widest text-gray-400 mb-4">
-                    Select Amount
+                    Select amount
                   </label>
                   <div className="grid grid-cols-4 gap-3 mb-4">
                     {presetAmounts.map((amount) => (
@@ -203,7 +203,7 @@ function TopUpPage() {
                 {/* Payment details (mock) */}
                 <div className="mb-8">
                   <label className="block text-xs uppercase tracking-widest text-gray-400 mb-4">
-                    Payment Details
+                    Payment details
                   </label>
 
                   {/* Card number */}
@@ -292,7 +292,7 @@ function TopUpPage() {
             {/* Current balance */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_2px_16px_-4px_rgba(0,0,0,0.06)] p-6">
               <h3 className="text-xs uppercase tracking-widest text-gray-400 mb-4">
-                Current Balance
+                Current balance
               </h3>
 
               {isLoadingBalance ? (
@@ -326,7 +326,7 @@ function TopUpPage() {
             {/* Transaction history */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_2px_16px_-4px_rgba(0,0,0,0.06)] p-6">
               <h3 className="text-xs uppercase tracking-widest text-gray-400 mb-4">
-                Recent Activity
+                Recent activity
               </h3>
 
               {isLoadingTransactions ? (
@@ -373,8 +373,8 @@ function TopUpPage() {
               </h3>
               <div className="space-y-2 text-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-600">Per evaluation</span>
-                  <span className="font-medium text-gray-800">$1.00</span>
+                  <span className="text-gray-600">Per answer</span>
+                  <span className="font-medium text-gray-800">$0.01</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-gray-600">Already loaded</span>
@@ -382,7 +382,7 @@ function TopUpPage() {
                 </div>
               </div>
               <p className="mt-4 text-xs text-gray-400">
-                You only pay for new evaluations. Previously loaded data is always free to access.
+                You only pay for new answers. Previously loaded data is always free to access.
               </p>
             </div>
           </div>

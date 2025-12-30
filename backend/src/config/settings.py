@@ -76,7 +76,8 @@ class Settings(BaseSettings):
     frontend_url: str = "http://localhost:5173"
 
     # Billing configuration
-    billing_price_per_evaluation: float = 1.00  # Price in dollars per evaluation
+    billing_price_per_evaluation: float = 0.01  # Price in dollars per evaluation
+    billing_price_per_generation: float = 1.00  # Price in dollars per generate call
     billing_signup_credits: float = 10.00  # Initial credits for new users
     billing_signup_credits_expiry_days: int = 30  # Days until signup credits expire
 

@@ -449,17 +449,7 @@ function PromptDiscovery() {
 
       {/* Main content */}
       <main className="pt-20 pb-12 px-4 md:px-8 lg:px-12">
-        {/* Title and search - centered at top */}
         <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-8">
-            <h1 className="font-['Fraunces'] text-3xl md:text-4xl font-medium text-[#1F2937] tracking-tight">
-              Prompt Discovery
-            </h1>
-            <p className="mt-2 text-[#6B7280] text-base">
-              Find and organize prompts that matter to your business
-            </p>
-          </div>
-
           {/* Search container */}
           <div className="max-w-2xl mx-auto relative mb-10">
             {/* Search input with inspiration button */}

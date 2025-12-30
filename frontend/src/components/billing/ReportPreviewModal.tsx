@@ -1,6 +1,6 @@
 /**
  * ReportPreviewModal - Shows cost breakdown before generating a report
- * Displays fresh vs already-consumed evaluations and total charge
+ * Displays fresh vs already-consumed answers and total charge
  */
 
 import { useState, useEffect } from "react"
@@ -49,6 +49,11 @@ export function ReportPreviewModal({
   const isFree = preview && preview.estimated_cost === 0
   const canAfford = preview && !preview.needs_top_up
 
+  // Calculate unit price from preview data
+  const unitPrice = preview && preview.fresh_evaluations > 0
+    ? preview.estimated_cost / preview.fresh_evaluations
+    : 0.01
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
@@ -73,7 +78,7 @@ export function ReportPreviewModal({
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-xl tracking-tight" style={{ color: accentColor }}>
-                Generate Report
+                Generate report
               </h2>
               <p className="text-sm text-gray-400 mt-1 font-['DM_Sans'] truncate max-w-[280px]">
                 {groupTitle}
@@ -126,11 +131,11 @@ export function ReportPreviewModal({
               {/* Cost breakdown */}
               <div className="space-y-3 mb-6">
                 <p className="text-xs uppercase tracking-widest text-gray-400 font-['DM_Sans']">
-                  Cost Breakdown
+                  Cost breakdown
                 </p>
 
                 <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-                  {/* Fresh evaluations */}
+                  {/* Fresh answers */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span
@@ -138,12 +143,12 @@ export function ReportPreviewModal({
                         style={{ backgroundColor: accentColor }}
                       />
                       <span className="text-sm text-gray-700 font-['DM_Sans']">
-                        Fresh evaluations
+                        Fresh answers
                       </span>
                     </div>
                     <div className="text-right">
                       <span className="text-sm font-medium text-gray-800 font-['DM_Sans'] tabular-nums">
-                        {preview.fresh_evaluations} × $1.00
+                        {preview.fresh_evaluations} × ${formatCredits(unitPrice)}
                       </span>
                       <span className="text-sm text-gray-500 font-['DM_Sans'] ml-2">
                         = ${formatCredits(preview.estimated_cost)}
@@ -262,7 +267,7 @@ export function ReportPreviewModal({
                       Insufficient balance
                     </p>
                     <p className="text-[11px] text-amber-600 mt-0.5 font-['DM_Sans']">
-                      You can load {preview.affordable_count} of {preview.fresh_evaluations} evaluations
+                      You can load {preview.affordable_count} of {preview.fresh_evaluations} answers
                     </p>
                   </div>
                 </div>
@@ -294,9 +299,9 @@ export function ReportPreviewModal({
                   }}
                 >
                   {preview.needs_top_up ? (
-                    "View Options"
+                    "View options"
                   ) : isFree ? (
-                    "Generate Free"
+                    "Generate free"
                   ) : (
                     <>Generate — ${formatCredits(preview.estimated_cost)}</>
                   )}

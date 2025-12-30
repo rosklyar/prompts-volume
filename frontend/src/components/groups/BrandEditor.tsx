@@ -90,7 +90,7 @@ export function BrandEditor({
               className="text-xl tracking-tight"
               style={{ color: accentColor }}
             >
-              Brand Configuration
+              Brand configuration
             </h2>
             <button
               onClick={onClose}
@@ -106,7 +106,7 @@ export function BrandEditor({
           {brands.length > 0 && (
             <div className="mb-6 space-y-3">
               <p className="text-xs uppercase tracking-widest text-gray-400 font-sans">
-                Configured Brands
+                Configured brands
               </p>
               <div className="space-y-2">
                 {brands.map((brand, index) => (
@@ -194,7 +194,7 @@ export function BrandEditor({
             style={{ borderColor: `${accentColor}30` }}
           >
             <p className="text-xs uppercase tracking-widest text-gray-400 font-sans mb-3">
-              Add New Brand
+              Add new brand
             </p>
             <div className="space-y-3">
               <input
@@ -218,7 +218,7 @@ export function BrandEditor({
                 className="w-full py-2.5 text-sm font-sans text-white rounded-md transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90"
                 style={{ backgroundColor: accentColor }}
               >
-                Add Brand
+                Add brand
               </button>
             </div>
           </div>

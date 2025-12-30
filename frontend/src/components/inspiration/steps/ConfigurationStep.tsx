@@ -6,7 +6,7 @@
 import { useState } from "react"
 import { useAnalyzeCompany } from "@/hooks/useInspiration"
 import { CountrySelector } from "../CountrySelector"
-import { Globe, Loader2, ArrowRight, Building2, Sparkles } from "lucide-react"
+import { Globe, Loader2, ArrowRight, Sparkles } from "lucide-react"
 import type { WizardAction } from "../InspirationModal"
 import type { WizardState, TopicWithPrompts } from "@/types/inspiration"
 
@@ -82,41 +82,8 @@ export function ConfigurationStep({ state, dispatch }: ConfigurationStepProps) {
 
   return (
     <div className="max-w-2xl mx-auto">
-      {/* Hero card */}
+      {/* Card */}
       <div className="bg-white rounded-2xl shadow-xl shadow-black/5 overflow-hidden border border-[#E5E7EB]/60">
-        {/* Decorative header */}
-        <div className="relative h-32 bg-gradient-to-br from-[#C4553D] via-[#B34835] to-[#9A3D2A] overflow-hidden">
-          {/* Geometric pattern */}
-          <div className="absolute inset-0 opacity-10">
-            <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-              <defs>
-                <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
-                  <path d="M 10 0 L 0 0 0 10" fill="none" stroke="white" strokeWidth="0.5" />
-                </pattern>
-              </defs>
-              <rect width="100" height="100" fill="url(#grid)" />
-            </svg>
-          </div>
-
-          {/* Floating icons */}
-          <div className="absolute top-4 right-4 w-16 h-16 rounded-full bg-white/10 flex items-center justify-center backdrop-blur-sm">
-            <Sparkles className="w-8 h-8 text-white/80" />
-          </div>
-          <div className="absolute bottom-4 left-4 w-12 h-12 rounded-full bg-white/10 flex items-center justify-center backdrop-blur-sm">
-            <Building2 className="w-6 h-6 text-white/80" />
-          </div>
-
-          {/* Title overlay */}
-          <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/30 to-transparent">
-            <h2 className="font-['Fraunces'] text-2xl font-semibold text-white">
-              Let's find your prompts
-            </h2>
-            <p className="text-white/80 text-sm font-['DM_Sans'] mt-1">
-              Enter your company details to discover SEO-relevant topics
-            </p>
-          </div>
-        </div>
-
         {/* Form content */}
         <div className="p-8 space-y-6">
           {/* Company URL */}
@@ -164,7 +131,7 @@ export function ConfigurationStep({ state, dispatch }: ConfigurationStepProps) {
           {/* Country selector */}
           <div className="space-y-2">
             <label className="block text-sm font-medium text-[#374151] font-['DM_Sans']">
-              Target Country
+              Target country
             </label>
             <CountrySelector
               value={localCountry}
@@ -210,7 +177,7 @@ export function ConfigurationStep({ state, dispatch }: ConfigurationStepProps) {
               </>
             ) : (
               <>
-                <span>Analyze & Find Topics</span>
+                <span>Proceed</span>
                 <ArrowRight className="w-5 h-5" />
               </>
             )}

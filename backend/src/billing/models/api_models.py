@@ -72,3 +72,11 @@ class TransactionListResponse(BaseModel):
 
     transactions: list[TransactionResponse]
     total: int
+
+
+class GenerationPriceResponse(BaseModel):
+    """Response for generation price inquiry."""
+
+    price: Decimal
+    user_balance: Decimal
+    can_afford: bool
