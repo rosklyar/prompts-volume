@@ -57,7 +57,7 @@ export function useCreateGroup() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ title, brands }: { title: string; brands?: BrandVariation[] }) =>
+    mutationFn: ({ title, brands }: { title: string; brands: BrandVariation[] }) =>
       groupsApi.createGroup(title, brands),
     onSuccess: () => {
       // Invalidate all group queries to ensure UI updates

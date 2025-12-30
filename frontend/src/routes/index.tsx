@@ -11,8 +11,11 @@ import {
 } from "@/hooks/useGroups"
 import { Button } from "@/components/ui/button"
 import { GroupsGrid, GroupSelector } from "@/components/groups"
+import { InspirationModal } from "@/components/inspiration"
 import { BalanceIndicator } from "@/components/billing"
-import { Check } from "lucide-react"
+import { Check, Sparkles } from "lucide-react"
+import { Tooltip } from "@/components/ui/tooltip"
+import type { BrandVariation } from "@/types/groups"
 
 export const Route = createFileRoute("/")({
   component: PromptDiscovery,
@@ -48,12 +51,15 @@ function PromptDiscovery() {
   const [showGroupSelector, setShowGroupSelector] = useState(false)
   const [addingToGroupId, setAddingToGroupId] = useState<number | null>(null)
 
+  // State for inspiration modal
+  const [showInspirationModal, setShowInspirationModal] = useState(false)
+
   const { suggestions, isLoading, isFetching, shouldSearch } =
     useSimilarPrompts(searchQuery)
 
   // Groups data and mutations
   const { data: groupsData, isLoading: isLoadingGroups } = useGroups()
-  const groups = groupsData?.groups ?? []
+  const groups = useMemo(() => groupsData?.groups ?? [], [groupsData?.groups])
   const groupIds = useMemo(() => groups.map((g) => g.id), [groups])
   const { data: groupDetails } = useAllGroupDetails(groupIds)
 
@@ -219,8 +225,8 @@ function PromptDiscovery() {
 
   // Handle creating a new group (from GroupSelector)
   const handleCreateGroup = useCallback(
-    async (title: string) => {
-      const result = await createGroup.mutateAsync({ title })
+    async (title: string, brands: BrandVariation[]) => {
+      const result = await createGroup.mutateAsync({ title, brands })
       // After creating, auto-select the new group
       if (result?.id && pendingPrompts) {
         await handleSelectGroup(result.id)
@@ -456,9 +462,10 @@ function PromptDiscovery() {
 
           {/* Search container */}
           <div className="max-w-2xl mx-auto relative mb-10">
-            {/* Search input */}
-            <div className="relative">
-              <input
+            {/* Search input with inspiration button */}
+            <div className="relative flex items-center gap-3">
+              <div className="relative flex-1">
+                <input
                 ref={inputRef}
                 type="text"
                 value={searchQuery}
@@ -510,6 +517,23 @@ function PromptDiscovery() {
                   <div className="w-5 h-5 border-2 border-[#C4553D]/30 border-t-[#C4553D] rounded-full animate-spin" />
                 </div>
               )}
+              </div>
+
+              {/* Inspiration button */}
+              <Tooltip content="Get prompt inspiration from DataForSEO" side="bottom">
+                <button
+                  onClick={() => setShowInspirationModal(true)}
+                  className="flex-shrink-0 w-14 h-14 flex items-center justify-center
+                    bg-white rounded-2xl border-0
+                    shadow-[0_4px_24px_-4px_rgba(0,0,0,0.08)]
+                    hover:shadow-[0_4px_32px_-4px_rgba(196,85,61,0.15)]
+                    text-[#C4553D] hover:bg-[#FEF7F5]
+                    transition-all duration-300"
+                  aria-label="Get prompt inspiration from DataForSEO"
+                >
+                  <Sparkles className="w-5 h-5" />
+                </button>
+              </Tooltip>
             </div>
 
             {/* Dropdown - either suggestions or group selector */}
@@ -717,6 +741,12 @@ function PromptDiscovery() {
           </div>
         </div>
       </main>
+
+      {/* Inspiration Modal */}
+      <InspirationModal
+        isOpen={showInspirationModal}
+        onClose={() => setShowInspirationModal(false)}
+      />
     </div>
   )
 }

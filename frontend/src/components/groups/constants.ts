@@ -36,7 +36,7 @@ export const QUARANTINE_COLOR = {
   borderStyle: "dashed" as const,
 }
 
-export const MAX_GROUPS = 3
+export const MAX_GROUPS = 10
 export const GRID_COLS = 3
 export const GRID_ROWS = 2
 
