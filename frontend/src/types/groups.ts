@@ -169,7 +169,6 @@ export interface PromptWithAnswer extends PromptInGroup {
 export interface GroupWithPrompts extends Omit<GroupDetail, "prompts"> {
   prompts: PromptWithAnswer[]
   isLoadingAnswers?: boolean
-  answersLoaded?: boolean
   visibilityScores?: BrandVisibilityScore[] | null
   citationLeaderboard?: CitationLeaderboard | null
 }

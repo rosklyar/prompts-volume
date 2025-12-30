@@ -37,11 +37,6 @@ RUN uv run python scripts/download_model.py && \
 # Use --chown to set ownership during copy for efficiency
 COPY --chown=appuser:appuser src/ ./src/
 COPY --chown=appuser:appuser alembic/ ./alembic/
-COPY --chown=appuser:appuser alembic.ini ./
-COPY --chown=appuser:appuser users_alembic/ ./users_alembic/
-COPY --chown=appuser:appuser users_alembic.ini ./
-COPY --chown=appuser:appuser evals_alembic/ ./evals_alembic/
-COPY --chown=appuser:appuser evals_alembic.ini ./
 
 # Switch to non-root user
 USER appuser
@@ -54,4 +49,4 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
 EXPOSE 8000
 
 # Run migrations and start the application
-CMD ["sh", "-c", "uv run alembic upgrade head && uv run alembic -c users_alembic.ini upgrade head && uv run alembic -c evals_alembic.ini upgrade head && uv run uvicorn src.main:app --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "uv run alembic -c alembic/prompts/alembic.ini upgrade head && uv run alembic -c alembic/users/alembic.ini upgrade head && uv run alembic -c alembic/evals/alembic.ini upgrade head && uv run uvicorn src.main:app --host 0.0.0.0 --port 8000"]

@@ -39,7 +39,6 @@ interface GroupCardProps {
   colorIndex: number
   prompts: PromptWithAnswer[]
   isLoadingAnswers: boolean
-  answersLoaded: boolean
   brands: BrandVariation[]
   visibilityScores: BrandVisibilityScore[] | null
   citationLeaderboard: CitationLeaderboard | null
@@ -59,7 +58,6 @@ export function GroupCard({
   colorIndex,
   prompts,
   isLoadingAnswers,
-  answersLoaded,
   brands,
   visibilityScores,
   citationLeaderboard,

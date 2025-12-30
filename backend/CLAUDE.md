@@ -30,19 +30,29 @@ Keywords are fetched from the DataForSEO API and can be filtered by location usi
 
 ### Database Migrations (Alembic)
 
-- **Apply migrations**: `uv run alembic upgrade head`
-- **Check current version**: `uv run alembic current`
-- **Generate new migration**: `uv run alembic revision --autogenerate -m "description"`
-- **Rollback one step**: `uv run alembic downgrade -1`
-- **View migration history**: `uv run alembic history`
+Three databases with separate migration paths:
 
-**Workflow for schema changes:**
-1. Modify models in `src/database/models.py`
-2. Generate migration: `uv run alembic revision --autogenerate -m "add_xyz"`
-3. Review generated migration in `alembic/versions/`
-4. Apply: `uv run alembic upgrade head`
+**prompts_db (main):**
+- Apply: `uv run alembic -c alembic/prompts/alembic.ini upgrade head`
+- Generate: `uv run alembic -c alembic/prompts/alembic.ini revision --autogenerate -m "description"`
+- Models: `src/database/models.py`
 
-**Note:** Migrations run automatically on Docker container startup. For local development, run `alembic upgrade head` before starting the app.
+**users_db:**
+- Apply: `uv run alembic -c alembic/users/alembic.ini upgrade head`
+- Generate: `uv run alembic -c alembic/users/alembic.ini revision --autogenerate -m "description"`
+- Models: `src/database/users_models.py`
+
+**evals_db:**
+- Apply: `uv run alembic -c alembic/evals/alembic.ini upgrade head`
+- Generate: `uv run alembic -c alembic/evals/alembic.ini revision --autogenerate -m "description"`
+- Models: `src/database/evals_models.py`
+
+**Common commands:**
+- Check current version: `uv run alembic -c alembic/<db>/alembic.ini current`
+- Rollback one step: `uv run alembic -c alembic/<db>/alembic.ini downgrade -1`
+- View history: `uv run alembic -c alembic/<db>/alembic.ini history`
+
+**Note:** Migrations run automatically on Docker container startup. For local development, run all migrations before starting the app.
 
 ### Docker
 
@@ -119,8 +129,9 @@ The project follows Domain-Driven Design (DDD) with clear separation of concerns
   - `init.py` - Database seeding logic
 
 - **`alembic/`** - Database migrations
-  - `env.py` - Async SQLAlchemy configuration
-  - `versions/` - Migration files (schema changes)
+  - `prompts/` - Main prompts_db migrations
+  - `users/` - Users_db migrations
+  - `evals/` - Evals_db migrations
 
 - **`src/config/`** - Application configuration
   - `settings.py` - Environment-based settings (Pydantic)

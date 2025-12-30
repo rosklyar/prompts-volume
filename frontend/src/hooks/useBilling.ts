@@ -102,7 +102,9 @@ export function useGenerateReport() {
       groupId: number
       request?: GenerateReportRequest
     }) => reportsApi.generate(groupId, request),
-    onSuccess: (_, { groupId }) => {
+    onSuccess: (data, { groupId }) => {
+      // Cache the generated report to avoid redundant GET request
+      queryClient.setQueryData(reportKeys.detail(groupId, data.id), data)
       // Refetch balance (report may have been charged)
       queryClient.refetchQueries({ queryKey: billingKeys.balance() })
       // Refetch preview for this group (fresh counts changed)
