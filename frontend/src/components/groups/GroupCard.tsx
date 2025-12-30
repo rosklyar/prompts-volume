@@ -258,8 +258,8 @@ export function GroupCard({
                   disabled:opacity-50 disabled:cursor-not-allowed
                 `}
                 style={{
-                  backgroundColor: answersLoaded ? `${colors.accent}15` : colors.accent,
-                  color: answersLoaded ? colors.accent : "white",
+                  backgroundColor: colors.accent,
+                  color: "white",
                 }}
               >
                   {isLoadingAnswers ? (
@@ -267,18 +267,11 @@ export function GroupCard({
                       <div
                         className="w-4 h-4 border-2 rounded-full animate-spin"
                         style={{
-                          borderColor: answersLoaded ? `${colors.accent}30` : "rgba(255,255,255,0.3)",
-                          borderTopColor: answersLoaded ? colors.accent : "white",
+                          borderColor: "rgba(255,255,255,0.3)",
+                          borderTopColor: "white",
                         }}
                       />
                       Loading...
-                    </>
-                  ) : answersLoaded ? (
-                    <>
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                      Refresh
                     </>
                   ) : (
                     <>
@@ -550,7 +543,7 @@ export function GroupCard({
 
               {/* Title */}
               <h3 className="text-lg font-semibold text-gray-900 text-center mb-2">
-                No New Data Available
+                No new data available
               </h3>
 
               {/* Description */}

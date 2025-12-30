@@ -242,7 +242,7 @@ export function GeneratedReviewStep({ state, dispatch, onClose }: GeneratedRevie
       <div className="lg:col-span-2 space-y-4">
         <div className="flex items-center justify-between mb-2">
           <h2 className="font-['Fraunces'] text-lg font-semibold text-[#1F2937]">
-            Review Generated Prompts
+            Review generated prompts
           </h2>
           <p className="text-sm text-[#6B7280] font-['DM_Sans']">
             Choose to use existing matches or add as new
@@ -379,7 +379,7 @@ export function GeneratedReviewStep({ state, dispatch, onClose }: GeneratedRevie
                       style={{ backgroundColor: color.accent }}
                     >
                       <FolderPlus className="w-4 h-4" />
-                      <span className="font-['DM_Sans']">Add All to Group</span>
+                      <span className="font-['DM_Sans']">Add all to group</span>
                     </button>
                   </div>
                 </div>
@@ -416,7 +416,7 @@ export function GeneratedReviewStep({ state, dispatch, onClose }: GeneratedRevie
         <div className="bg-white rounded-2xl shadow-lg shadow-black/5 border border-[#E5E7EB]/60 overflow-hidden sticky top-6">
           <div className="px-5 py-4 border-b border-[#E5E7EB]/60 bg-gradient-to-br from-[#FAFAFA] to-white">
             <h3 className="font-['Fraunces'] text-base font-semibold text-[#1F2937]">
-              Review Summary
+              Review summary
             </h3>
           </div>
 

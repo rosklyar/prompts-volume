@@ -244,9 +244,9 @@ export function BatchUploadModal({
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold text-gray-900">
-                {step === "upload" && "Upload Prompts"}
-                {step === "review" && "Review Matches"}
-                {step === "complete" && "Upload Complete"}
+                {step === "upload" && "Upload prompts"}
+                {step === "review" && "Review matches"}
+                {step === "complete" && "Upload complete"}
               </h2>
               <p className="text-sm text-gray-500 mt-0.5">
                 {step === "upload" && `Add prompts to "${groupTitle}"`}

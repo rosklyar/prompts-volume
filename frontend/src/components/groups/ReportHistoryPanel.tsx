@@ -41,7 +41,7 @@ export function ReportHistoryPanel({
             style={{ backgroundColor: accentColor }}
           />
           <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-gray-400">
-            Report History
+            Report history
           </span>
         </div>
         <div className="flex gap-2 overflow-hidden">
@@ -72,7 +72,7 @@ export function ReportHistoryPanel({
             style={{ backgroundColor: accentColor }}
           />
           <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-gray-300">
-            Report History
+            Report history
           </span>
         </div>
         <div
@@ -97,7 +97,7 @@ export function ReportHistoryPanel({
             style={{ backgroundColor: accentColor }}
           />
           <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-gray-400">
-            Report History
+            Report history
           </span>
           <span
             className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"

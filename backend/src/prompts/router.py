@@ -1,11 +1,14 @@
 """Router for prompts generation endpoints."""
 
+from decimal import Decimal
 from typing import List
 
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.auth.deps import CurrentUser
+from src.billing.exceptions import InsufficientBalanceError, to_http_exception
+from src.billing.services import BalanceService, get_balance_service
 from src.config.settings import settings
 from src.geography.services import CountryService, get_country_service
 from src.prompts.services import (
@@ -174,20 +177,25 @@ async def generate_prompts(
     clustering_service: ClusteringService = Depends(get_clustering_service),
     topic_filter_service: TopicRelevanceFilterService = Depends(get_topic_relevance_filter_service),
     country_service: CountryService = Depends(get_country_service),
+    balance_service: BalanceService = Depends(get_balance_service),
 ):
     """
     Generate e-commerce product search prompts from company URL, country, and selected topics.
 
+    Charges $1 USD on successful generation. Check balance before calling.
+
     Complete automated pipeline:
-    1. Validate URL and extract domain
-    2. Validate topics and brand variations
-    3. Get country info (location, language)
-    4. Fetch ALL keywords from DataForSEO (paginated, up to 10k)
-    5. Filter keywords (word count ≥3, brand exclusion, dedupe)
-    6. Generate embeddings for keywords
-    7. Cluster keywords with HDBSCAN
-    8. Filter clusters by topic relevance
-    9. Generate e-commerce prompts (5 keywords per prompt)
+    1. Check user balance (requires sufficient credits)
+    2. Validate URL and extract domain
+    3. Validate topics and brand variations
+    4. Get country info (location, language)
+    5. Fetch ALL keywords from DataForSEO (paginated, up to 10k)
+    6. Filter keywords (word count ≥3, brand exclusion, dedupe)
+    7. Generate embeddings for keywords
+    8. Cluster keywords with HDBSCAN
+    9. Filter clusters by topic relevance
+    10. Generate e-commerce prompts (5 keywords per prompt)
+    11. Charge user for successful generation
 
     Args:
         company_url: Company website URL
@@ -200,6 +208,7 @@ async def generate_prompts(
 
     Raises:
         HTTPException 400: Invalid URL, ISO code, or empty topics/brand_variations
+        HTTPException 402: Insufficient balance
         HTTPException 404: No keywords found
         HTTPException 500: Pipeline errors
 
@@ -207,6 +216,17 @@ async def generate_prompts(
         GET /prompts/api/v1/generate?company_url=moyo.ua&iso_country_code=UA&topics=Смартфони&topics=Ноутбуки&brand_variations=moyo&brand_variations=мойо
     """
     try:
+        # 0. Check balance before starting (fast fail)
+        generation_price = Decimal(str(settings.billing_price_per_generation))
+        can_afford = await balance_service.can_afford(current_user.id, generation_price)
+
+        if not can_afford:
+            balance_info = await balance_service.get_balance(current_user.id)
+            raise InsufficientBalanceError(
+                user_id=current_user.id,
+                required=generation_price,
+                available=balance_info.available_balance,
+            )
         # 1. Validate URL and extract domain
         await validate_url(company_url)
         domain = extract_domain(company_url)
@@ -296,8 +316,19 @@ async def generate_prompts(
             topics_with_clusters=topics_with_clusters, number_of_keywords_for_prompt=5
         )
 
+        # 10. Charge user for successful generation
+        await balance_service.debit(
+            user_id=current_user.id,
+            amount=generation_price,
+            reason="Prompt generation via DataForSEO",
+            reference_type="generation",
+            reference_id=domain,
+        )
+
         return result
 
+    except InsufficientBalanceError as e:
+        raise to_http_exception(e)
     except HTTPException:
         raise
     except Exception as e:

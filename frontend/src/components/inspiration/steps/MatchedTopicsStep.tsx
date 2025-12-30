@@ -215,14 +215,14 @@ export function MatchedTopicsStep({ state, dispatch, onClose }: MatchedTopicsSte
               onClick={handleBack}
               className="px-5 py-2.5 text-sm font-medium text-[#6B7280] hover:text-[#1F2937] font-['DM_Sans'] transition-colors"
             >
-              Go Back
+              Go back
             </button>
             {hasUnmatchedTopics && (
               <button
                 onClick={handleContinue}
                 className="px-5 py-2.5 text-sm font-medium text-white bg-[#C4553D] hover:bg-[#B34835] rounded-lg font-['DM_Sans'] transition-colors flex items-center gap-2"
               >
-                <span>Generate Prompts</span>
+                <span>Generate prompts</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             )}
@@ -238,7 +238,7 @@ export function MatchedTopicsStep({ state, dispatch, onClose }: MatchedTopicsSte
       <div className="lg:col-span-2 space-y-4">
         <div className="flex items-center justify-between mb-2">
           <h2 className="font-['Fraunces'] text-lg font-semibold text-[#1F2937]">
-            Matched Topics ({state.matchedTopics.length})
+            Matched topics ({state.matchedTopics.length})
           </h2>
           <p className="text-sm text-[#6B7280] font-['DM_Sans']">
             Click to load prompts from our database
@@ -297,7 +297,7 @@ export function MatchedTopicsStep({ state, dispatch, onClose }: MatchedTopicsSte
           {/* Summary header */}
           <div className="px-5 py-4 border-b border-[#E5E7EB]/60 bg-gradient-to-br from-[#FAFAFA] to-white">
             <h3 className="font-['Fraunces'] text-base font-semibold text-[#1F2937]">
-              Selection Summary
+              Selection summary
             </h3>
           </div>
 

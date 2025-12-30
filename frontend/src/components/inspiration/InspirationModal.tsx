@@ -252,7 +252,7 @@ export function InspirationModal({ isOpen, onClose }: InspirationModalProps) {
               </div>
               <div>
                 <h2 className="font-['Fraunces'] text-xl font-semibold text-[#1F2937]">
-                  Prompt Inspiration
+                  Prompt inspiration
                 </h2>
                 <p className="text-sm text-[#6B7280] font-['DM_Sans']">
                   Discover SEO-powered prompts for your business

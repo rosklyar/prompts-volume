@@ -11,6 +11,14 @@ export interface UserBalance {
   expiring_soon_at: string | null // Earliest expiration date ISO string
 }
 
+// ===== Generation Price Types =====
+
+export interface GenerationPrice {
+  price: number // e.g., 1.00
+  user_balance: number // User's current balance
+  can_afford: boolean // Whether user can afford generation
+}
+
 // ===== Report Preview Types =====
 
 export interface ReportPreview {

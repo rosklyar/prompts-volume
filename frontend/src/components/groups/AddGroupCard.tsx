@@ -95,7 +95,7 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
           {/* Title input */}
           <div>
             <label className="block text-xs uppercase tracking-widest text-gray-400 font-sans mb-2">
-              Group Name
+              Group name
             </label>
             <input
               ref={titleInputRef}
@@ -219,7 +219,7 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
                   Creating...
                 </>
               ) : (
-                "Create Group"
+                "Create group"
               )}
             </button>
           </div>
@@ -255,7 +255,7 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
       </div>
       <div className="text-left">
         <span className="text-sm font-medium text-gray-500 group-hover:text-[#C4553D] transition-colors block">
-          Add New Group
+          Add new group
         </span>
         <span className="text-xs text-gray-400">
           Up to {MAX_GROUPS} total

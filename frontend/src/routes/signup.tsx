@@ -11,7 +11,7 @@ import useAuth, { isLoggedIn } from "@/hooks/useAuth"
 const formSchema = z
   .object({
     email: z.string().email("Please enter a valid email"),
-    full_name: z.string().min(1, "Full Name is required"),
+    full_name: z.string().min(1, "Full name is required"),
     password: z
       .string()
       .min(8, "Password must be at least 8 characters"),
@@ -59,7 +59,7 @@ function SignUp() {
 
         <div className="grid gap-4">
           <div className="grid gap-2">
-            <Label htmlFor="full_name">Full Name</Label>
+            <Label htmlFor="full_name">Full name</Label>
             <Input
               id="full_name"
               type="text"
@@ -102,11 +102,11 @@ function SignUp() {
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="confirm_password">Confirm Password</Label>
+            <Label htmlFor="confirm_password">Confirm password</Label>
             <Input
               id="confirm_password"
               type="password"
-              placeholder="Confirm Password"
+              placeholder="Confirm password"
               {...register("confirm_password")}
             />
             {errors.confirm_password && (
@@ -123,7 +123,7 @@ function SignUp() {
           )}
 
           <Button type="submit" disabled={signUpMutation.isPending}>
-            {signUpMutation.isPending ? "Signing up..." : "Sign Up"}
+            {signUpMutation.isPending ? "Signing up..." : "Sign up"}
           </Button>
         </div>
 

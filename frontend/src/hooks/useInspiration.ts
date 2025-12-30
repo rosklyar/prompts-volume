@@ -60,10 +60,19 @@ export function useTopicPrompts(topicIds: number[]) {
 
 /**
  * Mutation for generating prompts (long-running 30-60s)
+ * Charges $1 on success - invalidates balance cache
  */
 export function useGeneratePrompts() {
+  const queryClient = useQueryClient()
+
   return useMutation<GeneratePromptsResponse, Error, GeneratePromptsRequest>({
     mutationFn: (request) => inspirationApi.generatePrompts(request),
+    onSuccess: () => {
+      // Invalidate balance cache (user was charged)
+      queryClient.invalidateQueries({ queryKey: billingKeys.balance() })
+      queryClient.invalidateQueries({ queryKey: billingKeys.generationPrice() })
+      queryClient.invalidateQueries({ queryKey: billingKeys.transactions() })
+    },
   })
 }
 

@@ -21,7 +21,7 @@ const STEPS: InspirationStep[] = ["configure", "matched", "generate", "review"]
 
 const STEP_LABELS: Record<InspirationStep, string> = {
   configure: "Configure",
-  matched: "Matched Topics",
+  matched: "Matched topics",
   generate: "Generate",
   review: "Review",
 }

@@ -458,7 +458,7 @@ export function GroupsGrid() {
         <div>
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-['Fraunces'] text-xl text-[#1F2937]">
-              Your Prompt Groups
+              Your prompt groups
             </h2>
             {sortedGroups.length > 0 && (
               <span className="text-xs text-[#9CA3AF]">

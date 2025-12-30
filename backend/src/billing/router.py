@@ -12,6 +12,7 @@ from src.billing.models.api_models import (
     BalanceResponse,
     ChargeRequest,
     ChargeResponse,
+    GenerationPriceResponse,
     TopUpRequest,
     TopUpResponse,
     TransactionListResponse,
@@ -200,6 +201,29 @@ async def grant_signup_credits(
             new_balance=transaction.balance_after,
             amount_added=Decimal(str(settings.billing_signup_credits)),
             expires_at=expires_at,
+        )
+    except BillingError as e:
+        raise to_http_exception(e)
+
+
+@router.get("/generation/price", response_model=GenerationPriceResponse)
+async def get_generation_price(
+    current_user: CurrentUser,
+    balance_service: BalanceServiceDep,
+):
+    """Get the price for prompt generation and check affordability.
+
+    Called by frontend before showing confirmation dialog.
+    Returns the generation price and whether the user can afford it.
+    """
+    try:
+        price = Decimal(str(settings.billing_price_per_generation))
+        balance_info = await balance_service.get_balance(current_user.id)
+
+        return GenerationPriceResponse(
+            price=price,
+            user_balance=balance_info.available_balance,
+            can_afford=balance_info.available_balance >= price,
         )
     except BillingError as e:
         raise to_http_exception(e)

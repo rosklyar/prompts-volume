@@ -1,5 +1,5 @@
 /**
- * LowBalanceModal - Shown when user can't afford all evaluations
+ * LowBalanceModal - Shown when user can't afford all answers
  * Offers partial load option or navigation to top-up
  */
 
@@ -75,14 +75,14 @@ export function LowBalanceModal({
               </svg>
             </div>
             <h2 className="text-xl tracking-tight text-amber-700 mb-2">
-              Insufficient Balance
+              Insufficient balance
             </h2>
             <p className="text-sm text-gray-500 font-['DM_Sans'] max-w-[260px] mx-auto">
               You need{" "}
               <span className="font-medium text-gray-700">
                 ${formatCredits(shortfall)}
               </span>{" "}
-              more to load all {preview.fresh_evaluations} evaluations
+              more to load all {preview.fresh_evaluations} answers
             </p>
           </div>
 
@@ -116,7 +116,7 @@ export function LowBalanceModal({
               >
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-sm font-medium text-gray-800 font-['DM_Sans']">
-                    Load {preview.affordable_count} evaluations
+                    Load {preview.affordable_count} answers
                   </span>
                   <span
                     className="
@@ -153,7 +153,7 @@ export function LowBalanceModal({
                   className="text-sm font-medium font-['DM_Sans']"
                   style={{ color: accentColor }}
                 >
-                  Add Credits
+                  Add credits
                 </span>
                 <svg
                   className="w-4 h-4"
@@ -171,7 +171,7 @@ export function LowBalanceModal({
                 </svg>
               </div>
               <p className="text-xs text-gray-400 font-['DM_Sans']">
-                Top up to load all evaluations
+                Top up to load all answers
               </p>
             </Link>
           </div>

@@ -84,7 +84,7 @@ function Login() {
           )}
 
           <Button type="submit" disabled={loginMutation.isPending}>
-            {loginMutation.isPending ? "Logging in..." : "Log In"}
+            {loginMutation.isPending ? "Logging in..." : "Log in"}
           </Button>
         </div>
 

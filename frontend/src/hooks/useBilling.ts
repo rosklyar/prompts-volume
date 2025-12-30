@@ -6,6 +6,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { billingApi, reportsApi } from "@/client/api"
 import type { GenerateReportRequest, TopUpRequest } from "@/types/billing"
+import { reportKeys } from "./useReports"
 
 // ===== Query Keys =====
 
@@ -13,6 +14,7 @@ export const billingKeys = {
   all: ["billing"] as const,
   balance: () => [...billingKeys.all, "balance"] as const,
   transactions: () => [...billingKeys.all, "transactions"] as const,
+  generationPrice: () => [...billingKeys.all, "generation-price"] as const,
   reportPreview: (groupId: number) =>
     [...billingKeys.all, "preview", groupId] as const,
 }
@@ -55,6 +57,18 @@ export function useTransactions(limit: number = 20, offset: number = 0) {
   })
 }
 
+/**
+ * Fetch generation price - for confirmation dialog before generating prompts
+ */
+export function useGenerationPrice(enabled: boolean = true) {
+  return useQuery({
+    queryKey: billingKeys.generationPrice(),
+    queryFn: () => billingApi.getGenerationPrice(),
+    enabled,
+    staleTime: 30 * 1000, // 30 seconds
+  })
+}
+
 // ===== Mutations =====
 
 /**
@@ -89,14 +103,22 @@ export function useGenerateReport() {
       request?: GenerateReportRequest
     }) => reportsApi.generate(groupId, request),
     onSuccess: (_, { groupId }) => {
-      // Invalidate balance (report may have been charged)
-      queryClient.invalidateQueries({ queryKey: billingKeys.balance() })
-      // Invalidate preview for this group (fresh counts changed)
-      queryClient.invalidateQueries({
+      // Refetch balance (report may have been charged)
+      queryClient.refetchQueries({ queryKey: billingKeys.balance() })
+      // Refetch preview for this group (fresh counts changed)
+      queryClient.refetchQueries({
         queryKey: billingKeys.reportPreview(groupId),
       })
-      // Invalidate transactions
-      queryClient.invalidateQueries({ queryKey: billingKeys.transactions() })
+      // Refetch transactions
+      queryClient.refetchQueries({ queryKey: billingKeys.transactions() })
+      // Refetch report history to show new report immediately
+      queryClient.refetchQueries({
+        queryKey: reportKeys.history(groupId),
+      })
+      // Refetch comparison to update fresh data status
+      queryClient.refetchQueries({
+        queryKey: reportKeys.compare(groupId),
+      })
     },
   })
 }

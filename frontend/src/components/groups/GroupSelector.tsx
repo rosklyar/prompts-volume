@@ -204,7 +204,7 @@ export function GroupSelector({
         {/* Title input */}
         <div>
           <label className="block text-xs uppercase tracking-widest text-gray-400 font-sans mb-1.5">
-            Group Name
+            Group name
           </label>
           <input
             ref={inputRef}
@@ -327,7 +327,7 @@ export function GroupSelector({
                 <span>Creating...</span>
               </>
             ) : (
-              "Create Group"
+              "Create group"
             )}
           </button>
         </div>
