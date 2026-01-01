@@ -19,15 +19,46 @@ Full-stack AI-powered prompts management platform
 
 ![Architecture Diagram](arhitecture.png)
 
-## Demo
+## User Flows
 
-### Smartphones group with existing prompts
+### 1. Search and Add Prompts to Group
 
-https://github.com/user-attachments/assets/d46eee20-31be-448f-84e4-562162ec76f9
+Search existing prompts in the database using semantic vector search, preview matches with similarity scores, and add selected prompts to a group for tracking.
 
-### GEO group with new prompt
+[Demo video coming soon]
 
-https://github.com/user-attachments/assets/70568a80-b094-4a24-96ea-99367ea30b60
+### 2. Inspiration Flow - Generate Prompts from Keywords
+
+Build prompts using DataForSEO keyword data through an ML pipeline:
+
+1. Fetch keywords from DataForSEO API (up to 10k keywords)
+2. Filter keywords (word count >= 3, brand exclusion, deduplication)
+3. Generate embeddings (sentence-transformers, 384-dim multilingual model)
+4. Cluster keywords semantically (HDBSCAN algorithm)
+5. Filter clusters by topic relevance (cosine similarity >= 0.7)
+6. Generate conversational prompts (OpenAI GPT-5.2)
+
+[Demo video coming soon]
+
+### 3. CSV Batch Upload
+
+Upload a CSV file with prompts for batch processing:
+
+- System analyzes each prompt for existing matches (similarity threshold >= 0.75)
+- Review matches and choose to use existing prompts or create new ones
+- New prompts are added to the evaluation queue automatically
+
+[Demo video coming soon]
+
+### 4. Report Generation
+
+Generate reports for prompt groups with AI response analysis:
+
+- Preview report cost before generating
+- View brand mention analysis and visibility scores
+- See citation leaderboard (top domains and pages cited in AI responses)
+
+[Demo video coming soon]
 
 ## Quick Start
 

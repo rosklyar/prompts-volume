@@ -15,7 +15,7 @@ import { InspirationModal } from "@/components/inspiration"
 import { BalanceIndicator } from "@/components/billing"
 import { Check, Sparkles } from "lucide-react"
 import { Tooltip } from "@/components/ui/tooltip"
-import type { BrandVariation } from "@/types/groups"
+import type { BrandInfo, CompetitorInfo } from "@/types/groups"
 
 export const Route = createFileRoute("/")({
   component: PromptDiscovery,
@@ -225,8 +225,8 @@ function PromptDiscovery() {
 
   // Handle creating a new group (from GroupSelector)
   const handleCreateGroup = useCallback(
-    async (title: string, brands: BrandVariation[]) => {
-      const result = await createGroup.mutateAsync({ title, brands })
+    async (title: string, brand: BrandInfo, competitors?: CompetitorInfo[]) => {
+      const result = await createGroup.mutateAsync({ title, brand, competitors })
       // After creating, auto-select the new group
       if (result?.id && pendingPrompts) {
         await handleSelectGroup(result.id)
@@ -452,6 +452,11 @@ function PromptDiscovery() {
         <div className="max-w-7xl mx-auto">
           {/* Search container */}
           <div className="max-w-2xl mx-auto relative mb-10">
+            {/* Service name */}
+            <h1 className="font-['Fraunces'] text-3xl font-semibold text-[#1F2937] text-center mb-6">
+              Prompt Volume
+            </h1>
+
             {/* Search input with inspiration button */}
             <div className="relative flex items-center gap-3">
               <div className="relative flex-1">

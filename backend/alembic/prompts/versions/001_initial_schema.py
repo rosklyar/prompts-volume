@@ -97,7 +97,18 @@ def upgrade() -> None:
         sa.Column("title", sa.String(255), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("NOW()")),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("NOW()")),
-        sa.Column("brands", postgresql.JSONB(), nullable=True),
+        sa.Column(
+            "brand",
+            postgresql.JSONB(),
+            nullable=False,
+            comment="Brand info: {name, domain, variations}"
+        ),
+        sa.Column(
+            "competitors",
+            postgresql.JSONB(),
+            nullable=True,
+            comment="Competitors: [{name, domain, variations}, ...]"
+        ),
         sa.UniqueConstraint("user_id", "title", name="uq_prompt_groups_user_title"),
     )
     op.create_index("ix_prompt_groups_user_id", "prompt_groups", ["user_id"])

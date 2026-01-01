@@ -11,7 +11,8 @@ import {
 import { useState } from "react"
 import type { GroupDetail, PromptInGroup, EvaluationAnswer } from "@/client/api"
 import type {
-  BrandVariation,
+  BrandInfo,
+  CompetitorInfo,
   BrandMentionResult,
   BrandVisibilityScore,
   CitationLeaderboard,
@@ -27,6 +28,7 @@ import { ReportPreviewModal, LowBalanceModal } from "@/components/billing"
 import type { ReportPreview } from "@/types/billing"
 import { getGroupColor } from "./constants"
 import { BatchUploadModal } from "./BatchUploadModal"
+import { Sparkles } from "lucide-react"
 
 interface PromptWithAnswer extends PromptInGroup {
   answer?: EvaluationAnswer | null
@@ -39,7 +41,8 @@ interface GroupCardProps {
   colorIndex: number
   prompts: PromptWithAnswer[]
   isLoadingAnswers: boolean
-  brands: BrandVariation[]
+  brand: BrandInfo
+  competitors: CompetitorInfo[]
   visibilityScores: BrandVisibilityScore[] | null
   citationLeaderboard: CitationLeaderboard | null
   selectedReportId: number | null
@@ -48,7 +51,9 @@ interface GroupCardProps {
   onDeleteGroup: () => void
   onDeletePrompt: (promptId: number) => void
   onLoadReport: (includePrevious?: boolean) => void
-  onBrandsChange: (brands: BrandVariation[]) => void
+  onBrandChange: (brand: BrandInfo) => void
+  onCompetitorsChange: (competitors: CompetitorInfo[]) => void
+  onShowInspiration: () => void
   isExpanded: boolean
   onToggleExpand: () => void
 }
@@ -58,7 +63,8 @@ export function GroupCard({
   colorIndex,
   prompts,
   isLoadingAnswers,
-  brands,
+  brand,
+  competitors,
   visibilityScores,
   citationLeaderboard,
   selectedReportId,
@@ -67,7 +73,9 @@ export function GroupCard({
   onDeleteGroup,
   onDeletePrompt,
   onLoadReport,
-  onBrandsChange,
+  onBrandChange,
+  onCompetitorsChange,
+  onShowInspiration,
   isExpanded,
   onToggleExpand,
 }: GroupCardProps) {
@@ -111,8 +119,16 @@ export function GroupCard({
       })
     : prompts
 
+  // Build brands array from brand + competitors for visibility calculation
+  const brandsForCalculation = brand
+    ? [
+        { name: brand.name, variations: brand.variations },
+        ...competitors.map((c) => ({ name: c.name, variations: c.variations })),
+      ]
+    : []
+
   // Calculate visibility scores from selected report
-  const selectedReportVisibilityScores = selectedReport && brands.length > 0
+  const selectedReportVisibilityScores = selectedReport && brandsForCalculation.length > 0
     ? calculateVisibilityScores(
         selectedReport.items.map((item) => ({
           prompt_id: item.prompt_id,
@@ -123,7 +139,7 @@ export function GroupCard({
           completed_at: null,
           brand_mentions: item.brand_mentions,
         })),
-        brands
+        brandsForCalculation
       )
     : null
 
@@ -234,12 +250,17 @@ export function GroupCard({
               <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-white/80 text-gray-500 uppercase tracking-wider">
                 {prompts.length} prompt{prompts.length !== 1 ? "s" : ""}
               </span>
-              {brands.length > 0 && (
+              {brand && (
                 <span
                   className="text-[10px] font-semibold px-2.5 py-1 rounded-full uppercase tracking-wider"
                   style={{ backgroundColor: `${colors.accent}15`, color: colors.accent }}
                 >
-                  {brands.length} brand{brands.length !== 1 ? "s" : ""}
+                  {brand.name}
+                </span>
+              )}
+              {competitors.length > 0 && (
+                <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-gray-100 text-gray-500 uppercase tracking-wider">
+                  {competitors.length} competitor{competitors.length !== 1 ? "s" : ""}
                 </span>
               )}
             </div>
@@ -279,6 +300,17 @@ export function GroupCard({
                       Report
                     </>
                   )}
+              </button>
+
+              {/* Inspiration button */}
+              <button
+                onClick={onShowInspiration}
+                disabled={!brand?.domain}
+                className="p-2 rounded-lg text-gray-400 hover:text-[#C4553D] hover:bg-[#FEF7F5] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                aria-label="Get prompt inspiration"
+                title={brand?.domain ? "Get prompt inspiration" : "Set brand domain first"}
+              >
+                <Sparkles className="w-4 h-4" />
               </button>
 
               {/* Batch upload button */}
@@ -457,8 +489,10 @@ export function GroupCard({
       {/* Brand Editor Modal */}
       {showBrandEditor && (
         <BrandEditor
-          brands={brands}
-          onBrandsChange={onBrandsChange}
+          brand={brand}
+          competitors={competitors}
+          onBrandChange={onBrandChange}
+          onCompetitorsChange={onCompetitorsChange}
           accentColor={colors.accent}
           onClose={() => setShowBrandEditor(false)}
         />

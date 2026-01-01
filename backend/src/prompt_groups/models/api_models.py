@@ -5,19 +5,22 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
-from src.prompt_groups.models.brand_models import BrandVariationModel
+from src.prompt_groups.models.brand_models import BrandModel, CompetitorModel
 
 
 class CreateGroupRequest(BaseModel):
-    """Request to create a new named prompt group."""
+    """Request to create a new prompt group."""
 
     title: str = Field(
         ..., min_length=1, max_length=255, description="Group title (required)"
     )
-    brands: List[BrandVariationModel] = Field(
+    brand: BrandModel = Field(
         ...,
-        min_length=1,
-        description="Brands to track (required, at least one)"
+        description="Brand/company info (required)"
+    )
+    competitors: Optional[List[CompetitorModel]] = Field(
+        None,
+        description="Optional list of competitors"
     )
 
     @field_validator("title")
@@ -27,22 +30,30 @@ class CreateGroupRequest(BaseModel):
             raise ValueError("Title cannot be empty or whitespace")
         return v.strip()
 
-    @field_validator("brands")
+    @field_validator("competitors")
     @classmethod
-    def validate_unique_brands(cls, v: List[BrandVariationModel]) -> List[BrandVariationModel]:
-        """Ensure brand names are unique within the list."""
-        if len({b.name for b in v}) != len(v):
-            raise ValueError("Brand names must be unique")
+    def validate_unique_competitor_names(
+        cls, v: Optional[List[CompetitorModel]]
+    ) -> Optional[List[CompetitorModel]]:
+        """Ensure competitor names are unique within the list."""
+        if v and len({c.name.lower() for c in v}) != len(v):
+            raise ValueError("Competitor names must be unique")
         return v
 
 
 class UpdateGroupRequest(BaseModel):
     """Request to update a prompt group."""
 
-    title: Optional[str] = Field(None, min_length=1, max_length=255, description="New group title")
-    brands: Optional[List[BrandVariationModel]] = Field(
+    title: Optional[str] = Field(
+        None, min_length=1, max_length=255, description="New group title"
+    )
+    brand: Optional[BrandModel] = Field(
         None,
-        description="Brands to track (null = no change, [] = clear all brands)"
+        description="Brand/company info (null = no change)"
+    )
+    competitors: Optional[List[CompetitorModel]] = Field(
+        None,
+        description="Competitors list (null = no change, [] = clear)"
     )
 
     @field_validator("title")
@@ -52,12 +63,14 @@ class UpdateGroupRequest(BaseModel):
             raise ValueError("Title cannot be empty or whitespace")
         return v.strip() if v is not None else None
 
-    @field_validator("brands")
+    @field_validator("competitors")
     @classmethod
-    def validate_unique_brands(cls, v: Optional[List[BrandVariationModel]]) -> Optional[List[BrandVariationModel]]:
-        """Ensure brand names are unique within the list."""
-        if v and len({b.name for b in v}) != len(v):
-            raise ValueError("Brand names must be unique")
+    def validate_unique_competitor_names(
+        cls, v: Optional[List[CompetitorModel]]
+    ) -> Optional[List[CompetitorModel]]:
+        """Ensure competitor names are unique within the list."""
+        if v and len({c.name.lower() for c in v}) != len(v):
+            raise ValueError("Competitor names must be unique")
         return v
 
 
@@ -89,12 +102,13 @@ class PromptInGroupResponse(BaseModel):
 
 
 class GroupSummaryResponse(BaseModel):
-    """Summary response for a prompt group (without prompts)."""
+    """Summary response for a prompt group (list view)."""
 
     id: int
     title: str
     prompt_count: int
-    brand_count: int
+    brand_name: str
+    competitor_count: int
     created_at: datetime
     updated_at: datetime
 
@@ -102,13 +116,14 @@ class GroupSummaryResponse(BaseModel):
 
 
 class GroupDetailResponse(BaseModel):
-    """Detailed response for a prompt group (with prompts)."""
+    """Detailed response for a prompt group."""
 
     id: int
     title: str
     created_at: datetime
     updated_at: datetime
-    brands: Optional[List[BrandVariationModel]] = None
+    brand: BrandModel
+    competitors: List[CompetitorModel] = Field(default_factory=list)
     prompts: List[PromptInGroupResponse] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}

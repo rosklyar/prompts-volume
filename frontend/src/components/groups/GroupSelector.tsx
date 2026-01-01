@@ -6,15 +6,15 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from "react"
-import type { GroupSummary, BrandVariation } from "@/types/groups"
+import type { GroupSummary, BrandInfo, CompetitorInfo } from "@/types/groups"
 import { getGroupColor, MAX_GROUPS } from "./constants"
-import { X, Plus, Check, Loader2, FolderPlus } from "lucide-react"
+import { X, Plus, Check, Loader2, FolderPlus, Globe } from "lucide-react"
 
 interface GroupSelectorProps {
   groups: GroupSummary[]
   isLoadingGroups: boolean
   onSelectGroup: (groupId: number) => void
-  onCreateGroup: (title: string, brands: BrandVariation[]) => Promise<void>
+  onCreateGroup: (title: string, brand: BrandInfo, competitors?: CompetitorInfo[]) => Promise<void>
   onCancel: () => void
   isAddingPrompt: boolean
   isCreatingGroup: boolean
@@ -35,9 +35,9 @@ export function GroupSelector({
 }: GroupSelectorProps) {
   const [isCreatingNew, setIsCreatingNew] = useState(false)
   const [newGroupTitle, setNewGroupTitle] = useState("")
-  const [brands, setBrands] = useState<BrandVariation[]>([])
-  const [newBrandName, setNewBrandName] = useState("")
-  const [newBrandVariations, setNewBrandVariations] = useState("")
+  const [brandName, setBrandName] = useState("")
+  const [brandDomain, setBrandDomain] = useState("")
+  const [brandVariations, setBrandVariations] = useState("")
   const [highlightedIndex, setHighlightedIndex] = useState(0) // Start with first group highlighted
   const [isReady, setIsReady] = useState(false) // Prevent capturing the Enter that opened this selector
   const inputRef = useRef<HTMLInputElement>(null)
@@ -122,34 +122,39 @@ export function GroupSelector({
     return () => document.removeEventListener("keydown", handleKeyDown)
   }, [isCreatingNew, showEmptyState, isAddingPrompt, isReady, highlightedIndex, totalItems, groups, canCreateMore, isCreateOptionHighlighted, onSelectGroup, onCancel])
 
-  const handleAddBrand = useCallback(() => {
-    if (!newBrandName.trim()) return
-    const variations = newBrandVariations
-      .split(",")
-      .map((v) => v.trim())
-      .filter(Boolean)
-    setBrands((prev) => [...prev, { name: newBrandName.trim(), variations }])
-    setNewBrandName("")
-    setNewBrandVariations("")
-    // Focus back to brand name input for adding more
-    brandInputRef.current?.focus()
-  }, [newBrandName, newBrandVariations])
-
-  const handleRemoveBrand = useCallback((index: number) => {
-    setBrands((prev) => prev.filter((_, i) => i !== index))
-  }, [])
+  function normalizeDomain(url: string): string {
+    let domain = url.trim().toLowerCase()
+    if (!domain) return ""
+    if (domain.startsWith("http://") || domain.startsWith("https://")) {
+      domain = domain.split("://")[1]
+    }
+    domain = domain.replace(/\/$/, "")
+    return domain
+  }
 
   const handleCreateGroup = useCallback(async () => {
     const trimmed = newGroupTitle.trim()
-    if (!trimmed || brands.length === 0) return
+    const trimmedBrandName = brandName.trim()
+    if (!trimmed || !trimmedBrandName) return
 
-    await onCreateGroup(trimmed, brands)
+    const variations = brandVariations
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean)
+
+    const brand: BrandInfo = {
+      name: trimmedBrandName,
+      domain: normalizeDomain(brandDomain) || null,
+      variations,
+    }
+
+    await onCreateGroup(trimmed, brand)
     setNewGroupTitle("")
-    setBrands([])
-    setNewBrandName("")
-    setNewBrandVariations("")
+    setBrandName("")
+    setBrandDomain("")
+    setBrandVariations("")
     setIsCreatingNew(false)
-  }, [newGroupTitle, brands, onCreateGroup])
+  }, [newGroupTitle, brandName, brandDomain, brandVariations, onCreateGroup])
 
   const handleTitleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Escape") {
@@ -160,9 +165,9 @@ export function GroupSelector({
   }
 
   const handleBrandKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
+    if (e.key === "Enter" && brandName.trim()) {
       e.preventDefault()
-      handleAddBrand()
+      handleCreateGroup()
     } else if (e.key === "Escape") {
       e.preventDefault()
       e.stopPropagation()
@@ -176,15 +181,15 @@ export function GroupSelector({
     } else {
       setIsCreatingNew(false)
       setNewGroupTitle("")
-      setBrands([])
-      setNewBrandName("")
-      setNewBrandVariations("")
+      setBrandName("")
+      setBrandDomain("")
+      setBrandVariations("")
     }
   }
 
-  const canCreate = newGroupTitle.trim() && brands.length > 0
+  const canCreate = newGroupTitle.trim() && brandName.trim()
 
-  // Render inline form for creating a group with required brands
+  // Render inline form for creating a group with required brand
   const renderCreateForm = (isEmptyState: boolean = false) => (
     <div className={`${isEmptyState ? "p-5" : "p-4 border-t border-[#F3F4F6]"}`}>
       {isEmptyState && (
@@ -223,83 +228,54 @@ export function GroupSelector({
           />
         </div>
 
-        {/* Brands section */}
+        {/* Brand section - single brand */}
         <div>
           <label className="block text-xs uppercase tracking-widest text-gray-400 font-sans mb-1.5">
-            Brands to Track <span className="text-[#C4553D]">*</span>
+            Brand to Track <span className="text-[#C4553D]">*</span>
           </label>
 
-          {/* Added brands */}
-          {brands.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-2">
-              {brands.map((brand, index) => (
-                <div
-                  key={index}
-                  className="flex items-center gap-1.5 px-2 py-1 bg-white border border-gray-200 rounded-md group"
-                >
-                  <span className="text-xs font-medium text-gray-700">{brand.name}</span>
-                  {brand.variations.length > 0 && (
-                    <span className="text-[10px] text-gray-400">
-                      +{brand.variations.length}
-                    </span>
-                  )}
-                  <button
-                    onClick={() => handleRemoveBrand(index)}
-                    className="p-0.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Add brand form */}
-          <div className="flex gap-2">
-            <div className="flex-1 space-y-1.5">
-              <input
-                ref={brandInputRef}
-                type="text"
-                value={newBrandName}
-                onChange={(e) => setNewBrandName(e.target.value)}
-                onKeyDown={handleBrandKeyDown}
-                placeholder="Brand name (e.g., Nike)"
-                disabled={isCreatingGroup}
-                className="w-full px-2.5 py-1.5 text-sm
-                  bg-white border border-gray-200 rounded-md
-                  focus:outline-none focus:ring-2 focus:ring-[#C4553D]/30 focus:border-[#C4553D]
-                  placeholder:text-gray-400 disabled:opacity-50"
-              />
-              <input
-                type="text"
-                value={newBrandVariations}
-                onChange={(e) => setNewBrandVariations(e.target.value)}
-                onKeyDown={handleBrandKeyDown}
-                placeholder="Variations (optional, comma-separated)"
-                disabled={isCreatingGroup}
-                className="w-full px-2.5 py-1.5 text-sm
-                  bg-white border border-gray-200 rounded-md
-                  focus:outline-none focus:ring-2 focus:ring-[#C4553D]/30 focus:border-[#C4553D]
-                  placeholder:text-gray-400 disabled:opacity-50"
-              />
-            </div>
-            <button
-              onClick={handleAddBrand}
-              disabled={!newBrandName.trim() || isCreatingGroup}
-              className="self-start px-3 py-1.5 text-sm font-medium
+          <div className="space-y-1.5">
+            <input
+              ref={brandInputRef}
+              type="text"
+              value={brandName}
+              onChange={(e) => setBrandName(e.target.value)}
+              onKeyDown={handleBrandKeyDown}
+              placeholder="Brand name (e.g., Nike)"
+              disabled={isCreatingGroup}
+              className="w-full px-2.5 py-1.5 text-sm
                 bg-white border border-gray-200 rounded-md
-                hover:bg-gray-50 hover:border-[#C4553D]/50 transition-colors
-                disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Add
-            </button>
+                focus:outline-none focus:ring-2 focus:ring-[#C4553D]/30 focus:border-[#C4553D]
+                placeholder:text-gray-400 disabled:opacity-50"
+            />
+            <div className="relative">
+              <Globe className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+              <input
+                type="text"
+                value={brandDomain}
+                onChange={(e) => setBrandDomain(e.target.value)}
+                onKeyDown={handleBrandKeyDown}
+                placeholder="Domain (optional, e.g., nike.com)"
+                disabled={isCreatingGroup}
+                className="w-full pl-8 pr-2.5 py-1.5 text-sm
+                  bg-white border border-gray-200 rounded-md
+                  focus:outline-none focus:ring-2 focus:ring-[#C4553D]/30 focus:border-[#C4553D]
+                  placeholder:text-gray-400 disabled:opacity-50"
+              />
+            </div>
+            <input
+              type="text"
+              value={brandVariations}
+              onChange={(e) => setBrandVariations(e.target.value)}
+              onKeyDown={handleBrandKeyDown}
+              placeholder="Variations (optional, comma-separated)"
+              disabled={isCreatingGroup}
+              className="w-full px-2.5 py-1.5 text-sm
+                bg-white border border-gray-200 rounded-md
+                focus:outline-none focus:ring-2 focus:ring-[#C4553D]/30 focus:border-[#C4553D]
+                placeholder:text-gray-400 disabled:opacity-50"
+            />
           </div>
-
-          {brands.length === 0 && (
-            <p className="mt-1.5 text-[10px] text-gray-400 italic">
-              Add at least one brand to track in reports
-            </p>
-          )}
         </div>
 
         {/* Actions */}
