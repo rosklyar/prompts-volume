@@ -17,7 +17,7 @@ import type {
 import { groupKeys } from "./useGroups"
 import { reportKeys } from "./useReports"
 import { billingKeys } from "./useBilling"
-import type { BrandVariation } from "@/types/groups"
+import type { BrandInfo, CompetitorInfo } from "@/types/groups"
 
 // ===== Query Keys =====
 
@@ -168,14 +168,16 @@ export function useCreateGroupWithPrompts() {
   return useMutation({
     mutationFn: async ({
       title,
-      brands,
+      brand,
+      competitors,
       promptIds,
     }: {
       title: string
-      brands: BrandVariation[]
+      brand: BrandInfo
+      competitors?: CompetitorInfo[]
       promptIds: number[]
     }) => {
-      const group = await groupsApi.createGroup(title, brands)
+      const group = await groupsApi.createGroup(title, brand, competitors)
       if (promptIds.length > 0) {
         await groupsApi.addPromptsToGroup(group.id, promptIds)
       }

@@ -61,8 +61,10 @@ export interface GeneratePromptsResponse {
 export type InspirationStep =
   | "configure"
   | "matched"
+  | "select"
   | "generate"
   | "review"
+  | "confirm"
 
 export interface PromptSelectionState {
   promptId: number
@@ -92,6 +94,7 @@ export interface GeneratedPromptReview {
   matches: GeneratedPromptMatch[]
   selectedOption: "keep-original" | "use-match"
   selectedMatchId: number | null
+  isSelected?: boolean
 }
 
 export interface GeneratedTopicReview {

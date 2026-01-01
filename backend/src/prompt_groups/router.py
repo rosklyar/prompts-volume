@@ -23,6 +23,7 @@ from src.prompt_groups.models.batch_models import (
     BatchConfirmRequest,
     BatchConfirmResponse,
 )
+from src.prompt_groups.models.brand_models import BrandModel, CompetitorModel
 from src.prompt_groups.services import (
     BatchUploadService,
     PromptGroupBindingService,
@@ -52,7 +53,7 @@ async def get_user_groups(
 ):
     """Get all prompt groups for the current user.
 
-    Returns groups with prompt counts and brand counts, ordered by creation date.
+    Returns groups with prompt counts and brand info, ordered by creation date.
     """
     try:
         groups_with_counts = await group_service.get_user_groups(current_user.id)
@@ -62,11 +63,12 @@ async def get_user_groups(
                 id=group.id,
                 title=group.title,
                 prompt_count=prompt_count,
-                brand_count=brand_count,
+                brand_name=group.brand.get("name", "") if group.brand else "",
+                competitor_count=len(group.competitors) if group.competitors else 0,
                 created_at=group.created_at,
                 updated_at=group.updated_at,
             )
-            for group, prompt_count, brand_count in groups_with_counts
+            for group, prompt_count in groups_with_counts
         ]
 
         return GroupListResponse(groups=summaries, total=len(summaries))
@@ -82,21 +84,26 @@ async def create_group(
     current_user: CurrentUser,
     group_service: PromptGroupServiceDep,
 ):
-    """Create a new named prompt group with optional brands."""
+    """Create a new prompt group with brand and optional competitors."""
     try:
         # Convert Pydantic models to dicts for storage
-        brands_data = None
-        if request.brands:
-            brands_data = [b.model_dump() for b in request.brands]
+        brand_data = request.brand.model_dump()
+        competitors_data = None
+        if request.competitors:
+            competitors_data = [c.model_dump() for c in request.competitors]
 
         group = await group_service.create_group(
-            current_user.id, request.title, brands=brands_data
+            current_user.id,
+            request.title,
+            brand=brand_data,
+            competitors=competitors_data
         )
         return GroupSummaryResponse(
             id=group.id,
             title=group.title,
             prompt_count=0,
-            brand_count=len(request.brands) if request.brands else 0,
+            brand_name=request.brand.name,
+            competitor_count=len(request.competitors) if request.competitors else 0,
             created_at=group.created_at,
             updated_at=group.updated_at,
         )
@@ -111,23 +118,26 @@ async def get_group_details(
     group_service: PromptGroupServiceDep,
     binding_service: PromptGroupBindingServiceDep,
 ):
-    """Get detailed information about a group including brands and prompts."""
+    """Get detailed information about a group including brand, competitors, and prompts."""
     try:
         group = await group_service.get_by_id_for_user(group_id, current_user.id)
         prompts_data = await binding_service.get_group_with_prompts(group)
 
-        # Convert brands from JSONB to Pydantic models
-        from src.prompt_groups.models.brand_models import BrandVariationModel
-        brands = None
-        if group.brands is not None:
-            brands = [BrandVariationModel(**b) for b in group.brands]
+        # Convert brand from JSONB to Pydantic model
+        brand = BrandModel(**group.brand)
+
+        # Convert competitors from JSONB to Pydantic models
+        competitors = []
+        if group.competitors:
+            competitors = [CompetitorModel(**c) for c in group.competitors]
 
         return GroupDetailResponse(
             id=group.id,
             title=group.title,
             created_at=group.created_at,
             updated_at=group.updated_at,
-            brands=brands,
+            brand=brand,
+            competitors=competitors,
             prompts=[PromptInGroupResponse(**p) for p in prompts_data],
         )
     except PromptGroupError as e:
@@ -141,27 +151,37 @@ async def update_group(
     current_user: CurrentUser,
     group_service: PromptGroupServiceDep,
 ):
-    """Update a group's title and/or brands."""
+    """Update a group's title, brand, and/or competitors."""
     try:
-        # Convert brands to dict format if provided
-        brands_data = None
-        if request.brands is not None:
-            brands_data = [b.model_dump() for b in request.brands]
+        # Convert models to dict format if provided
+        brand_data = None
+        if request.brand is not None:
+            brand_data = request.brand.model_dump()
+
+        competitors_data = None
+        if request.competitors is not None:
+            competitors_data = [c.model_dump() for c in request.competitors]
 
         group = await group_service.update_group(
-            group_id, current_user.id, title=request.title, brands=brands_data
+            group_id,
+            current_user.id,
+            title=request.title,
+            brand=brand_data,
+            competitors=competitors_data
         )
 
+        # Fetch prompt count by getting user groups
         groups_with_counts = await group_service.get_user_groups(current_user.id)
-        prompt_count, brand_count = next(
-            ((pc, bc) for g, pc, bc in groups_with_counts if g.id == group_id), (0, 0)
+        prompt_count = next(
+            (pc for g, pc in groups_with_counts if g.id == group_id), 0
         )
 
         return GroupSummaryResponse(
             id=group.id,
             title=group.title,
             prompt_count=prompt_count,
-            brand_count=brand_count,
+            brand_name=group.brand.get("name", "") if group.brand else "",
+            competitor_count=len(group.competitors) if group.competitors else 0,
             created_at=group.created_at,
             updated_at=group.updated_at,
         )

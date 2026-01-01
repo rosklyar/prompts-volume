@@ -84,13 +84,15 @@ async def generate_report(
     except Exception as e:
         raise to_http_exception(GroupNotFoundError(group_id))
 
-    # Extract brands from group
+    # Extract brand and competitors from group for brand mention detection
     brands = None
-    if group.brands:
-        brands = [
-            BrandInput(name=b["name"], variations=b["variations"])
-            for b in group.brands
-        ]
+    if group.brand:
+        brands = [BrandInput(name=group.brand["name"], variations=group.brand.get("variations", []))]
+        if group.competitors:
+            brands.extend(
+                BrandInput(name=c["name"], variations=c.get("variations", []))
+                for c in group.competitors
+            )
 
     report = await report_service.generate_report(
         group_id=group_id,
@@ -220,13 +222,15 @@ async def get_report(
     report = result["report"]
     prompts_map = result["prompts_map"]
 
-    # Extract brands from group
+    # Extract brand and competitors from group for brand mention detection
     brands = None
-    if group.brands:
-        brands = [
-            BrandInput(name=b["name"], variations=b["variations"])
-            for b in group.brands
-        ]
+    if group.brand:
+        brands = [BrandInput(name=group.brand["name"], variations=group.brand.get("variations", []))]
+        if group.competitors:
+            brands.extend(
+                BrandInput(name=c["name"], variations=c.get("variations", []))
+                for c in group.competitors
+            )
 
     items = []
     all_answers = []

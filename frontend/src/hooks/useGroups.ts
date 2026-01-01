@@ -10,7 +10,7 @@ import {
 } from "@/client/api"
 import { reportKeys } from "@/hooks/useReports"
 import { billingKeys } from "@/hooks/useBilling"
-import type { BrandVariation } from "@/types/groups"
+import type { BrandInfo, CompetitorInfo } from "@/types/groups"
 
 // ===== Query Keys =====
 
@@ -57,8 +57,15 @@ export function useCreateGroup() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ title, brands }: { title: string; brands: BrandVariation[] }) =>
-      groupsApi.createGroup(title, brands),
+    mutationFn: ({
+      title,
+      brand,
+      competitors,
+    }: {
+      title: string
+      brand: BrandInfo
+      competitors?: CompetitorInfo[]
+    }) => groupsApi.createGroup(title, brand, competitors),
     onSuccess: () => {
       // Invalidate all group queries to ensure UI updates
       queryClient.invalidateQueries({ queryKey: groupKeys.all })
@@ -73,12 +80,14 @@ export function useUpdateGroup() {
     mutationFn: ({
       groupId,
       title,
-      brands,
+      brand,
+      competitors,
     }: {
       groupId: number
       title?: string
-      brands?: BrandVariation[] | null
-    }) => groupsApi.updateGroup(groupId, { title, brands }),
+      brand?: BrandInfo
+      competitors?: CompetitorInfo[] | null
+    }) => groupsApi.updateGroup(groupId, { title, brand, competitors }),
     onSuccess: () => {
       // Invalidate all group queries to ensure UI updates
       queryClient.invalidateQueries({ queryKey: groupKeys.all })
@@ -113,6 +122,8 @@ export function useAddPromptsToGroup() {
       const { groupId } = variables
       // Invalidate all group queries to ensure UI updates
       queryClient.invalidateQueries({ queryKey: groupKeys.all })
+      // Explicitly invalidate group details to update prompts in group cards
+      queryClient.invalidateQueries({ queryKey: groupKeys.details() })
       // Invalidate report comparison to detect new data for Report button
       queryClient.invalidateQueries({ queryKey: reportKeys.compare(groupId) })
       queryClient.invalidateQueries({ queryKey: billingKeys.reportPreview(groupId) })
@@ -263,6 +274,8 @@ export function useAddPriorityPrompt() {
       const { targetGroupId } = variables
       // Invalidate all group queries to ensure UI updates
       queryClient.invalidateQueries({ queryKey: groupKeys.all })
+      // Explicitly invalidate group details to update prompts in group cards
+      queryClient.invalidateQueries({ queryKey: groupKeys.details() })
       // Invalidate report comparison to detect new data for Report button
       queryClient.invalidateQueries({ queryKey: reportKeys.compare(targetGroupId) })
       queryClient.invalidateQueries({ queryKey: billingKeys.reportPreview(targetGroupId) })

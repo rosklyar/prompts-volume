@@ -22,7 +22,7 @@ interface TopicCardProps {
   onTogglePrompt: (promptId: number) => void
   onSelectAll: () => void
   onDeselectAll: () => void
-  onAddToGroup: () => void
+  onAddToGroup?: () => void
 }
 
 export function TopicCard({
@@ -188,7 +188,7 @@ export function TopicCard({
                 </button>
               </div>
 
-              {hasSelections && (
+              {hasSelections && onAddToGroup && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation()

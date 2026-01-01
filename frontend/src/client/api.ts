@@ -1,4 +1,4 @@
-import type { BrandVariation } from "@/types/groups"
+import type { BrandInfo, CompetitorInfo } from "@/types/groups"
 import type {
   BatchAnalyzeResponse,
   BatchConfirmRequest,
@@ -160,7 +160,8 @@ export interface GroupSummary {
   id: number
   title: string
   prompt_count: number
-  brand_count: number
+  brand_name: string
+  competitor_count: number
   created_at: string
   updated_at: string
 }
@@ -177,7 +178,8 @@ export interface GroupDetail {
   title: string
   created_at: string
   updated_at: string
-  brands: BrandVariation[] | null
+  brand: BrandInfo
+  competitors: CompetitorInfo[]
   prompts: PromptInGroup[]
 }
 
@@ -240,18 +242,26 @@ export const groupsApi = {
     return response.json()
   },
 
-  async createGroup(title: string, brands: BrandVariation[]): Promise<GroupSummary> {
+  async createGroup(
+    title: string,
+    brand: BrandInfo,
+    competitors?: CompetitorInfo[]
+  ): Promise<GroupSummary> {
     const response = await fetchWithAuth("/prompt-groups/api/v1/groups", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, brands }),
+      body: JSON.stringify({ title, brand, competitors }),
     })
     return response.json()
   },
 
   async updateGroup(
     groupId: number,
-    data: { title?: string; brands?: BrandVariation[] | null }
+    data: {
+      title?: string
+      brand?: BrandInfo
+      competitors?: CompetitorInfo[] | null
+    }
   ): Promise<GroupSummary> {
     const response = await fetchWithAuth(
       `/prompt-groups/api/v1/groups/${groupId}`,

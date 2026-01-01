@@ -174,10 +174,15 @@ class PromptGroup(Base):
         nullable=False,
         server_default=text("NOW()"),
     )
-    brands: Mapped[Optional[List[dict]]] = mapped_column(
+    brand: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        comment="Brand info: {name, domain, variations}"
+    )
+    competitors: Mapped[Optional[List[dict]]] = mapped_column(
         JSONB,
         nullable=True,
-        comment="Brand/company tracking with variations"
+        comment="Competitors: [{name, domain, variations}, ...]"
     )
 
     # Relationships

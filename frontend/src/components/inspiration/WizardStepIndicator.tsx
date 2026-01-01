@@ -4,19 +4,18 @@
  */
 
 import { Check } from "lucide-react"
-import type { InspirationStep } from "@/types/inspiration"
 
-interface WizardStepIndicatorProps {
-  steps: InspirationStep[]
-  currentStep: InspirationStep
-  stepLabels: Record<InspirationStep, string>
+interface WizardStepIndicatorProps<T extends string> {
+  steps: T[]
+  currentStep: T
+  stepLabels: Record<T, string>
 }
 
-export function WizardStepIndicator({
+export function WizardStepIndicator<T extends string>({
   steps,
   currentStep,
   stepLabels,
-}: WizardStepIndicatorProps) {
+}: WizardStepIndicatorProps<T>) {
   const currentIndex = steps.indexOf(currentStep)
 
   return (

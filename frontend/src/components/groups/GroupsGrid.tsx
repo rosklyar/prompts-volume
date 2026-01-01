@@ -19,10 +19,11 @@ import { sortableKeyboardCoordinates } from "@dnd-kit/sortable"
 
 import type { GroupDetail, PromptInGroup, EvaluationAnswer } from "@/client/api"
 import type {
+  BrandInfo,
+  CompetitorInfo,
   BrandMentionResult,
   BrandVisibilityScore,
   CitationLeaderboard,
-  BrandVariation,
 } from "@/types/groups"
 import {
   useGroups,
@@ -40,6 +41,7 @@ import { GroupCard } from "./GroupCard"
 import { AddGroupCard } from "./AddGroupCard"
 import { PromptItem } from "./PromptItem"
 import { MAX_GROUPS, getGroupColor } from "./constants"
+import { GroupInspirationModal } from "./GroupInspirationModal"
 
 interface PromptWithAnswer extends PromptInGroup {
   answer?: EvaluationAnswer | null
@@ -282,8 +284,8 @@ export function GroupsGrid() {
   }
 
   // Handle group creation
-  const handleCreateGroup = (title: string, brands: BrandVariation[]) => {
-    createGroup.mutate({ title, brands })
+  const handleCreateGroup = (title: string, brand: BrandInfo, competitors?: CompetitorInfo[]) => {
+    createGroup.mutate({ title, brand, competitors })
   }
 
   // Handle group update
@@ -329,8 +331,13 @@ export function GroupsGrid() {
   const handleLoadReport = async (group: GroupDetail, includePrevious: boolean = true) => {
     if (group.prompts.length === 0) return
 
-    // Get brands from group (from API)
-    const brands = group.brands || []
+    // Build brands array from brand + competitors
+    const brands = group.brand
+      ? [
+          { name: group.brand.name, variations: group.brand.variations },
+          ...(group.competitors || []).map((c) => ({ name: c.name, variations: c.variations })),
+        ]
+      : []
 
     // Set loading state
     setGroupStates((prev) => ({
@@ -411,10 +418,10 @@ export function GroupsGrid() {
     }
   }
 
-  // Handle brands change for a group
-  const handleBrandsChange = (groupId: number, brands: BrandVariation[]) => {
-    // Update brands via API
-    updateGroup.mutate({ groupId, brands })
+  // Handle brand change for a group
+  const handleBrandChange = (groupId: number, brand: BrandInfo) => {
+    // Update brand via API
+    updateGroup.mutate({ groupId, brand })
     // Clear visibility scores (user must click Report to reload)
     setGroupStates((prev) => {
       const state = prev[groupId]
@@ -427,6 +434,32 @@ export function GroupsGrid() {
         },
       }
     })
+  }
+
+  // Handle competitors change for a group
+  const handleCompetitorsChange = (groupId: number, competitors: CompetitorInfo[]) => {
+    // Update competitors via API
+    updateGroup.mutate({ groupId, competitors })
+    // Clear visibility scores (user must click Report to reload)
+    setGroupStates((prev) => {
+      const state = prev[groupId]
+      if (!state) return prev
+      return {
+        ...prev,
+        [groupId]: {
+          ...state,
+          visibilityScores: null,
+        },
+      }
+    })
+  }
+
+  // State for inspiration modal
+  const [inspirationGroupId, setInspirationGroupId] = useState<number | null>(null)
+
+  // Handle showing inspiration modal for a group
+  const handleShowInspiration = (groupId: number) => {
+    setInspirationGroupId(groupId)
   }
 
   // Loading state
@@ -468,7 +501,6 @@ export function GroupsGrid() {
             {sortedGroups.map((group, index) => {
               const state = groupStates[group.id]
               const prompts = getPromptsWithAnswers(group)
-              const brands = group.brands || []
 
               return (
                 <GroupCard
@@ -477,7 +509,8 @@ export function GroupsGrid() {
                   colorIndex={index}
                   prompts={prompts}
                   isLoadingAnswers={state?.isLoadingAnswers || false}
-                  brands={brands}
+                  brand={group.brand}
+                  competitors={group.competitors || []}
                   visibilityScores={state?.visibilityScores || null}
                   citationLeaderboard={state?.citationLeaderboard || null}
                   selectedReportId={selectedReports[group.id] ?? null}
@@ -488,7 +521,9 @@ export function GroupsGrid() {
                     handleDeletePrompt(group.id, promptId)
                   }
                   onLoadReport={(includePrevious) => handleLoadReport(group, includePrevious)}
-                  onBrandsChange={(brands) => handleBrandsChange(group.id, brands)}
+                  onBrandChange={(brand) => handleBrandChange(group.id, brand)}
+                  onCompetitorsChange={(competitors) => handleCompetitorsChange(group.id, competitors)}
+                  onShowInspiration={() => handleShowInspiration(group.id)}
                   isExpanded={expandedGroups.has(group.id)}
                   onToggleExpand={() => handleToggleExpand(group.id)}
                 />
@@ -531,6 +566,21 @@ export function GroupsGrid() {
           </div>
         )}
       </DragOverlay>
+
+      {/* Group Inspiration Modal */}
+      {inspirationGroupId && (() => {
+        const group = sortedGroups.find((g) => g.id === inspirationGroupId)
+        if (!group || !group.brand?.domain) return null
+        return (
+          <GroupInspirationModal
+            groupId={group.id}
+            groupTitle={group.title}
+            brandDomain={group.brand.domain}
+            brandVariations={group.brand.variations}
+            onClose={() => setInspirationGroupId(null)}
+          />
+        )
+      })()}
     </DndContext>
   )
 }

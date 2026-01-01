@@ -2,13 +2,28 @@
  * TypeScript types for Prompt Groups feature
  */
 
+// ===== Company Info Types =====
+
+export interface CompanyInfo {
+  name: string
+  domain?: string | null
+  variations: string[]
+}
+
+export type BrandInfo = CompanyInfo
+export type CompetitorInfo = CompanyInfo
+
+// Legacy alias for backwards compatibility during migration
+export type BrandVariation = CompanyInfo
+
 // ===== Group Types =====
 
 export interface GroupSummary {
   id: number
   title: string
   prompt_count: number
-  brand_count: number
+  brand_name: string
+  competitor_count: number
   created_at: string
   updated_at: string
 }
@@ -25,7 +40,8 @@ export interface GroupDetail {
   title: string
   created_at: string
   updated_at: string
-  brands: BrandVariation[] | null
+  brand: BrandInfo
+  competitors: CompetitorInfo[]
   prompts: PromptInGroup[]
 }
 
@@ -79,12 +95,7 @@ export interface GetResultsResponse {
   results: EvaluationResultItem[]
 }
 
-// ===== Brand Types =====
-
-export interface BrandVariation {
-  name: string
-  variations: string[]
-}
+// ===== Brand Mention Types =====
 
 export interface MentionPosition {
   start: number
@@ -124,7 +135,8 @@ export interface EnrichedResultsResponse {
 }
 
 export interface EnrichedResultsRequest {
-  brands?: BrandVariation[] | null
+  brand?: BrandInfo | null
+  competitors?: CompetitorInfo[] | null
   group_id?: number
 }
 
