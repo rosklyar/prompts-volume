@@ -25,7 +25,7 @@ Full-stack AI-powered prompts management platform
 
 Search existing prompts in the database using semantic vector search, preview matches with similarity scores, and add selected prompts to a group for tracking.
 
-https://github.com/user-attachments/assets/6124cffc-2c65-40fb-a4b6-210352391252
+https://github.com/user-attachments/assets/a6c1cd0a-d2c9-4dd9-9147-d8e92be82ddc
 
 ### 2. Inspiration Flow - Generate Prompts from Keywords
 
@@ -48,7 +48,7 @@ Upload a CSV file with prompts for batch processing:
 - Review matches and choose to use existing prompts or create new ones
 - New prompts are added to the evaluation queue automatically
 
-https://github.com/user-attachments/assets/e5062043-9320-4850-b292-764960527e3c
+https://github.com/user-attachments/assets/e7762da3-ea1a-46eb-b750-5f4591c7503f
 
 ### 4. Report Generation
 
@@ -58,7 +58,7 @@ Generate reports for prompt groups with AI response analysis:
 - View brand mention analysis and visibility scores
 - See citation leaderboard (top domains and pages cited in AI responses)
 
-https://github.com/user-attachments/assets/9ab3d995-16f9-4d1f-bb85-1eeb5129b0e8
+https://github.com/user-attachments/assets/0e14384a-8f32-470d-9751-56d48f419e0d
 
 ## Quick Start
 
