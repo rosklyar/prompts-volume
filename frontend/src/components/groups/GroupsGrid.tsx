@@ -41,7 +41,6 @@ import { GroupCard } from "./GroupCard"
 import { AddGroupCard } from "./AddGroupCard"
 import { PromptItem } from "./PromptItem"
 import { MAX_GROUPS, getGroupColor } from "./constants"
-import { GroupInspirationModal } from "./GroupInspirationModal"
 
 interface PromptWithAnswer extends PromptInGroup {
   answer?: EvaluationAnswer | null
@@ -454,14 +453,6 @@ export function GroupsGrid() {
     })
   }
 
-  // State for inspiration modal
-  const [inspirationGroupId, setInspirationGroupId] = useState<number | null>(null)
-
-  // Handle showing inspiration modal for a group
-  const handleShowInspiration = (groupId: number) => {
-    setInspirationGroupId(groupId)
-  }
-
   // Loading state
   if (isLoadingGroups || isLoadingDetails) {
     return (
@@ -523,7 +514,6 @@ export function GroupsGrid() {
                   onLoadReport={(includePrevious) => handleLoadReport(group, includePrevious)}
                   onBrandChange={(brand) => handleBrandChange(group.id, brand)}
                   onCompetitorsChange={(competitors) => handleCompetitorsChange(group.id, competitors)}
-                  onShowInspiration={() => handleShowInspiration(group.id)}
                   isExpanded={expandedGroups.has(group.id)}
                   onToggleExpand={() => handleToggleExpand(group.id)}
                 />
@@ -567,20 +557,6 @@ export function GroupsGrid() {
         )}
       </DragOverlay>
 
-      {/* Group Inspiration Modal */}
-      {inspirationGroupId && (() => {
-        const group = sortedGroups.find((g) => g.id === inspirationGroupId)
-        if (!group || !group.brand?.domain) return null
-        return (
-          <GroupInspirationModal
-            groupId={group.id}
-            groupTitle={group.title}
-            brandDomain={group.brand.domain}
-            brandVariations={group.brand.variations}
-            onClose={() => setInspirationGroupId(null)}
-          />
-        )
-      })()}
     </DndContext>
   )
 }

@@ -281,3 +281,58 @@ def auth_headers(auth_token):
     Returns a dict with Authorization header.
     """
     return {"Authorization": f"Bearer {auth_token}"}
+
+
+@pytest_asyncio.fixture(scope="function")
+async def test_superuser(test_engine):
+    """
+    Fixture that creates a test superuser in the database.
+    Uses the test_engine to create a session and user.
+    Each invocation creates a superuser with a unique email to avoid conflicts.
+    Returns the created User object.
+    """
+    async_session_maker = async_sessionmaker(
+        bind=test_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autocommit=False,
+        autoflush=False,
+    )
+
+    unique_email = f"admin-{uuid.uuid4()}@example.com"
+
+    async with async_session_maker() as session:
+        user = await create_user(
+            session,
+            UserCreate(
+                email=unique_email,
+                password="adminpassword123",
+                full_name="Admin User",
+                is_active=True,
+                is_superuser=True,
+            ),
+        )
+        session.expunge(user)
+        return user
+
+
+@pytest.fixture(scope="function")
+def superuser_auth_token(test_superuser):
+    """
+    Fixture that creates a JWT access token for the test superuser.
+    Returns the token string.
+    """
+    token = create_access_token(
+        subject=test_superuser.id,
+        expires_delta=timedelta(minutes=30),
+    )
+    return token
+
+
+@pytest.fixture(scope="function")
+def superuser_auth_headers(superuser_auth_token):
+    """
+    Fixture that provides authorization headers with Bearer token for superuser.
+    Returns a dict with Authorization header.
+    """
+    return {"Authorization": f"Bearer {superuser_auth_token}"}

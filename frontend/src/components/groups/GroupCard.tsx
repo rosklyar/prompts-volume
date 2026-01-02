@@ -28,7 +28,6 @@ import { ReportPreviewModal, LowBalanceModal } from "@/components/billing"
 import type { ReportPreview } from "@/types/billing"
 import { getGroupColor } from "./constants"
 import { BatchUploadModal } from "./BatchUploadModal"
-import { Sparkles } from "lucide-react"
 
 interface PromptWithAnswer extends PromptInGroup {
   answer?: EvaluationAnswer | null
@@ -53,7 +52,6 @@ interface GroupCardProps {
   onLoadReport: (includePrevious?: boolean) => void
   onBrandChange: (brand: BrandInfo) => void
   onCompetitorsChange: (competitors: CompetitorInfo[]) => void
-  onShowInspiration: () => void
   isExpanded: boolean
   onToggleExpand: () => void
 }
@@ -75,7 +73,6 @@ export function GroupCard({
   onLoadReport,
   onBrandChange,
   onCompetitorsChange,
-  onShowInspiration,
   isExpanded,
   onToggleExpand,
 }: GroupCardProps) {
@@ -300,17 +297,6 @@ export function GroupCard({
                       Report
                     </>
                   )}
-              </button>
-
-              {/* Inspiration button */}
-              <button
-                onClick={onShowInspiration}
-                disabled={!brand?.domain}
-                className="p-2 rounded-lg text-gray-400 hover:text-[#C4553D] hover:bg-[#FEF7F5] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                aria-label="Get prompt inspiration"
-                title={brand?.domain ? "Get prompt inspiration" : "Set brand domain first"}
-              >
-                <Sparkles className="w-4 h-4" />
               </button>
 
               {/* Batch upload button */}

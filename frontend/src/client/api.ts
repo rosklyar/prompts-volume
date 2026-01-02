@@ -17,6 +17,10 @@ import type {
   FullReportResponse,
   ComparisonResponse,
 } from "@/types/billing"
+import type {
+  AdminUsersListResponse,
+  AdminTopUpRequest,
+} from "@/types/admin"
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000"
 
@@ -408,6 +412,47 @@ export const billingApi = {
    */
   async getGenerationPrice(): Promise<GenerationPrice> {
     const response = await fetchWithAuth("/billing/api/v1/generation/price")
+    return response.json()
+  },
+}
+
+// ===== Admin API =====
+
+export const adminApi = {
+  /**
+   * Get users with balances (admin only)
+   */
+  async getUsers(
+    search?: string,
+    limit: number = 20,
+    offset: number = 0
+  ): Promise<AdminUsersListResponse> {
+    const params = new URLSearchParams({
+      limit: limit.toString(),
+      skip: offset.toString(),
+    })
+    if (search) {
+      params.append("search", search)
+    }
+    const response = await fetchWithAuth(`/billing/api/v1/admin/users?${params}`)
+    return response.json()
+  },
+
+  /**
+   * Top up a user's balance (admin only)
+   */
+  async topUpUser(
+    userId: string,
+    request: AdminTopUpRequest
+  ): Promise<TopUpResponse> {
+    const response = await fetchWithAuth(
+      `/billing/api/v1/admin/users/${userId}/top-up`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      }
+    )
     return response.json()
   },
 }
