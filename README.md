@@ -38,7 +38,7 @@ Build prompts using DataForSEO keyword data through an ML pipeline:
 5. Filter clusters by topic relevance (cosine similarity >= 0.7)
 6. Generate conversational prompts (OpenAI GPT-5.2)
 
-https://github.com/user-attachments/assets/f1913abc-12f5-4499-8990-936f92745876
+https://github.com/user-attachments/assets/5edaed5f-b958-438d-b146-454e602812a4
 
 ### 3. CSV Batch Upload
 
