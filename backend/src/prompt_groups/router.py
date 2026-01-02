@@ -17,18 +17,10 @@ from src.prompt_groups.models.api_models import (
     RemovePromptsFromGroupRequest,
     UpdateGroupRequest,
 )
-from src.prompt_groups.models.batch_models import (
-    BatchAnalyzeRequest,
-    BatchAnalyzeResponse,
-    BatchConfirmRequest,
-    BatchConfirmResponse,
-)
 from src.prompt_groups.models.brand_models import BrandModel, CompetitorModel
 from src.prompt_groups.services import (
-    BatchUploadService,
     PromptGroupBindingService,
     PromptGroupService,
-    get_batch_upload_service,
     get_prompt_group_binding_service,
     get_prompt_group_service,
 )
@@ -40,9 +32,6 @@ PromptGroupServiceDep = Annotated[
 ]
 PromptGroupBindingServiceDep = Annotated[
     PromptGroupBindingService, Depends(get_prompt_group_binding_service)
-]
-BatchUploadServiceDep = Annotated[
-    BatchUploadService, Depends(get_batch_upload_service)
 ]
 
 
@@ -254,51 +243,6 @@ async def remove_prompts_from_group(
         raise to_http_exception(e)
 
 
-@router.post("/groups/{group_id}/batch/analyze", response_model=BatchAnalyzeResponse)
-async def analyze_batch(
-    group_id: int,
-    request: BatchAnalyzeRequest,
-    current_user: CurrentUser,
-    group_service: PromptGroupServiceDep,
-    batch_service: BatchUploadServiceDep,
-):
-    """Analyze batch of prompts and find similarity matches.
-
-    For each prompt in the batch, returns top 3 similar prompts from the database
-    (if similarity >= 0.75 threshold). Use this to preview matches before confirming.
-    """
-    try:
-        # Verify group ownership
-        await group_service.get_by_id_for_user(group_id, current_user.id)
-
-        # Analyze batch
-        return await batch_service.analyze_batch(request.prompts)
-    except PromptGroupError as e:
-        raise to_http_exception(e)
-
-
-@router.post("/groups/{group_id}/batch/confirm", response_model=BatchConfirmResponse)
-async def confirm_batch(
-    group_id: int,
-    request: BatchConfirmRequest,
-    current_user: CurrentUser,
-    group_service: PromptGroupServiceDep,
-    batch_service: BatchUploadServiceDep,
-):
-    """Confirm batch selections and add prompts to group.
-
-    For each selection:
-    - If use_existing=True: binds the selected existing prompt to the group
-    - If use_existing=False: creates a new prompt via priority pipeline and binds to group
-
-    New prompts go through deduplication (99% similarity check) and are added to
-    the evaluation priority queue.
-    """
-    try:
-        # Verify group ownership
-        group = await group_service.get_by_id_for_user(group_id, current_user.id)
-
-        # Process batch
-        return await batch_service.confirm_batch(group, request)
-    except PromptGroupError as e:
-        raise to_http_exception(e)
+# Note: Batch analyze/confirm endpoints moved to shared /prompts/api/v1/batch/* endpoints.
+# Use POST /prompts/api/v1/batch/analyze and POST /prompts/api/v1/batch/create
+# then POST /prompt-groups/api/v1/groups/{id}/prompts to bind.

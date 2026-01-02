@@ -438,6 +438,8 @@ export function GroupCard({
                         prompt={prompt}
                         groupId={group.id}
                         accentColor={colors.accent}
+                        targetBrandName={brand?.name}
+                        competitorNames={competitors.map((c) => c.name)}
                         onDelete={onDeletePrompt}
                       />
                     ))}

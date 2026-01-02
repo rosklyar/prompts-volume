@@ -17,18 +17,41 @@ interface PromptItemProps {
   }
   groupId: number
   accentColor: string
+  targetBrandName?: string | null
+  competitorNames?: string[]
   onDelete: (promptId: number) => void
   isDragOverlay?: boolean
 }
+
+// Predefined colors for competitor tags
+const COMPETITOR_COLORS = [
+  { bg: "#f3e8ff", text: "#7c3aed" }, // violet
+  { bg: "#fce7f3", text: "#db2777" }, // pink
+  { bg: "#e0f2fe", text: "#0284c7" }, // sky
+  { bg: "#fef3c7", text: "#d97706" }, // amber
+  { bg: "#d1fae5", text: "#059669" }, // emerald
+]
 
 export function PromptItem({
   prompt,
   groupId,
   accentColor,
+  targetBrandName,
+  competitorNames = [],
   onDelete,
   isDragOverlay = false,
 }: PromptItemProps) {
   const [isExpanded, setIsExpanded] = useState(false)
+
+  // Get all brands that are mentioned in the answer
+  const mentionedBrands = prompt.brand_mentions?.filter(
+    (bm) => bm.mentions.length > 0
+  ) || []
+
+  // Check if target brand is among mentioned brands
+  const hasTargetBrandMention = mentionedBrands.some(
+    (bm) => bm.brand_name === targetBrandName
+  )
 
   const {
     attributes,
@@ -56,12 +79,16 @@ export function PromptItem({
   return (
     <div
       ref={setNodeRef}
-      style={style}
+      style={{
+        ...style,
+        ...(hasTargetBrandMention ? { borderLeftColor: accentColor, borderLeftWidth: "3px" } : {}),
+      }}
       className={`
         group relative bg-white rounded-xl border border-gray-100
         transition-all duration-200
         ${isDragging ? "opacity-50 scale-[0.98]" : ""}
         ${isDragOverlay ? "shadow-xl rotate-[-2deg] scale-105 max-w-sm" : "hover:shadow-md"}
+        ${hasTargetBrandMention ? "shadow-sm" : ""}
       `}
     >
       {/* Main prompt row */}
@@ -87,9 +114,39 @@ export function PromptItem({
 
         {/* Prompt content */}
         <div className="flex-1 min-w-0">
-          <p className="text-[14px] leading-relaxed text-gray-800 line-clamp-2">
-            {prompt.prompt_text}
-          </p>
+          <div className="flex items-start gap-2">
+            <p className="text-[14px] leading-relaxed text-gray-800 line-clamp-2 flex-1">
+              {prompt.prompt_text}
+            </p>
+            {/* Brand mention tags */}
+            {mentionedBrands.length > 0 && (
+              <div className="shrink-0 flex flex-wrap gap-1 justify-end max-w-[180px]">
+                {mentionedBrands.map((bm) => {
+                  const isTargetBrand = bm.brand_name === targetBrandName
+                  const competitorIndex = competitorNames.indexOf(bm.brand_name)
+                  const competitorColor = competitorIndex >= 0
+                    ? COMPETITOR_COLORS[competitorIndex % COMPETITOR_COLORS.length]
+                    : COMPETITOR_COLORS[0]
+
+                  return (
+                    <span
+                      key={bm.brand_name}
+                      className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] ${
+                        isTargetBrand ? "font-semibold" : "font-normal"
+                      }`}
+                      style={{
+                        backgroundColor: isTargetBrand ? `${accentColor}20` : competitorColor.bg,
+                        color: isTargetBrand ? accentColor : competitorColor.text,
+                      }}
+                      title={`${bm.mentions.length} mention${bm.mentions.length !== 1 ? "s" : ""} in answer`}
+                    >
+                      {bm.brand_name}
+                    </span>
+                  )
+                })}
+              </div>
+            )}
+          </div>
 
           {/* Loading indicator */}
           {prompt.isLoading && (

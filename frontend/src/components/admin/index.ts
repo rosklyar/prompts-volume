@@ -1,3 +1,8 @@
 export { AdminUserCard } from "./AdminUserCard"
 export { AdminUserList } from "./AdminUserList"
 export { AdminTopUpModal } from "./AdminTopUpModal"
+export { AdminTabs } from "./AdminTabs"
+export { TopicSelector } from "./TopicSelector"
+export { CsvUploadForm } from "./CsvUploadForm"
+export { AdminPromptsTab } from "./AdminPromptsTab"
+export type { AdminTab } from "./AdminTabs"

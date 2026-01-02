@@ -1,20 +1,39 @@
 /**
  * BatchUploadModal - Multi-step modal for batch prompt upload with similarity matching
- * Steps: Upload CSV → Review matches → Complete
+ *
+ * 3-step flow:
+ * 1. Upload CSV → Analyze for similar prompts
+ * 2. Review matches → Select existing or keep as new
+ * 3. Create new prompts → Bind all to group
  */
 
-import { useState, useRef, useCallback } from "react"
-import { useAnalyzeBatch, useConfirmBatch, parseCSV } from "@/hooks/useBatchUpload"
+import { useState, useRef, useCallback, useMemo } from "react"
+import { useAnalyzeBatch, useCreateBatchPrompts, useBindPromptsToGroup, parseCSV } from "@/hooks/useBatchUpload"
+import { useTopics } from "@/hooks/useAdminPrompts"
 import type {
   BatchUploadStep,
   BatchAnalyzeResponse,
-  BatchPromptSelection,
-  BatchConfirmResponse,
   BatchPromptAnalysis,
+  BatchCreateResponse,
 } from "@/types/batch-upload"
+import type { AddPromptsResult } from "@/client/api"
+import type { Topic } from "@/types/admin"
 
 // Auto-selection threshold: if similarity >= 98%, auto-select the match
 const AUTO_SELECT_THRESHOLD = 0.98
+
+interface PromptSelection {
+  index: number
+  useExisting: boolean
+  selectedPromptId: number | null
+}
+
+interface BatchUploadResult {
+  createdCount: number
+  reusedCount: number
+  boundExisting: number
+  totalBound: number
+}
 
 interface BatchUploadModalProps {
   groupId: number
@@ -35,15 +54,36 @@ export function BatchUploadModal({
   const [prompts, setPrompts] = useState<string[]>([])
   const [analysis, setAnalysis] = useState<BatchAnalyzeResponse | null>(null)
   const [visibleItems, setVisibleItems] = useState<BatchPromptAnalysis[]>([])
-  const [selections, setSelections] = useState<Map<number, BatchPromptSelection>>(new Map())
+  const [selections, setSelections] = useState<Map<number, PromptSelection>>(new Map())
   const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set())
-  const [result, setResult] = useState<BatchConfirmResponse | null>(null)
+  const [result, setResult] = useState<BatchUploadResult | null>(null)
   const [parseError, setParseError] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [processingError, setProcessingError] = useState<string | null>(null)
+  const [selectedTopicId, setSelectedTopicId] = useState<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const analyzeMutation = useAnalyzeBatch()
-  const confirmMutation = useConfirmBatch()
+  const createMutation = useCreateBatchPrompts()
+  const bindMutation = useBindPromptsToGroup()
+  const { data: topicsData, isLoading: isLoadingTopics } = useTopics()
+
+  // Group topics by business domain and country for the dropdown
+  const groupedTopics = useMemo(() => {
+    if (!topicsData?.topics) return null
+    return topicsData.topics.reduce(
+      (acc, topic) => {
+        const key = `${topic.business_domain_name} (${topic.country_name})`
+        if (!acc[key]) {
+          acc[key] = []
+        }
+        acc[key].push(topic)
+        return acc
+      },
+      {} as Record<string, Topic[]>
+    )
+  }, [topicsData])
 
   // Reset modal state
   const resetState = useCallback(() => {
@@ -56,12 +96,16 @@ export function BatchUploadModal({
     setResult(null)
     setParseError(null)
     setIsDragging(false)
+    setIsProcessing(false)
+    setProcessingError(null)
+    setSelectedTopicId(null)
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
     }
     analyzeMutation.reset()
-    confirmMutation.reset()
-  }, [analyzeMutation, confirmMutation])
+    createMutation.reset()
+    bindMutation.reset()
+  }, [analyzeMutation, createMutation, bindMutation])
 
   // Toggle expanded state for a prompt card
   const toggleExpanded = (index: number) => {
@@ -142,14 +186,15 @@ export function BatchUploadModal({
   // Handle analyze action
   const handleAnalyze = async () => {
     try {
-      const data = await analyzeMutation.mutateAsync({ groupId, prompts })
+      const data = await analyzeMutation.mutateAsync(prompts)
       setAnalysis(data)
       setVisibleItems(data.items)
 
       // Initialize selections with smart auto-selection:
-      // If any match has similarity >= 98%, auto-select the highest similarity match
-      // Otherwise, default to "keep original"
-      const initialSelections = new Map<number, BatchPromptSelection>()
+      // - Duplicates (is_duplicate=true) are auto-selected to use existing
+      // - If any match has similarity >= 98%, auto-select the highest match
+      // - Otherwise, default to "keep original"
+      const initialSelections = new Map<number, PromptSelection>()
       data.items.forEach((item) => {
         // Find the highest similarity match
         const highestMatch = item.matches.length > 0
@@ -158,18 +203,26 @@ export function BatchUploadModal({
             )
           : null
 
-        // Auto-select if highest match is >= 98% similarity
-        if (highestMatch && highestMatch.similarity >= AUTO_SELECT_THRESHOLD) {
+        if (item.is_duplicate && highestMatch) {
+          // Duplicates are forced to use existing (non-editable)
           initialSelections.set(item.index, {
             index: item.index,
-            use_existing: true,
-            selected_prompt_id: highestMatch.prompt_id,
+            useExisting: true,
+            selectedPromptId: highestMatch.prompt_id,
+          })
+        } else if (highestMatch && highestMatch.similarity >= AUTO_SELECT_THRESHOLD) {
+          // Auto-select high similarity matches
+          initialSelections.set(item.index, {
+            index: item.index,
+            useExisting: true,
+            selectedPromptId: highestMatch.prompt_id,
           })
         } else {
+          // Default to creating new
           initialSelections.set(item.index, {
             index: item.index,
-            use_existing: false,
-            selected_prompt_id: null,
+            useExisting: false,
+            selectedPromptId: null,
           })
         }
       })
@@ -187,37 +240,82 @@ export function BatchUploadModal({
     useExisting: boolean,
     promptId: number | null
   ) => {
+    // Don't allow changing duplicates
+    const item = visibleItems.find((i) => i.index === index)
+    if (item?.is_duplicate) return
+
     setSelections((prev) => {
       const next = new Map(prev)
       next.set(index, {
         index,
-        use_existing: useExisting,
-        selected_prompt_id: promptId,
+        useExisting,
+        selectedPromptId: promptId,
       })
       return next
     })
   }
 
-  // Handle confirm action
+  // Handle confirm action - 3 API calls
   const handleConfirm = async () => {
-    try {
-      // Only include selections for visible items
-      const visibleIndices = new Set(visibleItems.map((item) => item.index))
-      const selectionsArray = Array.from(selections.values()).filter((s) =>
-        visibleIndices.has(s.index)
-      )
+    setIsProcessing(true)
+    setProcessingError(null)
 
-      const data = await confirmMutation.mutateAsync({
-        groupId,
-        request: {
-          selections: selectionsArray,
-          original_prompts: prompts,
-        },
+    try {
+      // Separate into: create new vs use existing
+      const indicesToCreate: number[] = []
+      const existingPromptIds: number[] = []
+
+      visibleItems.forEach((item) => {
+        const selection = selections.get(item.index)
+        if (!selection) return
+
+        if (selection.useExisting && selection.selectedPromptId) {
+          // Using existing prompt
+          existingPromptIds.push(selection.selectedPromptId)
+        } else {
+          // Creating new (non-duplicate only)
+          if (!item.is_duplicate) {
+            indicesToCreate.push(item.index)
+          }
+        }
       })
-      setResult(data)
+
+      let createResult: BatchCreateResponse | null = null
+      let bindResult: AddPromptsResult | null = null
+      const allPromptIds: number[] = [...existingPromptIds]
+
+      // Step 1: Create new prompts if any
+      if (indicesToCreate.length > 0) {
+        createResult = await createMutation.mutateAsync({
+          prompts,
+          selected_indices: indicesToCreate,
+          topic_id: selectedTopicId,
+        })
+        allPromptIds.push(...createResult.prompt_ids)
+      }
+
+      // Step 2: Bind all prompts to group
+      if (allPromptIds.length > 0) {
+        bindResult = await bindMutation.mutateAsync({
+          groupId,
+          promptIds: allPromptIds,
+        })
+      }
+
+      // Build result
+      setResult({
+        createdCount: createResult?.created_count ?? 0,
+        reusedCount: createResult?.reused_count ?? 0,
+        boundExisting: existingPromptIds.length,
+        totalBound: bindResult?.added_count ?? 0,
+      })
       setStep("complete")
-    } catch {
-      // Error handled by mutation state
+    } catch (error) {
+      setProcessingError(
+        error instanceof Error ? error.message : "Failed to process prompts"
+      )
+    } finally {
+      setIsProcessing(false)
     }
   }
 
@@ -365,6 +463,43 @@ export function BatchUploadModal({
                 </p>
               </div>
 
+              {/* Topic selector */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">
+                  Topic (optional)
+                </label>
+                <select
+                  value={selectedTopicId ?? ""}
+                  onChange={(e) =>
+                    setSelectedTopicId(
+                      e.target.value ? parseInt(e.target.value, 10) : null
+                    )
+                  }
+                  disabled={isLoadingTopics}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl
+                    focus:ring-2 focus:ring-gray-400/20 focus:border-gray-300
+                    outline-none transition-all bg-white disabled:bg-gray-100 text-sm"
+                  style={{
+                    ["--tw-ring-color" as string]: `${accentColor}30`,
+                  }}
+                >
+                  <option value="">No topic</option>
+                  {groupedTopics &&
+                    Object.entries(groupedTopics).map(([groupName, topics]) => (
+                      <optgroup key={groupName} label={groupName}>
+                        {topics.map((topic) => (
+                          <option key={topic.id} value={topic.id}>
+                            {topic.title}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                </select>
+                <p className="text-xs text-gray-400">
+                  Associate new prompts with a topic for better organization
+                </p>
+              </div>
+
               {/* Parse error */}
               {parseError && (
                 <div className="p-3 rounded-lg bg-red-50 border border-red-100">
@@ -410,15 +545,27 @@ export function BatchUploadModal({
             <div className="space-y-4">
               {/* Stats */}
               {(() => {
-                // Count how many are selected as existing matches vs new
+                // Count stats
+                const duplicates = visibleItems.filter((item) => item.is_duplicate).length
                 const usingExisting = visibleItems.filter((item) => {
                   const sel = selections.get(item.index)
-                  return sel?.use_existing
+                  return sel?.useExisting && !item.is_duplicate
                 }).length
-                const addingNew = visibleItems.length - usingExisting
+                const addingNew = visibleItems.filter((item) => {
+                  const sel = selections.get(item.index)
+                  return !sel?.useExisting && !item.is_duplicate
+                }).length
 
                 return (
                   <div className="flex gap-3">
+                    {duplicates > 0 && (
+                      <div className="flex-1 p-3 rounded-lg bg-amber-50">
+                        <p className="text-2xl font-semibold text-amber-600">
+                          {duplicates}
+                        </p>
+                        <p className="text-xs text-gray-500">duplicates</p>
+                      </div>
+                    )}
                     <div
                       className="flex-1 p-3 rounded-lg"
                       style={{ backgroundColor: `${accentColor}08` }}
@@ -456,160 +603,186 @@ export function BatchUploadModal({
                 {visibleItems.map((item) => {
                   const selection = selections.get(item.index)
                   const isExpanded = expandedItems.has(item.index)
+                  const isDuplicate = item.is_duplicate
 
                   // Determine what's currently selected for the collapsed state indicator
-                  const selectedMatch = selection?.use_existing
-                    ? item.matches.find((m) => m.prompt_id === selection.selected_prompt_id)
+                  const selectedMatch = selection?.useExisting
+                    ? item.matches.find((m) => m.prompt_id === selection.selectedPromptId)
                     : null
-                  const selectionLabel = selectedMatch
+                  const selectionLabel = isDuplicate
+                    ? "Duplicate"
+                    : selectedMatch
                     ? `Match ${Math.round(selectedMatch.similarity * 100)}%`
                     : "New"
 
                   return (
                     <div
                       key={item.index}
-                      className="rounded-xl border border-gray-200 overflow-hidden transition-all duration-200 group"
+                      className={`rounded-xl border overflow-hidden transition-all duration-200 group ${
+                        isDuplicate ? "border-amber-200 bg-amber-50/50" : "border-gray-200"
+                      }`}
                       style={{
                         boxShadow: isExpanded ? "0 4px 12px rgba(0,0,0,0.08)" : undefined,
                       }}
                     >
                       {/* Collapsed header - always visible */}
                       <div
-                        className="flex items-center gap-3 px-4 py-3 cursor-pointer select-none transition-colors hover:bg-gray-50"
-                        onClick={() => toggleExpanded(item.index)}
+                        className={`flex items-center gap-3 px-4 py-3 select-none transition-colors ${
+                          isDuplicate
+                            ? "cursor-default"
+                            : "cursor-pointer hover:bg-gray-50"
+                        }`}
+                        onClick={() => !isDuplicate && toggleExpanded(item.index)}
                       >
                         {/* Expand/collapse chevron */}
-                        <svg
-                          className="w-4 h-4 text-gray-400 transition-transform duration-200 flex-shrink-0"
-                          style={{ transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }}
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
+                        {!isDuplicate && (
+                          <svg
+                            className="w-4 h-4 text-gray-400 transition-transform duration-200 flex-shrink-0"
+                            style={{ transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }}
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        )}
+                        {isDuplicate && (
+                          <svg className="w-4 h-4 text-amber-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                          </svg>
+                        )}
 
                         {/* Prompt text */}
-                        <p className="flex-1 text-sm text-gray-700 truncate min-w-0">
+                        <p className={`flex-1 text-sm truncate min-w-0 ${
+                          isDuplicate ? "text-gray-500 line-through" : "text-gray-700"
+                        }`}>
                           {item.input_text}
                         </p>
 
                         {/* Selection indicator badge */}
                         <span
-                          className="text-[11px] font-medium px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0 transition-colors"
-                          style={{
+                          className={`text-[11px] font-medium px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0 transition-colors ${
+                            isDuplicate
+                              ? "bg-amber-100 text-amber-700"
+                              : ""
+                          }`}
+                          style={!isDuplicate ? {
                             backgroundColor: selectedMatch ? `${accentColor}15` : "#f3f4f6",
                             color: selectedMatch ? accentColor : "#6b7280",
-                          }}
+                          } : undefined}
                         >
                           {selectionLabel}
                         </span>
 
-                        {/* Delete button */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleDeletePromptReview(item.index)
-                          }}
-                          className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100 flex-shrink-0"
-                          title="Remove prompt"
-                        >
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      </div>
-
-                      {/* Expanded content */}
-                      <div
-                        className="overflow-hidden transition-all duration-200"
-                        style={{
-                          maxHeight: isExpanded ? "500px" : "0px",
-                          opacity: isExpanded ? 1 : 0,
-                        }}
-                      >
-                        <div className="px-4 pb-4 pt-1 space-y-2 border-t border-gray-100">
-                          {/* Keep original option */}
-                          <label
-                            className={`flex items-start gap-3 p-3 rounded-lg cursor-pointer transition-all ${
-                              !selection?.use_existing
-                                ? "ring-2"
-                                : "hover:bg-gray-50"
-                            }`}
-                            style={{
-                              backgroundColor: !selection?.use_existing ? `${accentColor}08` : undefined,
-                              ["--tw-ring-color" as string]: !selection?.use_existing ? accentColor : undefined,
+                        {/* Delete button - only for non-duplicates */}
+                        {!isDuplicate && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleDeletePromptReview(item.index)
                             }}
+                            className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100 flex-shrink-0"
+                            title="Remove prompt"
                           >
-                            <input
-                              type="radio"
-                              name={`selection-${item.index}`}
-                              checked={!selection?.use_existing}
-                              onChange={() => handleSelectionChange(item.index, false, null)}
-                              className="mt-0.5"
-                              style={{ accentColor }}
-                            />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-700">
-                                Keep original (add as new)
-                              </p>
-                              <p className="text-xs text-gray-400 mt-0.5">
-                                Will be added to evaluation queue
-                              </p>
-                            </div>
-                          </label>
-
-                          {/* Match options */}
-                          {item.matches.map((match) => {
-                            const isSelected = selection?.use_existing && selection.selected_prompt_id === match.prompt_id
-                            return (
-                              <label
-                                key={match.prompt_id}
-                                className={`flex items-start gap-3 p-3 rounded-lg cursor-pointer transition-all ${
-                                  isSelected
-                                    ? "ring-2"
-                                    : "hover:bg-gray-50"
-                                }`}
-                                style={{
-                                  backgroundColor: isSelected ? `${accentColor}08` : undefined,
-                                  ["--tw-ring-color" as string]: isSelected ? accentColor : undefined,
-                                }}
-                              >
-                                <input
-                                  type="radio"
-                                  name={`selection-${item.index}`}
-                                  checked={isSelected}
-                                  onChange={() => handleSelectionChange(item.index, true, match.prompt_id)}
-                                  className="mt-0.5"
-                                  style={{ accentColor }}
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <p className="text-sm text-gray-700">{match.prompt_text}</p>
-                                    <span
-                                      className="text-[10px] font-medium px-1.5 py-0.5 rounded-full whitespace-nowrap"
-                                      style={{
-                                        backgroundColor: `${accentColor}15`,
-                                        color: accentColor,
-                                      }}
-                                    >
-                                      {Math.round(match.similarity * 100)}%
-                                    </span>
-                                  </div>
-                                  <p className="text-xs text-gray-400 mt-0.5">Use existing prompt</p>
-                                </div>
-                              </label>
-                            )
-                          })}
-
-                          {/* No matches indicator */}
-                          {item.matches.length === 0 && (
-                            <div className="px-3 py-2 text-xs text-gray-400 italic">
-                              No similar prompts found in database
-                            </div>
-                          )}
-                        </div>
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        )}
                       </div>
+
+                      {/* Expanded content - only for non-duplicates */}
+                      {!isDuplicate && (
+                        <div
+                          className="overflow-hidden transition-all duration-200"
+                          style={{
+                            maxHeight: isExpanded ? "500px" : "0px",
+                            opacity: isExpanded ? 1 : 0,
+                          }}
+                        >
+                          <div className="px-4 pb-4 pt-1 space-y-2 border-t border-gray-100">
+                            {/* Keep original option */}
+                            <label
+                              className={`flex items-start gap-3 p-3 rounded-lg cursor-pointer transition-all ${
+                                !selection?.useExisting
+                                  ? "ring-2"
+                                  : "hover:bg-gray-50"
+                              }`}
+                              style={{
+                                backgroundColor: !selection?.useExisting ? `${accentColor}08` : undefined,
+                                ["--tw-ring-color" as string]: !selection?.useExisting ? accentColor : undefined,
+                              }}
+                            >
+                              <input
+                                type="radio"
+                                name={`selection-${item.index}`}
+                                checked={!selection?.useExisting}
+                                onChange={() => handleSelectionChange(item.index, false, null)}
+                                className="mt-0.5"
+                                style={{ accentColor }}
+                              />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-700">
+                                  Keep original (add as new)
+                                </p>
+                                <p className="text-xs text-gray-400 mt-0.5">
+                                  Will be added to evaluation queue
+                                </p>
+                              </div>
+                            </label>
+
+                            {/* Match options */}
+                            {item.matches.map((match) => {
+                              const isSelected = selection?.useExisting && selection.selectedPromptId === match.prompt_id
+                              return (
+                                <label
+                                  key={match.prompt_id}
+                                  className={`flex items-start gap-3 p-3 rounded-lg cursor-pointer transition-all ${
+                                    isSelected
+                                      ? "ring-2"
+                                      : "hover:bg-gray-50"
+                                  }`}
+                                  style={{
+                                    backgroundColor: isSelected ? `${accentColor}08` : undefined,
+                                    ["--tw-ring-color" as string]: isSelected ? accentColor : undefined,
+                                  }}
+                                >
+                                  <input
+                                    type="radio"
+                                    name={`selection-${item.index}`}
+                                    checked={isSelected}
+                                    onChange={() => handleSelectionChange(item.index, true, match.prompt_id)}
+                                    className="mt-0.5"
+                                    style={{ accentColor }}
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <p className="text-sm text-gray-700">{match.prompt_text}</p>
+                                      <span
+                                        className="text-[10px] font-medium px-1.5 py-0.5 rounded-full whitespace-nowrap"
+                                        style={{
+                                          backgroundColor: `${accentColor}15`,
+                                          color: accentColor,
+                                        }}
+                                      >
+                                        {Math.round(match.similarity * 100)}%
+                                      </span>
+                                    </div>
+                                    <p className="text-xs text-gray-400 mt-0.5">Use existing prompt</p>
+                                  </div>
+                                </label>
+                              )
+                            })}
+
+                            {/* No matches indicator */}
+                            {item.matches.length === 0 && (
+                              <div className="px-3 py-2 text-xs text-gray-400 italic">
+                                No similar prompts found in database
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )
                 })}
@@ -640,27 +813,27 @@ export function BatchUploadModal({
                 </svg>
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                Successfully added {result.total_processed} prompts
+                Successfully added {result.totalBound} prompts
               </h3>
               <div className="space-y-1 text-sm text-gray-500">
-                {result.bound_existing > 0 && (
-                  <p>{result.bound_existing} existing prompts linked</p>
+                {result.boundExisting > 0 && (
+                  <p>{result.boundExisting} existing prompts linked</p>
                 )}
-                {result.created_new > 0 && (
-                  <p>{result.created_new} new prompts created</p>
+                {result.createdCount > 0 && (
+                  <p>{result.createdCount} new prompts created</p>
                 )}
-                {result.skipped_duplicates > 0 && (
-                  <p>{result.skipped_duplicates} duplicates reused</p>
+                {result.reusedCount > 0 && (
+                  <p>{result.reusedCount} duplicates reused</p>
                 )}
               </div>
             </div>
           )}
 
-          {/* Mutation errors */}
-          {(analyzeMutation.isError || confirmMutation.isError) && (
+          {/* Errors */}
+          {(analyzeMutation.isError || processingError) && (
             <div className="mt-4 p-3 rounded-lg bg-red-50 border border-red-100">
               <p className="text-sm text-red-600">
-                {analyzeMutation.error?.message || confirmMutation.error?.message || "An error occurred"}
+                {analyzeMutation.error?.message || processingError || "An error occurred"}
               </p>
             </div>
           )}
@@ -701,17 +874,18 @@ export function BatchUploadModal({
             <>
               <button
                 onClick={() => setStep("upload")}
-                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 transition-colors"
+                disabled={isProcessing}
+                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 transition-colors disabled:opacity-50"
               >
                 Back
               </button>
               <button
                 onClick={handleConfirm}
-                disabled={confirmMutation.isPending || visibleItems.length === 0}
+                disabled={isProcessing || visibleItems.length === 0}
                 className="px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ backgroundColor: accentColor }}
               >
-                {confirmMutation.isPending ? (
+                {isProcessing ? (
                   <span className="flex items-center gap-2">
                     <div
                       className="w-4 h-4 border-2 rounded-full animate-spin"
@@ -720,7 +894,19 @@ export function BatchUploadModal({
                     Adding...
                   </span>
                 ) : (
-                  `Add ${visibleItems.length} to Group`
+                  `Add ${visibleItems.reduce((count, item) => {
+                    const selection = selections.get(item.index)
+                    if (!selection) return count
+                    // Count existing prompts being linked (including duplicates)
+                    if (selection.useExisting && selection.selectedPromptId) {
+                      return count + 1
+                    }
+                    // Count new prompts being created (non-duplicates only)
+                    if (!item.is_duplicate) {
+                      return count + 1
+                    }
+                    return count
+                  }, 0)} to Group`
                 )}
               </button>
             </>

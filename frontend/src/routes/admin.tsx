@@ -1,13 +1,19 @@
 /**
- * Admin Dashboard - User balance management for superusers
+ * Admin Dashboard - User and prompts management for superusers
  */
 
 import { useState } from "react"
 import { createFileRoute, redirect, Link } from "@tanstack/react-router"
 import { isLoggedIn } from "@/hooks/useAuth"
 import useAuth from "@/hooks/useAuth"
-import { AdminUserList, AdminTopUpModal } from "@/components/admin"
+import {
+  AdminUserList,
+  AdminTopUpModal,
+  AdminTabs,
+  AdminPromptsTab,
+} from "@/components/admin"
 import type { UserWithBalance } from "@/types/admin"
+import type { AdminTab } from "@/components/admin"
 
 export const Route = createFileRoute("/admin")({
   component: AdminDashboard,
@@ -22,6 +28,7 @@ function AdminDashboard() {
   const { user, isUserLoading } = useAuth()
   const [selectedUser, setSelectedUser] = useState<UserWithBalance | null>(null)
   const [showTopUpModal, setShowTopUpModal] = useState(false)
+  const [activeTab, setActiveTab] = useState<AdminTab>("users")
 
   const handleSelectUser = (user: UserWithBalance) => {
     setSelectedUser(user)
@@ -149,12 +156,20 @@ function AdminDashboard() {
             Admin Dashboard
           </h1>
           <p className="text-gray-500 max-w-md mx-auto">
-            Search and top up user balances
+            {activeTab === "users"
+              ? "Search and top up user balances"
+              : "Upload prompts and manage topics"}
           </p>
         </div>
 
-        {/* User list */}
-        <AdminUserList onSelectUser={handleSelectUser} />
+        {/* Tabs */}
+        <AdminTabs activeTab={activeTab} onTabChange={setActiveTab} />
+
+        {/* Tab content */}
+        {activeTab === "users" && (
+          <AdminUserList onSelectUser={handleSelectUser} />
+        )}
+        {activeTab === "prompts" && <AdminPromptsTab />}
 
         {/* Top-up modal */}
         {showTopUpModal && selectedUser && (

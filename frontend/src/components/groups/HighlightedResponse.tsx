@@ -19,6 +19,30 @@ interface TextSegment {
   matchedText?: string
 }
 
+/**
+ * Convert Python code point index to JavaScript string index.
+ *
+ * Python strings use Unicode code points (emojis = 1 char).
+ * JavaScript strings use UTF-16 code units (emojis = 2 chars as surrogate pairs).
+ *
+ * This function converts a code point index to the corresponding string index.
+ */
+function codePointIndexToStringIndex(str: string, codePointIndex: number): number {
+  let stringIndex = 0
+  let codePointCount = 0
+
+  while (codePointCount < codePointIndex && stringIndex < str.length) {
+    const codePoint = str.codePointAt(stringIndex)
+    if (codePoint === undefined) break
+
+    // Characters outside BMP (code point > 0xFFFF) use 2 code units (surrogate pair)
+    stringIndex += codePoint > 0xffff ? 2 : 1
+    codePointCount++
+  }
+
+  return stringIndex
+}
+
 export function HighlightedResponse({
   response,
   brandMentions,
@@ -31,6 +55,7 @@ export function HighlightedResponse({
     }
 
     // Collect all mention positions with brand info
+    // Convert Python code point indices to JavaScript string indices
     const allMentions: Array<{
       start: number
       end: number
@@ -41,8 +66,8 @@ export function HighlightedResponse({
     brandMentions.forEach((brandResult) => {
       brandResult.mentions.forEach((mention) => {
         allMentions.push({
-          start: mention.start,
-          end: mention.end,
+          start: codePointIndexToStringIndex(response, mention.start),
+          end: codePointIndexToStringIndex(response, mention.end),
           brandName: brandResult.brand_name,
           matchedText: mention.matched_text,
         })

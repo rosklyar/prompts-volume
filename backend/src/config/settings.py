@@ -57,8 +57,9 @@ class Settings(BaseSettings):
 
     # Batch upload configuration
     batch_upload_max_prompts: int = 100
-    batch_upload_similarity_threshold: float = 0.75
+    batch_upload_similarity_threshold: float = 0.90   # Min similarity to show matches
     batch_upload_match_limit: int = 3
+    batch_upload_duplicate_threshold: float = 0.995   # Mark as duplicate (non-selectable)
 
     # Database configuration
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/prompts"
