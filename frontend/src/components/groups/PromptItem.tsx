@@ -6,16 +6,18 @@ import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { useState } from "react"
 import type { PromptInGroup, EvaluationAnswer } from "@/client/api"
-import type { BrandMentionResult } from "@/types/groups"
+import type { BrandMentionResult, DomainMentionResult } from "@/types/groups"
 import type { PromptFreshnessInfo } from "@/types/billing"
 import { HighlightedResponse } from "./HighlightedResponse"
 import { formatReportTime } from "@/hooks/useReports"
 import { getBrandColor } from "./constants"
+import { getBrandMentionOrder } from "@/lib/report-utils"
 
 interface PromptItemProps {
   prompt: PromptInGroup & {
     answer?: EvaluationAnswer | null
     brand_mentions?: BrandMentionResult[] | null
+    domain_mentions?: DomainMentionResult[] | null
     isLoading?: boolean
   }
   groupId: number
@@ -49,6 +51,17 @@ export function PromptItem({
   const hasTargetBrandMention = mentionedBrands.some(
     (bm) => bm.brand_name === targetBrandName
   )
+
+  // Get brand mention order (which brand was mentioned first)
+  const brandMentionOrder = getBrandMentionOrder(prompt.brand_mentions || null)
+
+  // Get domains that are mentioned in the answer
+  const mentionedDomains = prompt.domain_mentions?.filter(
+    (dm) => dm.mentions.length > 0
+  ) || []
+
+  // Check if target brand's domain was mentioned
+  const hasBrandDomainMention = mentionedDomains.some((dm) => dm.is_brand)
 
   const {
     attributes,
@@ -115,31 +128,60 @@ export function PromptItem({
             <p className="text-[14px] leading-relaxed text-gray-800 line-clamp-2 flex-1">
               {prompt.prompt_text}
             </p>
-            {/* Brand mention tags */}
-            {mentionedBrands.length > 0 && (
-              <div className="shrink-0 flex flex-wrap gap-1 justify-end max-w-[180px]">
-                {mentionedBrands.map((bm) => {
-                  const isTargetBrand = bm.brand_name === targetBrandName
-                  const brandColor = getBrandColor(bm.brand_name, targetBrandName, competitorNames, accentColor)
+            {/* Brand mention tags with position and domain indicators */}
+            <div className="shrink-0 flex items-center gap-1.5 justify-end max-w-[220px] flex-wrap">
+              {/* All brand mention tags with position rank */}
+              {brandMentionOrder.map((bm) => {
+                const isTargetBrand = bm.brand_name === targetBrandName
+                const brandColor = getBrandColor(bm.brand_name, targetBrandName, competitorNames, accentColor)
 
-                  return (
-                    <span
-                      key={bm.brand_name}
-                      className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] ${
-                        isTargetBrand ? "font-semibold" : "font-normal"
-                      }`}
-                      style={{
-                        backgroundColor: brandColor.bg,
-                        color: brandColor.text,
-                      }}
-                      title={`${bm.mentions.length} mention${bm.mentions.length !== 1 ? "s" : ""} in answer`}
-                    >
-                      {bm.brand_name}
-                    </span>
-                  )
-                })}
-              </div>
-            )}
+                return (
+                  <span
+                    key={bm.brand_name}
+                    className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] ${
+                      isTargetBrand ? "font-semibold" : "font-normal"
+                    }`}
+                    style={{
+                      backgroundColor: brandColor.bg,
+                      color: brandColor.text,
+                    }}
+                    title={`${bm.brand_name} mentioned at position ${bm.position}`}
+                  >
+                    [{bm.position}] {bm.brand_name}
+                  </span>
+                )
+              })}
+
+              {/* Domain mention indicator - link icon if brand domain mentioned */}
+              {hasBrandDomainMention && (
+                <span
+                  className="inline-flex items-center justify-center w-5 h-5 rounded"
+                  style={{ backgroundColor: `${accentColor}15`, color: accentColor }}
+                  title="Brand domain mentioned in answer"
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                  </svg>
+                </span>
+              )}
+
+              {/* Domain dots for mentioned domains */}
+              {mentionedDomains.length > 0 && (
+                <div className="flex items-center gap-0.5">
+                  {mentionedDomains.map((dm) => {
+                    const brandColor = getBrandColor(dm.name, targetBrandName, competitorNames, accentColor)
+                    return (
+                      <span
+                        key={dm.domain}
+                        className="w-2 h-2 rounded-full"
+                        style={{ backgroundColor: dm.is_brand ? accentColor : brandColor.text }}
+                        title={`${dm.name} (${dm.domain}) mentioned`}
+                      />
+                    )
+                  })}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Freshness info */}
@@ -242,10 +284,11 @@ export function PromptItem({
         >
 
           {/* Response */}
-          {prompt.brand_mentions && prompt.brand_mentions.length > 0 ? (
+          {(prompt.brand_mentions && prompt.brand_mentions.length > 0) || (prompt.domain_mentions && prompt.domain_mentions.length > 0) ? (
             <HighlightedResponse
               response={prompt.answer.response}
-              brandMentions={prompt.brand_mentions}
+              brandMentions={prompt.brand_mentions || null}
+              domainMentions={prompt.domain_mentions || null}
               accentColor={accentColor}
               targetBrandName={targetBrandName}
               competitorNames={competitorNames}

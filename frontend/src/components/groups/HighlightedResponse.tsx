@@ -1,15 +1,16 @@
 /**
- * HighlightedResponse - Renders response text with highlighted brand mentions
+ * HighlightedResponse - Renders response text with highlighted brand and domain mentions
  * Editorial aesthetic with subtle annotation styling
  */
 
 import { useMemo } from "react"
-import type { BrandMentionResult } from "@/types/groups"
+import type { BrandMentionResult, DomainMentionResult } from "@/types/groups"
 import { getBrandColor } from "./constants"
 
 interface HighlightedResponseProps {
   response: string
   brandMentions: BrandMentionResult[] | null
+  domainMentions?: DomainMentionResult[] | null
   accentColor: string
   targetBrandName?: string | null
   competitorNames?: string[]
@@ -18,8 +19,10 @@ interface HighlightedResponseProps {
 interface TextSegment {
   text: string
   isHighlight: boolean
+  highlightType?: "brand" | "domain"
   brandName?: string
   matchedText?: string
+  isBrand?: boolean // For domain mentions: is it the target brand's domain?
 }
 
 /**
@@ -49,48 +52,78 @@ function codePointIndexToStringIndex(str: string, codePointIndex: number): numbe
 export function HighlightedResponse({
   response,
   brandMentions,
+  domainMentions,
   accentColor,
   targetBrandName,
   competitorNames = [],
 }: HighlightedResponseProps) {
   // Parse response into segments with highlights
   const segments = useMemo((): TextSegment[] => {
-    if (!brandMentions || brandMentions.length === 0) {
+    const hasBrandMentions = brandMentions && brandMentions.length > 0
+    const hasDomainMentions = domainMentions && domainMentions.length > 0
+
+    if (!hasBrandMentions && !hasDomainMentions) {
       return [{ text: response, isHighlight: false }]
     }
 
-    // Collect all mention positions with brand info
+    // Collect all mention positions with brand/domain info
     // Convert Python code point indices to JavaScript string indices
     const allMentions: Array<{
       start: number
       end: number
       brandName: string
       matchedText: string
+      highlightType: "brand" | "domain"
+      isBrand?: boolean
     }> = []
 
-    brandMentions.forEach((brandResult) => {
-      brandResult.mentions.forEach((mention) => {
-        allMentions.push({
-          start: codePointIndexToStringIndex(response, mention.start),
-          end: codePointIndexToStringIndex(response, mention.end),
-          brandName: brandResult.brand_name,
-          matchedText: mention.matched_text,
+    // Add brand mentions
+    if (hasBrandMentions) {
+      brandMentions!.forEach((brandResult) => {
+        brandResult.mentions.forEach((mention) => {
+          allMentions.push({
+            start: codePointIndexToStringIndex(response, mention.start),
+            end: codePointIndexToStringIndex(response, mention.end),
+            brandName: brandResult.brand_name,
+            matchedText: mention.matched_text,
+            highlightType: "brand",
+          })
         })
       })
-    })
+    }
+
+    // Add domain mentions
+    if (hasDomainMentions) {
+      domainMentions!.forEach((domainResult) => {
+        domainResult.mentions.forEach((mention) => {
+          allMentions.push({
+            start: codePointIndexToStringIndex(response, mention.start),
+            end: codePointIndexToStringIndex(response, mention.end),
+            brandName: domainResult.name,
+            matchedText: mention.matched_text,
+            highlightType: "domain",
+            isBrand: domainResult.is_brand,
+          })
+        })
+      })
+    }
 
     // Sort by start position
     allMentions.sort((a, b) => a.start - b.start)
 
     // Handle overlapping mentions by merging them
+    // Prefer brand mentions over domain mentions (brand takes precedence in styling)
     const mergedMentions: typeof allMentions = []
     for (const mention of allMentions) {
       const last = mergedMentions[mergedMentions.length - 1]
       if (last && mention.start < last.end) {
         // Overlapping - extend the previous mention
         last.end = Math.max(last.end, mention.end)
-        // Keep the longer matched text or combine brand names
-        if (mention.brandName !== last.brandName) {
+        // Brand mentions take precedence over domain mentions
+        if (mention.highlightType === "brand" && last.highlightType === "domain") {
+          last.highlightType = "brand"
+          last.brandName = mention.brandName
+        } else if (last.highlightType === mention.highlightType && mention.brandName !== last.brandName) {
           last.brandName = `${last.brandName}, ${mention.brandName}`
         }
       } else {
@@ -115,8 +148,10 @@ export function HighlightedResponse({
       result.push({
         text: response.slice(mention.start, mention.end),
         isHighlight: true,
+        highlightType: mention.highlightType,
         brandName: mention.brandName,
         matchedText: mention.matchedText,
+        isBrand: mention.isBrand,
       })
 
       currentPos = mention.end
@@ -131,7 +166,7 @@ export function HighlightedResponse({
     }
 
     return result
-  }, [response, brandMentions])
+  }, [response, brandMentions, domainMentions])
 
   return (
     <div
@@ -147,6 +182,29 @@ export function HighlightedResponse({
         const primaryBrandName = segment.brandName?.split(", ")[0] ?? ""
         const brandColor = getBrandColor(primaryBrandName, targetBrandName, competitorNames, accentColor)
 
+        // Different styling for brand vs domain mentions
+        if (segment.highlightType === "domain") {
+          // Domain mentions: underline style (link-like)
+          return (
+            <mark
+              key={index}
+              className="inline rounded-sm px-0.5 -mx-0.5 cursor-default transition-colors"
+              style={{
+                backgroundColor: `${brandColor.bg}`,
+                color: brandColor.text,
+                textDecoration: "underline",
+                textDecorationColor: `${brandColor.text}60`,
+                textDecorationThickness: "1px",
+                textUnderlineOffset: "2px",
+              }}
+              title={`${segment.brandName} domain: ${segment.matchedText}`}
+            >
+              {segment.text}
+            </mark>
+          )
+        }
+
+        // Brand mentions: background highlight + bottom border
         return (
           <mark
             key={index}

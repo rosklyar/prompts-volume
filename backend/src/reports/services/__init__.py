@@ -19,6 +19,11 @@ from src.reports.services.citation_leaderboard_builder import (
     CitationLeaderboardBuilder,
     get_citation_leaderboard_builder,
 )
+from src.reports.services.domain_mention_detector import (
+    DomainInput,
+    DomainMentionDetector,
+    get_domain_mention_detector,
+)
 from src.reports.services.results_enricher import (
     ReportEnricher,
     get_report_enricher,
@@ -67,6 +72,9 @@ __all__ = [
     "get_brand_mention_detector",
     "CitationLeaderboardBuilder",
     "get_citation_leaderboard_builder",
+    "DomainInput",
+    "DomainMentionDetector",
+    "get_domain_mention_detector",
     "ReportEnricher",
     "get_report_enricher",
 ]

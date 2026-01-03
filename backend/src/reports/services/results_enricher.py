@@ -6,6 +6,8 @@ from fastapi import Depends
 
 from src.reports.models.brand_models import (
     BrandMentionResultModel,
+    DomainMentionPositionModel,
+    DomainMentionResultModel,
     MentionPositionModel,
 )
 from src.reports.models.citation_models import (
@@ -22,6 +24,11 @@ from src.reports.services.citation_leaderboard_builder import (
     CitationLeaderboardBuilder,
     get_citation_leaderboard_builder,
 )
+from src.reports.services.domain_mention_detector import (
+    DomainInput,
+    DomainMentionDetector,
+    get_domain_mention_detector,
+)
 
 
 class ReportEnricher:
@@ -31,9 +38,11 @@ class ReportEnricher:
         self,
         brand_detector: BrandMentionDetector,
         citation_builder: CitationLeaderboardBuilder,
+        domain_mention_detector: DomainMentionDetector,
     ):
         self.brand_detector = brand_detector
         self.citation_builder = citation_builder
+        self.domain_mention_detector = domain_mention_detector
 
     def detect_brand_mentions(
         self,
@@ -117,15 +126,56 @@ class ReportEnricher:
             total_citations=leaderboard.total_citations,
         )
 
+    def detect_domain_mentions(
+        self,
+        response_text: str,
+        domains: List[DomainInput],
+    ) -> List[DomainMentionResultModel]:
+        """
+        Detect domain mentions in response text.
+
+        Args:
+            response_text: The response text to search
+            domains: List of domains to detect (brand + competitors)
+
+        Returns:
+            List of domain mention results
+        """
+        if not response_text or not domains:
+            return []
+
+        detected = self.domain_mention_detector.detect(response_text, domains)
+        return [
+            DomainMentionResultModel(
+                name=d.name,
+                domain=d.domain,
+                is_brand=d.is_brand,
+                mentions=[
+                    DomainMentionPositionModel(
+                        start=m.start,
+                        end=m.end,
+                        matched_text=m.matched_text,
+                        matched_domain=m.matched_domain,
+                    )
+                    for m in d.mentions
+                ],
+            )
+            for d in detected
+        ]
+
 
 def get_report_enricher(
     brand_detector: BrandMentionDetector = Depends(get_brand_mention_detector),
     citation_builder: CitationLeaderboardBuilder = Depends(
         get_citation_leaderboard_builder
     ),
+    domain_mention_detector: DomainMentionDetector = Depends(
+        get_domain_mention_detector
+    ),
 ) -> ReportEnricher:
     """Dependency injection for ReportEnricher."""
     return ReportEnricher(
         brand_detector=brand_detector,
         citation_builder=citation_builder,
+        domain_mention_detector=domain_mention_detector,
     )

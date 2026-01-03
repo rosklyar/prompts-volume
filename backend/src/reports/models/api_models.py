@@ -6,7 +6,10 @@ from typing import List, Optional
 
 from pydantic import BaseModel
 
-from src.reports.models.brand_models import BrandMentionResultModel
+from src.reports.models.brand_models import (
+    BrandMentionResultModel,
+    DomainMentionResultModel,
+)
 from src.reports.models.citation_models import CitationLeaderboardModel
 
 
@@ -43,6 +46,7 @@ class ReportItemResponse(BaseModel):
     amount_charged: Decimal | None
     answer: dict | None  # Evaluation answer data if available
     brand_mentions: Optional[List[BrandMentionResultModel]] = None
+    domain_mentions: Optional[List[DomainMentionResultModel]] = None
 
 
 class ReportResponse(BaseModel):

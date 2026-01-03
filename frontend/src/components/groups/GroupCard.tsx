@@ -14,11 +14,17 @@ import type {
   BrandInfo,
   CompetitorInfo,
   BrandMentionResult,
+  DomainMentionResult,
   BrandVisibilityScore,
   CitationLeaderboard,
 } from "@/types/groups"
 import { useHasFreshData, useReport } from "@/hooks/useReports"
-import { calculateVisibilityScores } from "@/lib/report-utils"
+import {
+  calculateVisibilityScores,
+  aggregateDomainMentions,
+  countBrandDomainsInCitations,
+  type BrandDomain,
+} from "@/lib/report-utils"
 import { EditableTitle } from "./EditableTitle"
 import { PromptItem } from "./PromptItem"
 import { ReportPanel } from "./ReportPanel"
@@ -32,6 +38,7 @@ import { BatchUploadModal } from "./BatchUploadModal"
 interface PromptWithAnswer extends PromptInGroup {
   answer?: EvaluationAnswer | null
   brand_mentions?: BrandMentionResult[] | null
+  domain_mentions?: DomainMentionResult[] | null
   isLoading?: boolean
 }
 
@@ -115,6 +122,7 @@ export function GroupCard({
           ...p,
           answer: reportItem?.answer || null,
           brand_mentions: reportItem?.brand_mentions || null,
+          domain_mentions: reportItem?.domain_mentions || null,
         }
       })
     : prompts
@@ -142,6 +150,26 @@ export function GroupCard({
         brandsForCalculation
       )
     : null
+
+  // Build brand domains list for citation counting
+  const brandDomains: BrandDomain[] = [
+    ...(brand?.domain ? [{ name: brand.name, domain: brand.domain, is_brand: true }] : []),
+    ...competitors.filter((c) => c.domain).map((c) => ({
+      name: c.name,
+      domain: c.domain!,
+      is_brand: false,
+    })),
+  ]
+
+  // Aggregate domain mentions from selected report
+  const aggregatedDomainMentions = selectedReport
+    ? aggregateDomainMentions(selectedReport.items)
+    : []
+
+  // Count brand domains in citations from selected report
+  const citationDomainCounts = selectedReport && brandDomains.length > 0
+    ? countBrandDomainsInCitations(selectedReport.items, brandDomains)
+    : []
 
   // Use selected report's data or passed props
   const displayVisibilityScores = selectedReportId ? selectedReportVisibilityScores : visibilityScores
@@ -451,6 +479,8 @@ export function GroupCard({
                 <ReportPanel
                   visibilityScores={displayVisibilityScores || []}
                   citationLeaderboard={displayCitationLeaderboard || { domains: [], subpaths: [], total_citations: 0 }}
+                  domainMentions={aggregatedDomainMentions}
+                  citationDomainCounts={citationDomainCounts}
                   accentColor={colors.accent}
                   targetBrandName={brand?.name}
                   competitorNames={competitors.map((c) => c.name)}

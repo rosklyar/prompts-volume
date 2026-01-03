@@ -61,6 +61,17 @@ export interface GeneratedReportItem {
       variation: string
     }>
   }> | null
+  domain_mentions: Array<{
+    name: string
+    domain: string
+    is_brand: boolean
+    mentions: Array<{
+      start: number
+      end: number
+      matched_text: string
+      matched_domain: string
+    }>
+  }> | null
   completed_at: string | null
 }
 

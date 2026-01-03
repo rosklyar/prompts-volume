@@ -128,6 +128,22 @@ export interface BrandMentionResult {
   mentions: MentionPosition[]
 }
 
+// ===== Domain Mention Types =====
+
+export interface DomainMentionPosition {
+  start: number
+  end: number
+  matched_text: string
+  matched_domain: string
+}
+
+export interface DomainMentionResult {
+  name: string           // Company name
+  domain: string         // The domain searched for
+  is_brand: boolean      // True for brand, False for competitor
+  mentions: DomainMentionPosition[]
+}
+
 // ===== Citation Leaderboard Types =====
 
 export interface CitationCountItem {

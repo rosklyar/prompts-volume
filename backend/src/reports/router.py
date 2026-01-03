@@ -22,6 +22,7 @@ from src.reports.models.api_models import (
 from src.reports.services import (
     BrandInput,
     ComparisonService,
+    DomainInput,
     FreshnessAnalyzerService,
     ReportEnricher,
     ReportService,
@@ -94,13 +95,27 @@ async def generate_report(
 
     # Extract brand and competitors from group for brand mention detection
     brands = None
+    domains = []
     if group.brand:
         brands = [BrandInput(name=group.brand["name"], variations=group.brand.get("variations", []))]
+        if group.brand.get("domain"):
+            domains.append(DomainInput(
+                name=group.brand["name"],
+                domain=group.brand["domain"],
+                is_brand=True,
+            ))
         if group.competitors:
             brands.extend(
                 BrandInput(name=c["name"], variations=c.get("variations", []))
                 for c in group.competitors
             )
+            for c in group.competitors:
+                if c.get("domain"):
+                    domains.append(DomainInput(
+                        name=c["name"],
+                        domain=c["domain"],
+                        is_brand=False,
+                    ))
 
     report = await report_service.generate_report(
         group_id=group_id,
@@ -123,14 +138,22 @@ async def generate_report(
             answer = item.evaluation.answer if item.evaluation else None
             all_answers.append(answer)
 
-            # Detect brand mentions if we have brands and an answer with response
+            # Get response text for detection
+            response_text = answer.get("response") if answer else None
+
+            # Detect brand mentions if we have brands and response text
             brand_mentions = None
-            if brands and answer:
-                response_text = answer.get("response")
-                if response_text:
-                    brand_mentions = enricher.detect_brand_mentions(response_text, brands)
-                    if not brand_mentions:
-                        brand_mentions = None
+            if brands and response_text:
+                brand_mentions = enricher.detect_brand_mentions(response_text, brands)
+                if not brand_mentions:
+                    brand_mentions = None
+
+            # Detect domain mentions if we have domains and response text
+            domain_mentions = None
+            if domains and response_text:
+                domain_mentions = enricher.detect_domain_mentions(response_text, domains)
+                if not domain_mentions:
+                    domain_mentions = None
 
             prompt = prompts_map.get(item.prompt_id)
             items.append(
@@ -143,6 +166,7 @@ async def generate_report(
                     amount_charged=item.amount_charged,
                     answer=answer,
                     brand_mentions=brand_mentions,
+                    domain_mentions=domain_mentions,
                 )
             )
 
@@ -234,13 +258,27 @@ async def get_report(
 
     # Extract brand and competitors from group for brand mention detection
     brands = None
+    domains = []
     if group.brand:
         brands = [BrandInput(name=group.brand["name"], variations=group.brand.get("variations", []))]
+        if group.brand.get("domain"):
+            domains.append(DomainInput(
+                name=group.brand["name"],
+                domain=group.brand["domain"],
+                is_brand=True,
+            ))
         if group.competitors:
             brands.extend(
                 BrandInput(name=c["name"], variations=c.get("variations", []))
                 for c in group.competitors
             )
+            for c in group.competitors:
+                if c.get("domain"):
+                    domains.append(DomainInput(
+                        name=c["name"],
+                        domain=c["domain"],
+                        is_brand=False,
+                    ))
 
     items = []
     all_answers = []
@@ -248,14 +286,22 @@ async def get_report(
         answer = item.evaluation.answer if item.evaluation else None
         all_answers.append(answer)
 
-        # Detect brand mentions if we have brands and an answer with response
+        # Get response text for detection
+        response_text = answer.get("response") if answer else None
+
+        # Detect brand mentions if we have brands and response text
         brand_mentions = None
-        if brands and answer:
-            response_text = answer.get("response")
-            if response_text:
-                brand_mentions = enricher.detect_brand_mentions(response_text, brands)
-                if not brand_mentions:
-                    brand_mentions = None
+        if brands and response_text:
+            brand_mentions = enricher.detect_brand_mentions(response_text, brands)
+            if not brand_mentions:
+                brand_mentions = None
+
+        # Detect domain mentions if we have domains and response text
+        domain_mentions = None
+        if domains and response_text:
+            domain_mentions = enricher.detect_domain_mentions(response_text, domains)
+            if not domain_mentions:
+                domain_mentions = None
 
         prompt = prompts_map.get(item.prompt_id)
         items.append(
@@ -268,6 +314,7 @@ async def get_report(
                 amount_charged=item.amount_charged,
                 answer=answer,
                 brand_mentions=brand_mentions,
+                domain_mentions=domain_mentions,
             )
         )
 
