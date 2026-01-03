@@ -82,6 +82,10 @@ class Settings(BaseSettings):
     billing_signup_credits: float = 10.00  # Initial credits for new users
     billing_signup_credits_expiry_days: int = 30  # Days until signup credits expire
 
+    # Comparison time estimations (for freshness analysis)
+    comparison_in_progress_estimate: str = "~15 minutes"
+    comparison_next_refresh_estimate: str = "up to 6 hours"
+
 
 # Singleton settings instance
 settings = Settings()

@@ -145,6 +145,13 @@ class Prompt(Base):
         index=True,
     )
 
+    # Cross-database reference (no FK - user is in users_db)
+    user_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
+        nullable=True,
+        index=True,
+    )
+
     # Relationships
     topic: Mapped["Topic"] = relationship(back_populates="prompts")
 

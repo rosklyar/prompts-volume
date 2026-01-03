@@ -82,7 +82,7 @@ class ReportListResponse(BaseModel):
 
 
 class ComparisonResponse(BaseModel):
-    """Comparison between current data and last report."""
+    """Comparison between current data and last report (deprecated, use EnhancedComparisonResponse)."""
 
     group_id: int
     last_report_at: datetime | None
@@ -95,3 +95,59 @@ class ComparisonResponse(BaseModel):
     user_balance: Decimal
     affordable_count: int
     needs_top_up: bool
+
+
+class PromptFreshnessInfo(BaseModel):
+    """Per-prompt freshness information."""
+
+    prompt_id: int
+    prompt_text: str
+    has_fresher_answer: bool
+    latest_answer_at: datetime | None
+    previous_answer_at: datetime | None
+    next_refresh_estimate: str
+    has_in_progress_evaluation: bool
+
+
+class BrandChangeInfo(BaseModel):
+    """Brand/competitors change detection."""
+
+    brand_changed: bool
+    competitors_changed: bool
+    current_brand: dict | None
+    current_competitors: List[dict] | None
+    previous_brand: dict | None
+    previous_competitors: List[dict] | None
+
+
+class EnhancedComparisonResponse(BaseModel):
+    """Enhanced comparison replacing both /compare and /preview."""
+
+    group_id: int
+    last_report_at: datetime | None
+
+    # Current state
+    current_prompts_count: int
+    current_evaluations_count: int
+
+    # Comparison with last report
+    new_prompts_added: int
+    prompts_with_fresher_answers: int
+
+    # Per-prompt freshness details
+    prompt_freshness: List[PromptFreshnessInfo]
+
+    # Brand change detection
+    brand_changes: BrandChangeInfo
+
+    # Cost estimation (merged from preview)
+    fresh_evaluations: int
+    already_consumed: int
+    estimated_cost: Decimal
+    user_balance: Decimal
+    affordable_count: int
+    needs_top_up: bool
+
+    # Generate button state
+    can_generate: bool
+    generation_disabled_reason: str | None

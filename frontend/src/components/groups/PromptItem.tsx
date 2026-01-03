@@ -7,7 +7,10 @@ import { CSS } from "@dnd-kit/utilities"
 import { useState } from "react"
 import type { PromptInGroup, EvaluationAnswer } from "@/client/api"
 import type { BrandMentionResult } from "@/types/groups"
+import type { PromptFreshnessInfo } from "@/types/billing"
 import { HighlightedResponse } from "./HighlightedResponse"
+import { formatReportTime } from "@/hooks/useReports"
+import { getBrandColor } from "./constants"
 
 interface PromptItemProps {
   prompt: PromptInGroup & {
@@ -21,16 +24,9 @@ interface PromptItemProps {
   competitorNames?: string[]
   onDelete: (promptId: number) => void
   isDragOverlay?: boolean
+  freshnessInfo?: PromptFreshnessInfo
 }
 
-// Predefined colors for competitor tags
-const COMPETITOR_COLORS = [
-  { bg: "#f3e8ff", text: "#7c3aed" }, // violet
-  { bg: "#fce7f3", text: "#db2777" }, // pink
-  { bg: "#e0f2fe", text: "#0284c7" }, // sky
-  { bg: "#fef3c7", text: "#d97706" }, // amber
-  { bg: "#d1fae5", text: "#059669" }, // emerald
-]
 
 export function PromptItem({
   prompt,
@@ -40,6 +36,7 @@ export function PromptItem({
   competitorNames = [],
   onDelete,
   isDragOverlay = false,
+  freshnessInfo,
 }: PromptItemProps) {
   const [isExpanded, setIsExpanded] = useState(false)
 
@@ -123,10 +120,7 @@ export function PromptItem({
               <div className="shrink-0 flex flex-wrap gap-1 justify-end max-w-[180px]">
                 {mentionedBrands.map((bm) => {
                   const isTargetBrand = bm.brand_name === targetBrandName
-                  const competitorIndex = competitorNames.indexOf(bm.brand_name)
-                  const competitorColor = competitorIndex >= 0
-                    ? COMPETITOR_COLORS[competitorIndex % COMPETITOR_COLORS.length]
-                    : COMPETITOR_COLORS[0]
+                  const brandColor = getBrandColor(bm.brand_name, targetBrandName, competitorNames, accentColor)
 
                   return (
                     <span
@@ -135,8 +129,8 @@ export function PromptItem({
                         isTargetBrand ? "font-semibold" : "font-normal"
                       }`}
                       style={{
-                        backgroundColor: isTargetBrand ? `${accentColor}20` : competitorColor.bg,
-                        color: isTargetBrand ? accentColor : competitorColor.text,
+                        backgroundColor: brandColor.bg,
+                        color: brandColor.text,
                       }}
                       title={`${bm.mentions.length} mention${bm.mentions.length !== 1 ? "s" : ""} in answer`}
                     >
@@ -147,6 +141,45 @@ export function PromptItem({
               </div>
             )}
           </div>
+
+          {/* Freshness info */}
+          {freshnessInfo && (
+            <div className="mt-1.5 flex items-center gap-2 text-[10px]">
+              {/* Fresh badge */}
+              {freshnessInfo.has_fresher_answer && (
+                <span
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-medium"
+                  style={{ backgroundColor: "#dcfce7", color: "#16a34a" }}
+                >
+                  <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  Fresh
+                </span>
+              )}
+              {/* Latest answer timestamp */}
+              {freshnessInfo.latest_answer_at && (
+                <span className="text-gray-400">
+                  Updated {formatReportTime(freshnessInfo.latest_answer_at)}
+                </span>
+              )}
+              {/* Next refresh estimate (when not fresh) */}
+              {!freshnessInfo.has_fresher_answer && !freshnessInfo.has_in_progress_evaluation && (
+                <span className="text-gray-400">
+                  Next: {freshnessInfo.next_refresh_estimate}
+                </span>
+              )}
+              {/* In progress indicator */}
+              {freshnessInfo.has_in_progress_evaluation && (
+                <span className="inline-flex items-center gap-1 text-amber-600">
+                  <div
+                    className="w-2 h-2 border border-amber-600 border-t-transparent rounded-full animate-spin"
+                  />
+                  {freshnessInfo.next_refresh_estimate}
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Loading indicator */}
           {prompt.isLoading && (
@@ -214,6 +247,8 @@ export function PromptItem({
               response={prompt.answer.response}
               brandMentions={prompt.brand_mentions}
               accentColor={accentColor}
+              targetBrandName={targetBrandName}
+              competitorNames={competitorNames}
             />
           ) : (
             <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">

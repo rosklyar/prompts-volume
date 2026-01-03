@@ -4,11 +4,14 @@
  */
 
 import type { BrandVisibilityScore, CitationLeaderboard } from "@/types/groups"
+import { getBrandColor } from "./constants"
 
 interface ReportPanelProps {
   visibilityScores: BrandVisibilityScore[]
   citationLeaderboard: CitationLeaderboard
   accentColor: string
+  targetBrandName?: string | null
+  competitorNames?: string[]
   isCollapsed: boolean
   onToggleCollapse: () => void
 }
@@ -17,6 +20,8 @@ export function ReportPanel({
   visibilityScores,
   citationLeaderboard,
   accentColor,
+  targetBrandName,
+  competitorNames = [],
   isCollapsed,
   onToggleCollapse,
 }: ReportPanelProps) {
@@ -87,45 +92,48 @@ export function ReportPanel({
                 Brand visibility
               </p>
               <div className="flex flex-wrap gap-2">
-                {visibilityScores.map((score) => (
-                  <div
-                    key={score.brand_name}
-                    className="group relative flex items-center gap-2 px-3 py-2 rounded-lg bg-white border transition-all hover:shadow-sm"
-                    style={{ borderColor: `${accentColor}20` }}
-                  >
-                    {/* Brand name */}
-                    <span className="text-sm text-gray-700">
-                      {score.brand_name}
-                    </span>
+                {visibilityScores.map((score) => {
+                  const brandColor = getBrandColor(score.brand_name, targetBrandName, competitorNames, accentColor)
+                  const isTargetBrand = score.brand_name === targetBrandName
 
-                    {/* Percentage with visual bar */}
-                    <div className="flex items-center gap-1.5">
-                      <div
-                        className="h-1.5 rounded-full bg-gray-100 overflow-hidden"
-                        style={{ width: "40px" }}
-                      >
-                        <div
-                          className="h-full rounded-full transition-all duration-500"
-                          style={{
-                            width: `${score.visibility_percentage}%`,
-                            backgroundColor: accentColor,
-                          }}
-                        />
-                      </div>
+                  return (
+                    <div
+                      key={score.brand_name}
+                      className="group relative flex items-center gap-2 px-3 py-2 rounded-lg bg-white border transition-all hover:shadow-sm"
+                      style={{ borderColor: `${brandColor.text}20` }}
+                    >
+                      {/* Brand name */}
                       <span
-                        className="text-xs font-sans font-medium tabular-nums"
-                        style={{ color: accentColor }}
+                        className={`text-sm ${isTargetBrand ? "font-semibold" : ""}`}
+                        style={{ color: brandColor.text }}
                       >
-                        {score.visibility_percentage}%
+                        {score.brand_name}
                       </span>
-                    </div>
 
-                    {/* Tooltip on hover */}
-                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800 text-white text-xs font-sans rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
-                      {score.prompts_with_mentions} of {score.total_prompts} prompts
+                      {/* Percentage with visual bar */}
+                      <div className="flex items-center gap-1.5">
+                        <div
+                          className="h-1.5 rounded-full bg-gray-100 overflow-hidden"
+                          style={{ width: "40px" }}
+                        >
+                          <div
+                            className="h-full rounded-full transition-all duration-500"
+                            style={{
+                              width: `${score.visibility_percentage}%`,
+                              backgroundColor: brandColor.text,
+                            }}
+                          />
+                        </div>
+                        <span
+                          className="text-xs font-sans font-medium tabular-nums"
+                          style={{ color: brandColor.text }}
+                        >
+                          {score.visibility_percentage}%
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )}

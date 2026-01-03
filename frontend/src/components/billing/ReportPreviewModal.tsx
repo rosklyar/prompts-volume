@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from "react"
 import { useReportPreview, formatCredits } from "@/hooks/useBilling"
-import type { ReportPreview } from "@/types/billing"
+import type { ReportPreview, PromptFreshnessInfo } from "@/types/billing"
 
 interface ReportPreviewModalProps {
   groupId: number
@@ -15,6 +15,8 @@ interface ReportPreviewModalProps {
   onClose: () => void
   onConfirm: (includePrevious: boolean) => void
   onNeedsTopUp?: (preview: ReportPreview) => void
+  promptFreshness?: PromptFreshnessInfo[]
+  canGenerate?: boolean
 }
 
 export function ReportPreviewModal({
@@ -25,9 +27,15 @@ export function ReportPreviewModal({
   onClose,
   onConfirm,
   onNeedsTopUp,
+  promptFreshness = [],
+  canGenerate = true,
 }: ReportPreviewModalProps) {
   const [includePrevious, setIncludePrevious] = useState(true)
+  const [showFreshPrompts, setShowFreshPrompts] = useState(false)
   const { data: preview, isLoading, isError, refetch } = useReportPreview(groupId, isOpen)
+
+  // Filter prompts with fresh answers
+  const freshPrompts = promptFreshness.filter((pf) => pf.has_fresher_answer)
 
   // Refetch when modal opens
   useEffect(() => {
@@ -135,25 +143,64 @@ export function ReportPreviewModal({
                 </p>
 
                 <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-                  {/* Fresh answers */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="w-2 h-2 rounded-full"
-                        style={{ backgroundColor: accentColor }}
-                      />
-                      <span className="text-sm text-gray-700 font-['DM_Sans']">
-                        Fresh answers
-                      </span>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-sm font-medium text-gray-800 font-['DM_Sans'] tabular-nums">
-                        {preview.fresh_evaluations} × ${formatCredits(unitPrice)}
-                      </span>
-                      <span className="text-sm text-gray-500 font-['DM_Sans'] ml-2">
-                        = ${formatCredits(preview.estimated_cost)}
-                      </span>
-                    </div>
+                  {/* Fresh answers - expandable */}
+                  <div>
+                    <button
+                      onClick={() => freshPrompts.length > 0 && setShowFreshPrompts(!showFreshPrompts)}
+                      className={`
+                        w-full flex items-center justify-between
+                        ${freshPrompts.length > 0 ? "cursor-pointer hover:bg-gray-100 -mx-2 px-2 py-1 rounded transition-colors" : ""}
+                      `}
+                      disabled={freshPrompts.length === 0}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="w-2 h-2 rounded-full"
+                          style={{ backgroundColor: accentColor }}
+                        />
+                        <span className="text-sm text-gray-700 font-['DM_Sans']">
+                          Fresh answers
+                        </span>
+                        {freshPrompts.length > 0 && (
+                          <svg
+                            className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-200 ${showFreshPrompts ? "rotate-180" : ""}`}
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <span className="text-sm font-medium text-gray-800 font-['DM_Sans'] tabular-nums">
+                          {preview.fresh_evaluations} × ${formatCredits(unitPrice)}
+                        </span>
+                        <span className="text-sm text-gray-500 font-['DM_Sans'] ml-2">
+                          = ${formatCredits(preview.estimated_cost)}
+                        </span>
+                      </div>
+                    </button>
+
+                    {/* Expandable fresh prompts list */}
+                    {showFreshPrompts && freshPrompts.length > 0 && (
+                      <div className="mt-2 ml-4 space-y-1.5 max-h-[160px] overflow-y-auto">
+                        {freshPrompts.map((fp) => (
+                          <div
+                            key={fp.prompt_id}
+                            className="flex items-start gap-2 text-xs"
+                          >
+                            <span
+                              className="mt-1.5 w-1 h-1 rounded-full shrink-0"
+                              style={{ backgroundColor: accentColor }}
+                            />
+                            <span className="text-gray-600 font-['DM_Sans'] line-clamp-2">
+                              {fp.prompt_text}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   {/* Already consumed */}
@@ -246,8 +293,35 @@ export function ReportPreviewModal({
                 </label>
               )}
 
+              {/* No fresh data message */}
+              {!canGenerate && (
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-gray-100 border border-gray-200 mb-6">
+                  <svg
+                    className="w-4 h-4 text-gray-400 mt-0.5 shrink-0"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-gray-600 font-['DM_Sans']">
+                      No new data available
+                    </p>
+                    <p className="text-[11px] text-gray-500 mt-0.5 font-['DM_Sans']">
+                      All prompts have been included in a previous report. New answers will appear as they become available.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Low balance warning */}
-              {preview.needs_top_up && (
+              {canGenerate && preview.needs_top_up && (
                 <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-100 mb-6">
                   <svg
                     className="w-4 h-4 text-amber-500 mt-0.5 shrink-0"
@@ -287,18 +361,20 @@ export function ReportPreviewModal({
                 </button>
                 <button
                   onClick={handleConfirm}
-                  disabled={!canAfford && !onNeedsTopUp}
+                  disabled={!canGenerate || (!canAfford && !onNeedsTopUp)}
                   className={`
                     flex-1 py-3 px-4 rounded-lg text-sm font-medium
                     text-white transition-all font-['DM_Sans']
                     disabled:opacity-50 disabled:cursor-not-allowed
-                    ${isFree ? "bg-green-500 hover:bg-green-600" : ""}
+                    ${isFree && canGenerate ? "bg-green-500 hover:bg-green-600" : ""}
                   `}
                   style={{
-                    backgroundColor: isFree ? undefined : accentColor,
+                    backgroundColor: (isFree && canGenerate) ? undefined : accentColor,
                   }}
                 >
-                  {preview.needs_top_up ? (
+                  {!canGenerate ? (
+                    "No new data"
+                  ) : preview.needs_top_up ? (
                     "View options"
                   ) : isFree ? (
                     "Generate free"

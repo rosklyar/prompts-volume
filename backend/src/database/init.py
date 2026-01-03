@@ -82,18 +82,28 @@ async def seed_evals_data(
 
 
 async def _seed_languages(session: AsyncSession) -> None:
-    """Seed initial languages (Ukrainian, Russian, English)."""
-    # Check if languages already exist
-    result = await session.execute(select(Language).where(Language.id.in_([1, 2, 3])))
-    existing_languages = result.scalars().all()
+    """Seed initial languages (Ukrainian, Russian, English, Spanish)."""
+    languages_config = [
+        (1, "Ukrainian", "uk"),
+        (2, "Russian", "ru"),
+        (3, "English", "en"),
+        (4, "Spanish", "es"),
+    ]
 
-    if len(existing_languages) == 0:
-        languages = [
-            Language(id=1, name="Ukrainian", code="uk"),
-            Language(id=2, name="Russian", code="ru"),
-            Language(id=3, name="English", code="en"),
-        ]
-        session.add_all(languages)
+    # Check existing languages
+    result = await session.execute(
+        select(Language).where(Language.id.in_([lang[0] for lang in languages_config]))
+    )
+    existing_ids = {lang.id for lang in result.scalars().all()}
+
+    languages_to_add = [
+        Language(id=id_, name=name, code=code)
+        for id_, name, code in languages_config
+        if id_ not in existing_ids
+    ]
+
+    if languages_to_add:
+        session.add_all(languages_to_add)
         await session.flush()
 
         # Reset sequence to continue from the highest ID
@@ -103,18 +113,26 @@ async def _seed_languages(session: AsyncSession) -> None:
 
 
 async def _seed_countries(session: AsyncSession) -> None:
-    """Seed initial countries."""
-    # Check if Ukraine already exists
-    result = await session.execute(select(Country).where(Country.iso_code == "UA"))
-    existing = result.scalar_one_or_none()
+    """Seed initial countries (Ukraine, USA)."""
+    countries_config = [
+        (1, "Ukraine", "UA"),
+        (2, "United States", "US"),
+    ]
 
-    if existing is None:
-        ukraine = Country(
-            id=1,
-            name="Ukraine",
-            iso_code="UA",
-        )
-        session.add(ukraine)
+    # Check existing countries
+    result = await session.execute(
+        select(Country).where(Country.id.in_([c[0] for c in countries_config]))
+    )
+    existing_ids = {c.id for c in result.scalars().all()}
+
+    countries_to_add = [
+        Country(id=id_, name=name, iso_code=iso_code)
+        for id_, name, iso_code in countries_config
+        if id_ not in existing_ids
+    ]
+
+    if countries_to_add:
+        session.add_all(countries_to_add)
         await session.flush()
 
         # Reset sequence to continue from the highest ID
@@ -124,37 +142,58 @@ async def _seed_countries(session: AsyncSession) -> None:
 
 
 async def _seed_country_languages(session: AsyncSession) -> None:
-    """Seed country-language mappings (Ukraine -> Ukrainian, Russian)."""
-    # Check if mappings already exist
-    result = await session.execute(
-        select(CountryLanguage).where(CountryLanguage.country_id == 1)
-    )
-    existing_mappings = result.scalars().all()
+    """Seed country-language mappings."""
+    mappings_config = [
+        # Ukraine -> Ukrainian (primary), Russian (secondary)
+        (1, 1, 0),  # Ukraine -> Ukrainian
+        (1, 2, 1),  # Ukraine -> Russian
+        # USA -> English (primary), Spanish (secondary)
+        (2, 3, 0),  # USA -> English
+        (2, 4, 1),  # USA -> Spanish
+    ]
 
-    if len(existing_mappings) == 0:
-        mappings = [
-            CountryLanguage(country_id=1, language_id=1, order=0),  # Ukraine -> Ukrainian (primary)
-            CountryLanguage(country_id=1, language_id=2, order=1),  # Ukraine -> Russian (secondary)
-        ]
-        session.add_all(mappings)
+    # Check existing mappings
+    result = await session.execute(select(CountryLanguage))
+    existing_keys = {(m.country_id, m.language_id) for m in result.scalars().all()}
+
+    mappings_to_add = [
+        CountryLanguage(country_id=country_id, language_id=language_id, order=order)
+        for country_id, language_id, order in mappings_config
+        if (country_id, language_id) not in existing_keys
+    ]
+
+    if mappings_to_add:
+        session.add_all(mappings_to_add)
         await session.flush()
 
 
 async def _seed_business_domains(session: AsyncSession) -> None:
     """Seed initial business domains."""
-    # Check if E_COMMERCE already exists
-    result = await session.execute(
-        select(BusinessDomain).where(BusinessDomain.name == "e-comm")
-    )
-    existing = result.scalar_one_or_none()
+    domains_config = [
+        (1, "e-comm", "E-commerce is the buying and selling of goods and services over the internet"),
+        (2, "fintech", "Financial technology companies providing digital financial services"),
+        (3, "saas", "Software as a Service companies offering cloud-based software solutions"),
+        (4, "education", "Educational technology and online learning platforms"),
+        (5, "healthcare", "Healthcare technology and digital health services"),
+        (6, "crypto", "Cryptocurrency and blockchain technology companies"),
+        (7, "real-estate", "Real estate technology and property management platforms"),
+        (8, "entertainment", "Digital entertainment, streaming, and gaming platforms"),
+    ]
 
-    if existing is None:
-        e_commerce = BusinessDomain(
-            id=1,
-            name="e-comm",
-            description="E-commerce is the buying and selling of goods and services over the internet",
-        )
-        session.add(e_commerce)
+    # Check existing domains
+    result = await session.execute(
+        select(BusinessDomain).where(BusinessDomain.id.in_([d[0] for d in domains_config]))
+    )
+    existing_ids = {d.id for d in result.scalars().all()}
+
+    domains_to_add = [
+        BusinessDomain(id=id_, name=name, description=description)
+        for id_, name, description in domains_config
+        if id_ not in existing_ids
+    ]
+
+    if domains_to_add:
+        session.add_all(domains_to_add)
         await session.flush()
 
         # Reset sequence to continue from the highest ID

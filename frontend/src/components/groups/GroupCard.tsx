@@ -17,7 +17,7 @@ import type {
   BrandVisibilityScore,
   CitationLeaderboard,
 } from "@/types/groups"
-import { useHasFreshData, useReportHistory, useReport } from "@/hooks/useReports"
+import { useHasFreshData, useReport } from "@/hooks/useReports"
 import { calculateVisibilityScores } from "@/lib/report-utils"
 import { EditableTitle } from "./EditableTitle"
 import { PromptItem } from "./PromptItem"
@@ -25,7 +25,7 @@ import { ReportPanel } from "./ReportPanel"
 import { ReportHistoryPanel } from "./ReportHistoryPanel"
 import { BrandEditor } from "./BrandEditor"
 import { ReportPreviewModal, LowBalanceModal } from "@/components/billing"
-import type { ReportPreview } from "@/types/billing"
+import type { ReportPreview, PromptFreshnessInfo } from "@/types/billing"
 import { getGroupColor } from "./constants"
 import { BatchUploadModal } from "./BatchUploadModal"
 
@@ -85,15 +85,17 @@ export function GroupCard({
   const [lowBalancePreview, setLowBalancePreview] = useState<ReportPreview | null>(null)
   const colors = getGroupColor(colorIndex)
 
-  // Check for fresh data (for disabling Report button when no new data)
-  const { hasFreshData } = useHasFreshData(
+  // Check for fresh data and generation status
+  const { canGenerate, promptFreshness } = useHasFreshData(
     group.id,
     prompts.length > 0
   )
 
-  // Fetch report history to know if reports exist
-  const { data: reportHistory } = useReportHistory(group.id, prompts.length > 0)
-  const hasExistingReports = (reportHistory?.total ?? 0) > 0
+  // Create a map of prompt freshness for quick lookup
+  const freshnessMap = promptFreshness.reduce((acc, pf) => {
+    acc[pf.prompt_id] = pf
+    return acc
+  }, {} as Record<number, PromptFreshnessInfo>)
 
   // Fetch selected report data when a report is selected
   const { data: selectedReport } = useReport(
@@ -145,25 +147,12 @@ export function GroupCard({
   const displayCitationLeaderboard = selectedReportId ? selectedReport?.citation_leaderboard : citationLeaderboard
   const displayPrompts = selectedReportId ? promptsWithSelectedReportAnswers : prompts
 
-  // State for no new data modal
-  const [showNoNewDataModal, setShowNoNewDataModal] = useState(false)
-
-  // Report button only disabled when loading or no prompts
+  // Report button disabled when loading or no prompts
   const isReportDisabled = isLoadingAnswers || prompts.length === 0
 
-  // Check if there's no new data available
-  const isNoNewData = hasFreshData === false && hasExistingReports
-
-  // Handle report button click - check for fresh data first
+  // Handle report button click - always opens modal, canGenerate controls Generate button inside
   const handleReportClick = () => {
     if (prompts.length === 0) return
-
-    // If no new data, show the no-new-data modal instead
-    if (isNoNewData) {
-      setShowNoNewDataModal(true)
-      return
-    }
-
     setShowPreviewModal(true)
   }
 
@@ -441,6 +430,7 @@ export function GroupCard({
                         targetBrandName={brand?.name}
                         competitorNames={competitors.map((c) => c.name)}
                         onDelete={onDeletePrompt}
+                        freshnessInfo={freshnessMap[prompt.prompt_id]}
                       />
                     ))}
                   </div>
@@ -465,6 +455,8 @@ export function GroupCard({
                   visibilityScores={displayVisibilityScores || []}
                   citationLeaderboard={displayCitationLeaderboard || { domains: [], subpaths: [], total_citations: 0 }}
                   accentColor={colors.accent}
+                  targetBrandName={brand?.name}
+                  competitorNames={competitors.map((c) => c.name)}
                   isCollapsed={isReportCollapsed}
                   onToggleCollapse={() => setIsReportCollapsed(!isReportCollapsed)}
                 />
@@ -504,6 +496,8 @@ export function GroupCard({
         onClose={() => setShowPreviewModal(false)}
         onConfirm={handlePreviewConfirm}
         onNeedsTopUp={handleNeedsTopUp}
+        promptFreshness={promptFreshness}
+        canGenerate={canGenerate}
       />
 
       {/* Low Balance Modal */}
@@ -520,70 +514,6 @@ export function GroupCard({
         />
       )}
 
-      {/* No New Data Modal */}
-      {showNoNewDataModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          {/* Backdrop */}
-          <div
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-            onClick={() => setShowNoNewDataModal(false)}
-          />
-
-          {/* Modal */}
-          <div
-            className="relative bg-white rounded-2xl shadow-xl max-w-sm w-full mx-4 overflow-hidden animate-in fade-in zoom-in-95 duration-200"
-          >
-            {/* Accent bar */}
-            <div
-              className="h-1.5 w-full"
-              style={{ backgroundColor: colors.accent }}
-            />
-
-            <div className="p-6">
-              {/* Icon */}
-              <div
-                className="w-12 h-12 rounded-full mx-auto mb-4 flex items-center justify-center"
-                style={{ backgroundColor: `${colors.accent}15` }}
-              >
-                <svg
-                  className="w-6 h-6"
-                  style={{ color: colors.accent }}
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-              </div>
-
-              {/* Title */}
-              <h3 className="text-lg font-semibold text-gray-900 text-center mb-2">
-                No new data available
-              </h3>
-
-              {/* Description */}
-              <p className="text-sm text-gray-500 text-center mb-6">
-                There are no new evaluations since your last report.
-                You can still view your previous reports from the history below.
-              </p>
-
-              {/* Action */}
-              <button
-                onClick={() => setShowNoNewDataModal(false)}
-                className="w-full py-2.5 px-4 rounded-lg text-sm font-medium text-white transition-colors"
-                style={{ backgroundColor: colors.accent }}
-              >
-                Got it
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   )
 }

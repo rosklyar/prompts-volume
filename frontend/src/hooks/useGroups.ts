@@ -88,9 +88,11 @@ export function useUpdateGroup() {
       brand?: BrandInfo
       competitors?: CompetitorInfo[] | null
     }) => groupsApi.updateGroup(groupId, { title, brand, competitors }),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       // Invalidate all group queries to ensure UI updates
       queryClient.invalidateQueries({ queryKey: groupKeys.all })
+      // Invalidate compare query since brand/competitors may have changed
+      queryClient.invalidateQueries({ queryKey: reportKeys.compare(variables.groupId) })
     },
   })
 }

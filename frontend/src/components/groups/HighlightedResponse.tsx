@@ -5,11 +5,14 @@
 
 import { useMemo } from "react"
 import type { BrandMentionResult } from "@/types/groups"
+import { getBrandColor } from "./constants"
 
 interface HighlightedResponseProps {
   response: string
   brandMentions: BrandMentionResult[] | null
   accentColor: string
+  targetBrandName?: string | null
+  competitorNames?: string[]
 }
 
 interface TextSegment {
@@ -47,6 +50,8 @@ export function HighlightedResponse({
   response,
   brandMentions,
   accentColor,
+  targetBrandName,
+  competitorNames = [],
 }: HighlightedResponseProps) {
   // Parse response into segments with highlights
   const segments = useMemo((): TextSegment[] => {
@@ -133,31 +138,30 @@ export function HighlightedResponse({
       className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap"
       style={{ fontFamily: "'Georgia', 'Times New Roman', serif" }}
     >
-      {segments.map((segment, index) =>
-        segment.isHighlight ? (
+      {segments.map((segment, index) => {
+        if (!segment.isHighlight) {
+          return <span key={index}>{segment.text}</span>
+        }
+
+        // Get the first brand name for color (in case of merged overlapping mentions)
+        const primaryBrandName = segment.brandName?.split(", ")[0] ?? ""
+        const brandColor = getBrandColor(primaryBrandName, targetBrandName, competitorNames, accentColor)
+
+        return (
           <mark
             key={index}
-            className="relative group inline rounded-sm px-0.5 -mx-0.5 cursor-default transition-colors"
+            className="inline rounded-sm px-0.5 -mx-0.5 cursor-default transition-colors"
             style={{
-              backgroundColor: `${accentColor}20`,
+              backgroundColor: brandColor.bg,
               color: "inherit",
-              borderBottom: `1.5px solid ${accentColor}50`,
+              borderBottom: `1.5px solid ${brandColor.text}50`,
             }}
             title={segment.brandName}
           >
             {segment.text}
-            {/* Tooltip on hover */}
-            <span
-              className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-xs font-sans bg-gray-800 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10"
-              style={{ maxWidth: "200px" }}
-            >
-              {segment.brandName}
-            </span>
           </mark>
-        ) : (
-          <span key={index}>{segment.text}</span>
         )
-      )}
+      })}
     </div>
   )
 }

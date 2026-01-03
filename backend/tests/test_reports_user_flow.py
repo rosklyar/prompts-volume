@@ -211,7 +211,7 @@ def test_complete_report_user_flow(client):
     compare = compare_response.json()
 
     # The newly added prompt's evaluations should be fresh
-    new_fresh_count = compare["fresh_data_count"]
+    new_fresh_count = compare["fresh_evaluations"]
     assert new_fresh_count >= 1, f"Expected at least 1 fresh, got {new_fresh_count}"
 
     # === STEP 13: Generate third report (charges for fresh evaluations) ===
