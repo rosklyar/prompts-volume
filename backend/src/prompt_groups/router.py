@@ -21,8 +21,10 @@ from src.prompt_groups.models.brand_models import BrandModel, CompetitorModel
 from src.prompt_groups.services import (
     PromptGroupBindingService,
     PromptGroupService,
+    TopicResolutionService,
     get_prompt_group_binding_service,
     get_prompt_group_service,
+    get_topic_resolution_service,
 )
 
 router = APIRouter(prefix="/prompt-groups/api/v1", tags=["prompt-groups"])
@@ -33,6 +35,9 @@ PromptGroupServiceDep = Annotated[
 PromptGroupBindingServiceDep = Annotated[
     PromptGroupBindingService, Depends(get_prompt_group_binding_service)
 ]
+TopicResolutionServiceDep = Annotated[
+    TopicResolutionService, Depends(get_topic_resolution_service)
+]
 
 
 @router.get("/groups", response_model=GroupListResponse)
@@ -42,7 +47,7 @@ async def get_user_groups(
 ):
     """Get all prompt groups for the current user.
 
-    Returns groups with prompt counts and brand info, ordered by creation date.
+    Returns groups with prompt counts, brand, and topic info, ordered by creation date.
     """
     try:
         groups_with_counts = await group_service.get_user_groups(current_user.id)
@@ -54,6 +59,8 @@ async def get_user_groups(
                 prompt_count=prompt_count,
                 brand_name=group.brand.get("name", "") if group.brand else "",
                 competitor_count=len(group.competitors) if group.competitors else 0,
+                topic_id=group.topic_id,
+                topic_title=group.topic.title,
                 created_at=group.created_at,
                 updated_at=group.updated_at,
             )
@@ -72,9 +79,14 @@ async def create_group(
     request: CreateGroupRequest,
     current_user: CurrentUser,
     group_service: PromptGroupServiceDep,
+    topic_resolver: TopicResolutionServiceDep,
 ):
-    """Create a new prompt group with brand and optional competitors."""
+    """Create a new prompt group with topic binding, brand, and optional competitors."""
     try:
+        # Resolve topic first (validates existing or creates new)
+        topic_id = await topic_resolver.resolve(request.topic)
+        topic = await topic_resolver.get_topic(topic_id)
+
         # Convert Pydantic models to dicts for storage
         brand_data = request.brand.model_dump()
         competitors_data = None
@@ -84,6 +96,7 @@ async def create_group(
         group = await group_service.create_group(
             current_user.id,
             request.title,
+            topic_id=topic_id,
             brand=brand_data,
             competitors=competitors_data
         )
@@ -93,6 +106,8 @@ async def create_group(
             prompt_count=0,
             brand_name=request.brand.name,
             competitor_count=len(request.competitors) if request.competitors else 0,
+            topic_id=topic_id,
+            topic_title=topic.title,
             created_at=group.created_at,
             updated_at=group.updated_at,
         )
@@ -107,7 +122,7 @@ async def get_group_details(
     group_service: PromptGroupServiceDep,
     binding_service: PromptGroupBindingServiceDep,
 ):
-    """Get detailed information about a group including brand, competitors, and prompts."""
+    """Get detailed information about a group including topic, brand, competitors, and prompts."""
     try:
         group = await group_service.get_by_id_for_user(group_id, current_user.id)
         prompts_data = await binding_service.get_group_with_prompts(group)
@@ -123,6 +138,9 @@ async def get_group_details(
         return GroupDetailResponse(
             id=group.id,
             title=group.title,
+            topic_id=group.topic_id,
+            topic_title=group.topic.title,
+            topic_description=group.topic.description,
             created_at=group.created_at,
             updated_at=group.updated_at,
             brand=brand,
@@ -140,7 +158,7 @@ async def update_group(
     current_user: CurrentUser,
     group_service: PromptGroupServiceDep,
 ):
-    """Update a group's title, brand, and/or competitors."""
+    """Update a group's title, brand, and/or competitors (topic cannot be changed)."""
     try:
         # Convert models to dict format if provided
         brand_data = None
@@ -171,6 +189,8 @@ async def update_group(
             prompt_count=prompt_count,
             brand_name=group.brand.get("name", "") if group.brand else "",
             competitor_count=len(group.competitors) if group.competitors else 0,
+            topic_id=group.topic_id,
+            topic_title=group.topic.title,
             created_at=group.created_at,
             updated_at=group.updated_at,
         )

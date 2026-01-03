@@ -14,6 +14,7 @@ interface BrandEditorProps {
   onCompetitorsChange: (competitors: CompetitorInfo[]) => void
   accentColor: string
   onClose: () => void
+  initialFocus?: "brand" | "competitors"
 }
 
 function normalizeDomain(url: string): string {
@@ -33,15 +34,17 @@ export function BrandEditor({
   onCompetitorsChange,
   accentColor,
   onClose,
+  initialFocus = "brand",
 }: BrandEditorProps) {
   // Brand editing state
-  const [editingBrand, setEditingBrand] = useState(false)
+  const [editingBrand, setEditingBrand] = useState(initialFocus === "brand")
   const [brandName, setBrandName] = useState(brand.name)
   const [brandDomain, setBrandDomain] = useState(brand.domain || "")
   const [brandVariations, setBrandVariations] = useState(brand.variations.join(", "))
+  const [brandVariationsTouched, setBrandVariationsTouched] = useState(brand.variations.length > 0)
 
-  // Competitors section
-  const [showCompetitors, setShowCompetitors] = useState(competitors.length > 0)
+  // Competitors section - auto-expand if focused on competitors
+  const [showCompetitors, setShowCompetitors] = useState(initialFocus === "competitors" || competitors.length > 0)
   const [editingCompIndex, setEditingCompIndex] = useState<number | null>(null)
   const [editCompName, setEditCompName] = useState("")
   const [editCompDomain, setEditCompDomain] = useState("")
@@ -51,6 +54,23 @@ export function BrandEditor({
   const [newCompName, setNewCompName] = useState("")
   const [newCompDomain, setNewCompDomain] = useState("")
   const [newCompVariations, setNewCompVariations] = useState("")
+  const [newCompVariationsTouched, setNewCompVariationsTouched] = useState(false)
+
+  // Handle brand name change with prefill logic
+  const handleBrandNameChange = (value: string) => {
+    setBrandName(value)
+    if (!brandVariationsTouched) {
+      setBrandVariations(value.trim())
+    }
+  }
+
+  // Handle new competitor name change with prefill logic
+  const handleNewCompNameChange = (value: string) => {
+    setNewCompName(value)
+    if (!newCompVariationsTouched) {
+      setNewCompVariations(value.trim())
+    }
+  }
 
   const handleSaveBrand = () => {
     if (!brandName.trim()) return
@@ -90,6 +110,7 @@ export function BrandEditor({
     setNewCompName("")
     setNewCompDomain("")
     setNewCompVariations("")
+    setNewCompVariationsTouched(false)
   }
 
   const handleRemoveCompetitor = (index: number) => {
@@ -167,7 +188,7 @@ export function BrandEditor({
                 <input
                   type="text"
                   value={brandName}
-                  onChange={(e) => setBrandName(e.target.value)}
+                  onChange={(e) => handleBrandNameChange(e.target.value)}
                   className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-1 font-sans"
                   placeholder="Brand name"
                 />
@@ -183,7 +204,10 @@ export function BrandEditor({
                 </div>
                 <textarea
                   value={brandVariations}
-                  onChange={(e) => setBrandVariations(e.target.value)}
+                  onChange={(e) => {
+                    setBrandVariations(e.target.value)
+                    setBrandVariationsTouched(true)
+                  }}
                   className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-1 font-sans resize-none"
                   rows={2}
                   placeholder="Variations (comma-separated)"
@@ -354,7 +378,7 @@ export function BrandEditor({
                     <input
                       type="text"
                       value={newCompName}
-                      onChange={(e) => setNewCompName(e.target.value)}
+                      onChange={(e) => handleNewCompNameChange(e.target.value)}
                       className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-1 font-sans bg-white"
                       placeholder="Competitor name"
                       onKeyDown={(e) => e.key === "Enter" && handleAddCompetitor()}
@@ -371,7 +395,10 @@ export function BrandEditor({
                     </div>
                     <textarea
                       value={newCompVariations}
-                      onChange={(e) => setNewCompVariations(e.target.value)}
+                      onChange={(e) => {
+                        setNewCompVariations(e.target.value)
+                        setNewCompVariationsTouched(true)
+                      }}
                       className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-1 font-sans resize-none bg-white"
                       rows={2}
                       placeholder="Variations (optional, comma-separated)"

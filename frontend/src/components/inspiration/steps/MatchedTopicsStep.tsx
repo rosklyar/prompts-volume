@@ -17,7 +17,7 @@ import {
 } from "lucide-react"
 import type { WizardAction } from "../InspirationModal"
 import type { WizardState, TopicWithPrompts, PromptSelectionState } from "@/types/inspiration"
-import type { BrandInfo, CompetitorInfo } from "@/types/groups"
+import type { BrandInfo, CompetitorInfo, TopicInput } from "@/types/groups"
 
 interface MatchedTopicsStepProps {
   state: WizardState
@@ -164,9 +164,9 @@ export function MatchedTopicsStep({ state, dispatch, onClose }: MatchedTopicsSte
   }
 
   // Handle creating a new group
-  const handleCreateGroup = async (title: string, brand: BrandInfo, competitors?: CompetitorInfo[]) => {
+  const handleCreateGroup = async (title: string, topic: TopicInput, brand: BrandInfo, competitors?: CompetitorInfo[]) => {
     try {
-      const newGroup = await createGroup.mutateAsync({ title, brand, competitors })
+      const newGroup = await createGroup.mutateAsync({ title, topic, brand, competitors })
       // After creating, select it
       await handleSelectGroup(newGroup.id)
     } catch {
@@ -285,6 +285,7 @@ export function MatchedTopicsStep({ state, dispatch, onClose }: MatchedTopicsSte
                 isAddingPrompt={addPromptsToGroup.isPending}
                 isCreatingGroup={createGroup.isPending}
                 addingToGroupId={addingToGroupId}
+                defaultTopicId={pendingTopicId ?? undefined}
               />
             </div>
           </div>

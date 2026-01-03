@@ -15,6 +15,9 @@ Tests the complete user journey:
 import uuid
 from decimal import Decimal
 
+# Default topic input using seeded topic ID 1
+DEFAULT_TOPIC = {"existing_topic_id": 1}
+
 
 def test_complete_report_user_flow(client):
     """Test complete user journey: signup → reports → billing.
@@ -57,11 +60,12 @@ def test_complete_report_user_flow(client):
     initial_balance = Decimal(str(balance_response.json()["available_balance"]))
     assert initial_balance == Decimal("10.00"), f"Expected 10.00, got {initial_balance}"
 
-    # === STEP 4: Create group (brand is required) ===
+    # === STEP 4: Create group (brand and topic are required) ===
     group_response = client.post(
         "/prompt-groups/api/v1/groups",
         json={
             "title": "Report Test Group",
+            "topic": DEFAULT_TOPIC,
             "brand": {"name": "TestBrand", "domain": "testbrand.com", "variations": ["test"]},
         },
         headers=auth_headers,

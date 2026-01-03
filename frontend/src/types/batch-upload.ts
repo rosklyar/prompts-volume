@@ -30,7 +30,8 @@ export interface BatchAnalyzeResponse {
 export interface BatchCreateRequest {
   prompts: string[]          // Original prompt texts
   selected_indices: number[] // Indices to create
-  topic_id?: number | null   // Optional topic
+  topic_id?: number | null   // Optional topic (for admin)
+  group_id?: number | null   // Optional group (for user - derives topic from group)
 }
 
 export interface BatchCreateResponse {

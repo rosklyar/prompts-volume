@@ -7,9 +7,8 @@
  * 3. Create new prompts → Bind all to group
  */
 
-import { useState, useRef, useCallback, useMemo } from "react"
+import { useState, useRef, useCallback } from "react"
 import { useAnalyzeBatch, useCreateBatchPrompts, useBindPromptsToGroup, parseCSV } from "@/hooks/useBatchUpload"
-import { useTopics } from "@/hooks/useAdminPrompts"
 import type {
   BatchUploadStep,
   BatchAnalyzeResponse,
@@ -17,7 +16,6 @@ import type {
   BatchCreateResponse,
 } from "@/types/batch-upload"
 import type { AddPromptsResult } from "@/client/api"
-import type { Topic } from "@/types/admin"
 
 // Auto-selection threshold: if similarity >= 98%, auto-select the match
 const AUTO_SELECT_THRESHOLD = 0.98
@@ -61,29 +59,11 @@ export function BatchUploadModal({
   const [isDragging, setIsDragging] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [processingError, setProcessingError] = useState<string | null>(null)
-  const [selectedTopicId, setSelectedTopicId] = useState<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const analyzeMutation = useAnalyzeBatch()
   const createMutation = useCreateBatchPrompts()
   const bindMutation = useBindPromptsToGroup()
-  const { data: topicsData, isLoading: isLoadingTopics } = useTopics()
-
-  // Group topics by business domain and country for the dropdown
-  const groupedTopics = useMemo(() => {
-    if (!topicsData?.topics) return null
-    return topicsData.topics.reduce(
-      (acc, topic) => {
-        const key = `${topic.business_domain_name} (${topic.country_name})`
-        if (!acc[key]) {
-          acc[key] = []
-        }
-        acc[key].push(topic)
-        return acc
-      },
-      {} as Record<string, Topic[]>
-    )
-  }, [topicsData])
 
   // Reset modal state
   const resetState = useCallback(() => {
@@ -98,7 +78,6 @@ export function BatchUploadModal({
     setIsDragging(false)
     setIsProcessing(false)
     setProcessingError(null)
-    setSelectedTopicId(null)
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
     }
@@ -284,12 +263,12 @@ export function BatchUploadModal({
       let bindResult: AddPromptsResult | null = null
       const allPromptIds: number[] = [...existingPromptIds]
 
-      // Step 1: Create new prompts if any
+      // Step 1: Create new prompts if any (topic is derived from group)
       if (indicesToCreate.length > 0) {
         createResult = await createMutation.mutateAsync({
           prompts,
           selected_indices: indicesToCreate,
-          topic_id: selectedTopicId,
+          group_id: groupId,
         })
         allPromptIds.push(...createResult.prompt_ids)
       }
@@ -460,43 +439,6 @@ export function BatchUploadModal({
                 </p>
                 <p className="text-xs text-gray-400">
                   Single column with one prompt per line (max 100)
-                </p>
-              </div>
-
-              {/* Topic selector */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">
-                  Topic (optional)
-                </label>
-                <select
-                  value={selectedTopicId ?? ""}
-                  onChange={(e) =>
-                    setSelectedTopicId(
-                      e.target.value ? parseInt(e.target.value, 10) : null
-                    )
-                  }
-                  disabled={isLoadingTopics}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl
-                    focus:ring-2 focus:ring-gray-400/20 focus:border-gray-300
-                    outline-none transition-all bg-white disabled:bg-gray-100 text-sm"
-                  style={{
-                    ["--tw-ring-color" as string]: `${accentColor}30`,
-                  }}
-                >
-                  <option value="">No topic</option>
-                  {groupedTopics &&
-                    Object.entries(groupedTopics).map(([groupName, topics]) => (
-                      <optgroup key={groupName} label={groupName}>
-                        {topics.map((topic) => (
-                          <option key={topic.id} value={topic.id}>
-                            {topic.title}
-                          </option>
-                        ))}
-                      </optgroup>
-                    ))}
-                </select>
-                <p className="text-xs text-gray-400">
-                  Associate new prompts with a topic for better organization
                 </p>
               </div>
 

@@ -12,6 +12,11 @@ from src.prompts.batch.models import (
     BatchCreateResponse,
 )
 from src.prompts.batch.service import BatchPromptsService, get_batch_prompts_service
+from src.prompt_groups.services import (
+    PromptGroupService,
+    get_prompt_group_service,
+)
+from src.prompt_groups.exceptions import PromptGroupError, to_http_exception
 
 router = APIRouter(
     prefix="/prompts/api/v1/batch",
@@ -19,6 +24,7 @@ router = APIRouter(
 )
 
 BatchPromptsServiceDep = Annotated[BatchPromptsService, Depends(get_batch_prompts_service)]
+PromptGroupServiceDep = Annotated[PromptGroupService, Depends(get_prompt_group_service)]
 
 
 @router.post("/analyze", response_model=BatchAnalyzeResponse)
@@ -42,18 +48,30 @@ async def create_prompts(
     request: BatchCreateRequest,
     current_user: CurrentUser,
     batch_service: BatchPromptsServiceDep,
+    group_service: PromptGroupServiceDep,
 ):
     """Create new prompts via priority pipeline.
 
     Creates prompts for selected indices only. Each prompt is:
     - Checked for duplicates (>= 99.5% similarity = reuse existing)
-    - Created with optional topic_id
+    - Created with topic_id (derived from group_id if provided, else explicit topic_id)
     - Added to priority evaluation queue
 
     Returns IDs of all prompts (new and reused) for binding to groups.
     """
+    # Resolve effective topic_id
+    effective_topic_id = request.topic_id
+    if request.group_id is not None:
+        try:
+            group = await group_service.get_by_id_for_user(
+                request.group_id, current_user.id
+            )
+            effective_topic_id = group.topic_id
+        except PromptGroupError as e:
+            raise to_http_exception(e)
+
     return await batch_service.create_prompts(
         request.prompts,
         request.selected_indices,
-        request.topic_id,
+        effective_topic_id,
     )

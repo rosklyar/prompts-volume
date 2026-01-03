@@ -171,6 +171,11 @@ class PromptGroup(Base):
         index=True,
     )  # No FK - user is in users_db
     title: Mapped[str] = mapped_column(String(255), nullable=False)
+    topic_id: Mapped[int] = mapped_column(
+        ForeignKey("topics.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -193,6 +198,7 @@ class PromptGroup(Base):
     )
 
     # Relationships
+    topic: Mapped["Topic"] = relationship()
     bindings: Mapped[List["PromptGroupBinding"]] = relationship(
         back_populates="group",
         cascade="all, delete-orphan"

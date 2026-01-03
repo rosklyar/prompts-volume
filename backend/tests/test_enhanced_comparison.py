@@ -10,6 +10,9 @@ Tests the new EnhancedComparisonResponse with:
 import uuid
 from decimal import Decimal
 
+# Default topic input using seeded topic ID 1
+DEFAULT_TOPIC = {"existing_topic_id": 1}
+
 
 def test_enhanced_comparison_fresh_data_detection(client):
     """Test that compare detects prompts with fresher answers than last report."""
@@ -38,6 +41,7 @@ def test_enhanced_comparison_fresh_data_detection(client):
         "/prompt-groups/api/v1/groups",
         json={
             "title": "Fresh Data Test Group",
+            "topic": DEFAULT_TOPIC,
             "brand": {"name": "TestBrand", "domain": "test.com", "variations": []},
         },
         headers=auth_headers,
@@ -152,6 +156,7 @@ def test_enhanced_comparison_brand_change_detection(client):
         "/prompt-groups/api/v1/groups",
         json={
             "title": "Brand Change Test Group",
+            "topic": DEFAULT_TOPIC,
             "brand": {"name": "OriginalBrand", "domain": "original.com", "variations": []},
             "competitors": [{"name": "Comp1", "domain": "comp1.com", "variations": []}],
         },
@@ -284,6 +289,7 @@ def test_enhanced_comparison_time_estimations(client):
         "/prompt-groups/api/v1/groups",
         json={
             "title": "Time Estimation Test Group",
+            "topic": DEFAULT_TOPIC,
             "brand": {"name": "TestBrand", "domain": "test.com", "variations": []},
         },
         headers=auth_headers,
@@ -384,6 +390,7 @@ def test_enhanced_comparison_cost_estimation(client):
         "/prompt-groups/api/v1/groups",
         json={
             "title": "Cost Estimation Test Group",
+            "topic": DEFAULT_TOPIC,
             "brand": {"name": "TestBrand", "domain": "test.com", "variations": []},
         },
         headers=auth_headers,
@@ -475,6 +482,7 @@ def test_enhanced_comparison_can_generate_logic(client):
         "/prompt-groups/api/v1/groups",
         json={
             "title": "Generate Logic Test Group",
+            "topic": DEFAULT_TOPIC,
             "brand": {"name": "TestBrand", "domain": "test.com", "variations": []},
         },
         headers=auth_headers,

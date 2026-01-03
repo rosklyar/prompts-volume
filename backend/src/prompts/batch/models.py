@@ -61,7 +61,10 @@ class BatchCreateRequest(BaseModel):
         ..., min_length=1, description="Indices of prompts to create"
     )
     topic_id: int | None = Field(
-        None, description="Optional topic ID to assign to prompts"
+        None, description="Optional topic ID to assign to prompts (admin use)"
+    )
+    group_id: int | None = Field(
+        None, description="Optional group ID to derive topic from (user use)"
     )
 
     @field_validator("prompts")

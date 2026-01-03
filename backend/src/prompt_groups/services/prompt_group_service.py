@@ -5,6 +5,7 @@ from typing import List, Optional, Tuple
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from src.database.models import PromptGroup, PromptGroupBinding
 from src.prompt_groups.exceptions import (
@@ -28,14 +29,16 @@ class PromptGroupService:
         self,
         user_id: str,
         title: str,
+        topic_id: int,
         brand: dict,
         competitors: Optional[List[dict]] = None
     ) -> PromptGroup:
-        """Create a new prompt group.
+        """Create a new prompt group with topic binding.
 
         Args:
             user_id: The user ID who owns the group
             title: The group title
+            topic_id: The topic ID to bind (immutable after creation)
             brand: Brand dict with name, domain, variations
             competitors: Optional list of competitor dicts
 
@@ -49,6 +52,7 @@ class PromptGroupService:
         group = PromptGroup(
             user_id=user_id,
             title=title,
+            topic_id=topic_id,
             brand=brand,
             competitors=competitors
         )
@@ -57,8 +61,12 @@ class PromptGroupService:
         return group
 
     async def get_by_id(self, group_id: int) -> Optional[PromptGroup]:
-        """Get a group by ID."""
-        stmt = select(PromptGroup).where(PromptGroup.id == group_id)
+        """Get a group by ID with topic eagerly loaded."""
+        stmt = (
+            select(PromptGroup)
+            .options(selectinload(PromptGroup.topic))
+            .where(PromptGroup.id == group_id)
+        )
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -80,9 +88,11 @@ class PromptGroupService:
         """Get all groups for a user with prompt counts.
 
         Returns list of (group, prompt_count) tuples, ordered by creation date.
+        Eagerly loads topic relationship.
         """
         stmt = (
             select(PromptGroup, func.count(PromptGroupBinding.id).label("prompt_count"))
+            .options(selectinload(PromptGroup.topic))
             .outerjoin(
                 PromptGroupBinding, PromptGroup.id == PromptGroupBinding.group_id
             )

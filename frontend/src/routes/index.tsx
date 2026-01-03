@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button"
 import { GroupsGrid, GroupSelector } from "@/components/groups"
 import { BalanceIndicator } from "@/components/billing"
 import { Check } from "lucide-react"
-import type { BrandInfo, CompetitorInfo } from "@/types/groups"
+import type { BrandInfo, CompetitorInfo, TopicInput } from "@/types/groups"
 
 export const Route = createFileRoute("/")({
   component: PromptDiscovery,
@@ -221,8 +221,8 @@ function PromptDiscovery() {
 
   // Handle creating a new group (from GroupSelector)
   const handleCreateGroup = useCallback(
-    async (title: string, brand: BrandInfo, competitors?: CompetitorInfo[]) => {
-      const result = await createGroup.mutateAsync({ title, brand, competitors })
+    async (title: string, topic: TopicInput, brand: BrandInfo, competitors?: CompetitorInfo[]) => {
+      const result = await createGroup.mutateAsync({ title, topic, brand, competitors })
       // After creating, auto-select the new group
       if (result?.id && pendingPrompts) {
         await handleSelectGroup(result.id)

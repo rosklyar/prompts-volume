@@ -86,10 +86,10 @@ export function EditableTitle({
   return (
     <button
       onClick={() => setIsEditing(true)}
-      className="group/title flex items-center gap-2 text-left max-w-full"
+      className="group/title flex items-center gap-2 text-left w-full min-w-0"
     >
       <h3
-        className="font-['Fraunces'] text-lg font-medium truncate"
+        className="font-['Fraunces'] text-lg font-medium truncate min-w-0"
         style={{ color: accentColor }}
       >
         {title}

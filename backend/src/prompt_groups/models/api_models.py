@@ -3,9 +3,41 @@
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from src.prompt_groups.models.brand_models import BrandModel, CompetitorModel
+
+
+class CreateTopicInput(BaseModel):
+    """Input for creating a new topic inline with group."""
+
+    title: str = Field(..., min_length=1, max_length=200)
+    description: str = Field(..., min_length=1)
+    business_domain_id: int = Field(..., gt=0)
+    country_id: int = Field(..., gt=0)
+
+
+class TopicInput(BaseModel):
+    """Topic selection or creation input.
+
+    Provide exactly one of: existing_topic_id OR new_topic.
+    """
+
+    existing_topic_id: Optional[int] = Field(
+        None, description="Select existing topic by ID"
+    )
+    new_topic: Optional[CreateTopicInput] = Field(
+        None, description="Create new topic inline"
+    )
+
+    @model_validator(mode="after")
+    def exactly_one_option(self) -> "TopicInput":
+        """Ensure exactly one of existing_topic_id or new_topic is provided."""
+        has_existing = self.existing_topic_id is not None
+        has_new = self.new_topic is not None
+        if has_existing == has_new:
+            raise ValueError("Provide exactly one: existing_topic_id OR new_topic")
+        return self
 
 
 class CreateGroupRequest(BaseModel):
@@ -13,6 +45,9 @@ class CreateGroupRequest(BaseModel):
 
     title: str = Field(
         ..., min_length=1, max_length=255, description="Group title (required)"
+    )
+    topic: TopicInput = Field(
+        ..., description="Topic binding (required, immutable after creation)"
     )
     brand: BrandModel = Field(
         ...,
@@ -109,6 +144,8 @@ class GroupSummaryResponse(BaseModel):
     prompt_count: int
     brand_name: str
     competitor_count: int
+    topic_id: int
+    topic_title: str
     created_at: datetime
     updated_at: datetime
 
@@ -120,6 +157,9 @@ class GroupDetailResponse(BaseModel):
 
     id: int
     title: str
+    topic_id: int
+    topic_title: str
+    topic_description: str
     created_at: datetime
     updated_at: datetime
     brand: BrandModel

@@ -78,6 +78,7 @@ export function GroupCard({
 }: GroupCardProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showBrandEditor, setShowBrandEditor] = useState(false)
+  const [brandEditorFocus, setBrandEditorFocus] = useState<"brand" | "competitors">("brand")
   const [showBatchUpload, setShowBatchUpload] = useState(false)
   const [isReportCollapsed, setIsReportCollapsed] = useState(true)
   const [showPreviewModal, setShowPreviewModal] = useState(false)
@@ -213,7 +214,7 @@ export function GroupCard({
               {/* Expand/Collapse toggle */}
               <button
                 onClick={onToggleExpand}
-                className="p-1.5 -ml-1.5 rounded-lg hover:bg-white/80 transition-colors"
+                className="p-1.5 -ml-1.5 rounded-lg hover:bg-white/80 transition-colors flex-shrink-0"
                 aria-label={isExpanded ? "Collapse group" : "Expand group"}
               >
                 <svg
@@ -227,28 +228,46 @@ export function GroupCard({
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                 </svg>
               </button>
-              <EditableTitle
-                title={group.title}
-                isEditable={true}
-                accentColor={colors.accent}
-                onSave={onUpdateTitle}
-              />
-              <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-white/80 text-gray-500 uppercase tracking-wider">
-                {prompts.length} prompt{prompts.length !== 1 ? "s" : ""}
-              </span>
-              {brand && (
-                <span
-                  className="text-[10px] font-semibold px-2.5 py-1 rounded-full uppercase tracking-wider"
-                  style={{ backgroundColor: `${colors.accent}15`, color: colors.accent }}
+              {/* Fixed width container for group name */}
+              <div className="w-96 flex-shrink-0">
+                <EditableTitle
+                  title={group.title}
+                  isEditable={true}
+                  accentColor={colors.accent}
+                  onSave={onUpdateTitle}
+                />
+              </div>
+              {/* Badges */}
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-white/80 text-gray-500 uppercase tracking-wider">
+                  {prompts.length} prompt{prompts.length !== 1 ? "s" : ""}
+                </span>
+                {brand && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setBrandEditorFocus("brand")
+                      setShowBrandEditor(true)
+                    }}
+                    className="text-[10px] font-semibold px-2.5 py-1 rounded-full uppercase tracking-wider transition-all hover:scale-105"
+                    style={{ backgroundColor: `${colors.accent}15`, color: colors.accent }}
+                    title="Edit brand"
+                  >
+                    {brand.name}
+                  </button>
+                )}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setBrandEditorFocus("competitors")
+                    setShowBrandEditor(true)
+                  }}
+                  className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-gray-100 text-gray-500 uppercase tracking-wider transition-all hover:bg-gray-200 hover:text-gray-600"
+                  title="Edit competitors"
                 >
-                  {brand.name}
-                </span>
-              )}
-              {competitors.length > 0 && (
-                <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-gray-100 text-gray-500 uppercase tracking-wider">
                   {competitors.length} competitor{competitors.length !== 1 ? "s" : ""}
-                </span>
-              )}
+                </button>
+              </div>
             </div>
 
             {/* Actions */}
@@ -306,28 +325,6 @@ export function GroupCard({
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                  />
-                </svg>
-              </button>
-
-              {/* Brand config button */}
-              <button
-                onClick={() => setShowBrandEditor(true)}
-                className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-white/80 transition-colors"
-                aria-label="Configure brands"
-                title="Configure brands"
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z"
                   />
                 </svg>
               </button>
@@ -475,6 +472,7 @@ export function GroupCard({
           onCompetitorsChange={onCompetitorsChange}
           accentColor={colors.accent}
           onClose={() => setShowBrandEditor(false)}
+          initialFocus={brandEditorFocus}
         />
       )}
 

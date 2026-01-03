@@ -1,4 +1,4 @@
-import type { BrandInfo, CompetitorInfo } from "@/types/groups"
+import type { BrandInfo, CompetitorInfo, TopicInput } from "@/types/groups"
 import type {
   BatchAnalyzeResponse,
   BatchCreateRequest,
@@ -173,6 +173,8 @@ export interface GroupSummary {
   prompt_count: number
   brand_name: string
   competitor_count: number
+  topic_id: number
+  topic_title: string
   created_at: string
   updated_at: string
 }
@@ -187,6 +189,9 @@ export interface PromptInGroup {
 export interface GroupDetail {
   id: number
   title: string
+  topic_id: number
+  topic_title: string
+  topic_description: string
   created_at: string
   updated_at: string
   brand: BrandInfo
@@ -283,13 +288,14 @@ export const groupsApi = {
 
   async createGroup(
     title: string,
+    topic: TopicInput,
     brand: BrandInfo,
     competitors?: CompetitorInfo[]
   ): Promise<GroupSummary> {
     const response = await fetchWithAuth("/prompt-groups/api/v1/groups", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, brand, competitors }),
+      body: JSON.stringify({ title, topic, brand, competitors }),
     })
     return response.json()
   },

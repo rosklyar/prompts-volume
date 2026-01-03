@@ -21,6 +21,7 @@ import type { GroupDetail, PromptInGroup, EvaluationAnswer } from "@/client/api"
 import type {
   BrandInfo,
   CompetitorInfo,
+  TopicInput,
   BrandMentionResult,
   BrandVisibilityScore,
   CitationLeaderboard,
@@ -283,8 +284,8 @@ export function GroupsGrid() {
   }
 
   // Handle group creation
-  const handleCreateGroup = (title: string, brand: BrandInfo, competitors?: CompetitorInfo[]) => {
-    createGroup.mutate({ title, brand, competitors })
+  const handleCreateGroup = (title: string, topic: TopicInput, brand: BrandInfo, competitors?: CompetitorInfo[]) => {
+    createGroup.mutate({ title, topic, brand, competitors })
   }
 
   // Handle group update
