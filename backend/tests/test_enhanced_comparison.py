@@ -14,7 +14,7 @@ from decimal import Decimal
 DEFAULT_TOPIC = {"existing_topic_id": 1}
 
 
-def test_enhanced_comparison_fresh_data_detection(client):
+def test_enhanced_comparison_fresh_data_detection(client, eval_auth_headers):
     """Test that compare detects prompts with fresher answers than last report."""
     # === STEP 1: Sign up and login ===
     unique_email = f"test-fresh-{uuid.uuid4()}@example.com"
@@ -53,6 +53,7 @@ def test_enhanced_comparison_fresh_data_detection(client):
     poll_resp = client.post(
         "/evaluations/api/v1/poll",
         json={"assistant_name": "ChatGPT", "plan_name": "PLUS"},
+        headers=eval_auth_headers,
     )
     assert poll_resp.status_code == 200
     prompt_id = poll_resp.json()["prompt_id"]
@@ -68,6 +69,7 @@ def test_enhanced_comparison_fresh_data_detection(client):
                 "timestamp": "2024-01-01T00:00:00Z",
             },
         },
+        headers=eval_auth_headers,
     )
     assert submit_resp.status_code == 200
 
@@ -129,7 +131,7 @@ def test_enhanced_comparison_fresh_data_detection(client):
     assert compare["generation_disabled_reason"] == "no_new_data_or_changes"
 
 
-def test_enhanced_comparison_brand_change_detection(client):
+def test_enhanced_comparison_brand_change_detection(client, eval_auth_headers):
     """Test that compare detects brand/competitors changes."""
     # === STEP 1: Sign up and login ===
     unique_email = f"test-brand-{uuid.uuid4()}@example.com"
@@ -169,6 +171,7 @@ def test_enhanced_comparison_brand_change_detection(client):
     poll_resp = client.post(
         "/evaluations/api/v1/poll",
         json={"assistant_name": "ChatGPT", "plan_name": "PLUS"},
+        headers=eval_auth_headers,
     )
     assert poll_resp.status_code == 200
     prompt_id = poll_resp.json()["prompt_id"]
@@ -184,6 +187,7 @@ def test_enhanced_comparison_brand_change_detection(client):
                 "timestamp": "2024-01-01T00:00:00Z",
             },
         },
+        headers=eval_auth_headers,
     )
     assert submit_resp.status_code == 200
 
@@ -262,7 +266,7 @@ def test_enhanced_comparison_brand_change_detection(client):
     assert compare["can_generate"] is True
 
 
-def test_enhanced_comparison_time_estimations(client):
+def test_enhanced_comparison_time_estimations(client, eval_auth_headers):
     """Test that compare returns correct time estimations."""
     # === STEP 1: Sign up and login ===
     unique_email = f"test-time-{uuid.uuid4()}@example.com"
@@ -301,6 +305,7 @@ def test_enhanced_comparison_time_estimations(client):
     poll_resp = client.post(
         "/evaluations/api/v1/poll",
         json={"assistant_name": "ChatGPT", "plan_name": "PLUS"},
+        headers=eval_auth_headers,
     )
     assert poll_resp.status_code == 200
     prompt_id = poll_resp.json()["prompt_id"]
@@ -339,6 +344,7 @@ def test_enhanced_comparison_time_estimations(client):
                 "timestamp": "2024-01-01T00:00:00Z",
             },
         },
+        headers=eval_auth_headers,
     )
     assert submit_resp.status_code == 200
 
@@ -363,7 +369,7 @@ def test_enhanced_comparison_time_estimations(client):
     assert pf["next_refresh_estimate"] == "up to 6 hours"
 
 
-def test_enhanced_comparison_cost_estimation(client):
+def test_enhanced_comparison_cost_estimation(client, eval_auth_headers):
     """Test that compare returns accurate cost estimation."""
     # === STEP 1: Sign up and login ===
     unique_email = f"test-cost-{uuid.uuid4()}@example.com"
@@ -404,6 +410,7 @@ def test_enhanced_comparison_cost_estimation(client):
         poll_resp = client.post(
             "/evaluations/api/v1/poll",
             json={"assistant_name": "ChatGPT", "plan_name": "PLUS"},
+            headers=eval_auth_headers,
         )
         assert poll_resp.status_code == 200
         prompt_id = poll_resp.json()["prompt_id"]
@@ -420,6 +427,7 @@ def test_enhanced_comparison_cost_estimation(client):
                     "timestamp": "2024-01-01T00:00:00Z",
                 },
             },
+            headers=eval_auth_headers,
         )
         assert submit_resp.status_code == 200
 
@@ -455,7 +463,7 @@ def test_enhanced_comparison_cost_estimation(client):
     assert compare["needs_top_up"] is False
 
 
-def test_enhanced_comparison_can_generate_logic(client):
+def test_enhanced_comparison_can_generate_logic(client, eval_auth_headers):
     """Test can_generate logic with various scenarios."""
     # === STEP 1: Sign up and login ===
     unique_email = f"test-gen-{uuid.uuid4()}@example.com"
@@ -507,6 +515,7 @@ def test_enhanced_comparison_can_generate_logic(client):
     poll_resp = client.post(
         "/evaluations/api/v1/poll",
         json={"assistant_name": "ChatGPT", "plan_name": "PLUS"},
+        headers=eval_auth_headers,
     )
     assert poll_resp.status_code == 200
     prompt_id = poll_resp.json()["prompt_id"]
@@ -522,6 +531,7 @@ def test_enhanced_comparison_can_generate_logic(client):
                 "timestamp": "2024-01-01T00:00:00Z",
             },
         },
+        headers=eval_auth_headers,
     )
     assert submit_resp.status_code == 200
 

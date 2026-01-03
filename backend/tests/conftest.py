@@ -21,6 +21,7 @@ from src.main import app
 from src.auth.crud import create_user
 from src.auth.models import UserCreate
 from src.auth.security import create_access_token
+from src.config.settings import settings
 from src.businessdomain.services import BusinessDomainService
 from src.evaluations.services.evaluation_service import EvaluationService
 from src.geography.services import CountryService, LanguageService
@@ -336,3 +337,28 @@ def superuser_auth_headers(superuser_auth_token):
     Returns a dict with Authorization header.
     """
     return {"Authorization": f"Bearer {superuser_auth_token}"}
+
+
+# Test token for evaluation API
+TEST_EVALUATION_TOKEN = "test-eval-token-12345"
+
+
+@pytest.fixture(scope="function", autouse=True)
+def setup_evaluation_token():
+    """
+    Fixture that sets up a test evaluation token for all tests.
+    This token is used by the evaluation API endpoints.
+    """
+    original_value = settings.evaluation_api_tokens
+    settings.evaluation_api_tokens = TEST_EVALUATION_TOKEN
+    yield
+    settings.evaluation_api_tokens = original_value
+
+
+@pytest.fixture(scope="function")
+def eval_auth_headers():
+    """
+    Fixture that provides authorization headers for evaluation API.
+    Returns a dict with Authorization header containing the test evaluation token.
+    """
+    return {"Authorization": f"Bearer {TEST_EVALUATION_TOKEN}"}

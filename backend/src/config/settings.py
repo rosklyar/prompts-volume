@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     # Evaluation configuration
     min_days_since_last_evaluation: int = 1
     evaluation_timeout_hours: int = 2
+    evaluation_api_tokens: str = ""  # CSV list of allowed tokens for evaluation API
 
     # Priority prompts configuration
     max_priority_prompts_per_request: int = 50

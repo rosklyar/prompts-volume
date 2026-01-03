@@ -19,7 +19,7 @@ from decimal import Decimal
 DEFAULT_TOPIC = {"existing_topic_id": 1}
 
 
-def test_complete_report_user_flow(client):
+def test_complete_report_user_flow(client, eval_auth_headers):
     """Test complete user journey: signup → reports → billing.
 
     This test validates the entire reports and billing integration:
@@ -80,6 +80,7 @@ def test_complete_report_user_flow(client):
         poll_resp = client.post(
             "/evaluations/api/v1/poll",
             json={"assistant_name": "ChatGPT", "plan_name": "PLUS"},
+            headers=eval_auth_headers,
         )
         assert poll_resp.status_code == 200, f"Poll {i} failed: {poll_resp.json()}"
         poll_data = poll_resp.json()
@@ -98,6 +99,7 @@ def test_complete_report_user_flow(client):
                     "timestamp": "2024-01-01T00:00:00Z",
                 },
             },
+            headers=eval_auth_headers,
         )
         assert submit_resp.status_code == 200, f"Submit {i} failed: {submit_resp.json()}"
 
@@ -178,6 +180,7 @@ def test_complete_report_user_flow(client):
     poll_resp = client.post(
         "/evaluations/api/v1/poll",
         json={"assistant_name": "ChatGPT", "plan_name": "PLUS"},
+        headers=eval_auth_headers,
     )
     assert poll_resp.status_code == 200, f"Poll for 3rd failed: {poll_resp.json()}"
     poll_data = poll_resp.json()
@@ -195,6 +198,7 @@ def test_complete_report_user_flow(client):
                 "timestamp": "2024-01-01T00:00:00Z",
             },
         },
+        headers=eval_auth_headers,
     )
     assert submit_resp.status_code == 200, f"Submit 3rd failed: {submit_resp.json()}"
 
