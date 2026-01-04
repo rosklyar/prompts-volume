@@ -358,7 +358,7 @@ def setup_evaluation_token():
 @pytest.fixture(scope="function")
 def eval_auth_headers():
     """
-    Fixture that provides authorization headers for evaluation API.
-    Returns a dict with Authorization header containing the test evaluation token.
+    Fixture that provides bot secret headers for evaluation API.
+    Returns a dict with X-Bot-Secret header containing the test token.
     """
-    return {"Authorization": f"Bearer {TEST_EVALUATION_TOKEN}"}
+    return {"X-Bot-Secret": TEST_EVALUATION_TOKEN}

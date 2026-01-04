@@ -14,32 +14,25 @@ def get_allowed_tokens() -> set[str]:
     return {t.strip() for t in settings.evaluation_api_tokens.split(",") if t.strip()}
 
 
-def verify_evaluation_token(
-    authorization: str = Header(..., alias="Authorization"),
+def verify_bot_secret(
+    x_bot_secret: str = Header(..., alias="X-Bot-Secret"),
 ) -> str:
-    """Verify evaluation API token from Authorization header."""
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authorization header format",
-        )
-
-    token = authorization.removeprefix("Bearer ").strip()
+    """Verify bot secret from X-Bot-Secret header."""
     allowed_tokens = get_allowed_tokens()
 
     if not allowed_tokens:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="No evaluation tokens configured",
+            detail="No bot secrets configured",
         )
 
-    if token not in allowed_tokens:
+    if x_bot_secret not in allowed_tokens:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid evaluation token",
+            detail="Invalid bot secret",
         )
 
-    return token
+    return x_bot_secret
 
 
-EvaluationTokenDep = Annotated[str, Depends(verify_evaluation_token)]
+BotSecretDep = Annotated[str, Depends(verify_bot_secret)]
