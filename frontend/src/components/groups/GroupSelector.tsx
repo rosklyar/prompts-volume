@@ -6,7 +6,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from "react"
-import type { GroupSummary, BrandInfo, CompetitorInfo } from "@/types/groups"
+import type { GroupSummary, BrandInfo, CompetitorInfo, TopicInput } from "@/types/groups"
 import { getGroupColor, MAX_GROUPS } from "./constants"
 import { X, Plus, Check, Loader2, FolderPlus, Globe } from "lucide-react"
 
@@ -14,12 +14,14 @@ interface GroupSelectorProps {
   groups: GroupSummary[]
   isLoadingGroups: boolean
   onSelectGroup: (groupId: number) => void
-  onCreateGroup: (title: string, brand: BrandInfo, competitors?: CompetitorInfo[]) => Promise<void>
+  onCreateGroup: (title: string, topic: TopicInput, brand: BrandInfo, competitors?: CompetitorInfo[]) => Promise<void>
   onCancel: () => void
   isAddingPrompt: boolean
   isCreatingGroup: boolean
   addingToGroupId?: number | null
   maxGroups?: number
+  /** Default topic ID to use when creating a group (from inspiration flow) */
+  defaultTopicId?: number
 }
 
 export function GroupSelector({
@@ -32,6 +34,7 @@ export function GroupSelector({
   isCreatingGroup,
   addingToGroupId,
   maxGroups = MAX_GROUPS,
+  defaultTopicId,
 }: GroupSelectorProps) {
   const [isCreatingNew, setIsCreatingNew] = useState(false)
   const [newGroupTitle, setNewGroupTitle] = useState("")
@@ -136,6 +139,11 @@ export function GroupSelector({
     const trimmed = newGroupTitle.trim()
     const trimmedBrandName = brandName.trim()
     if (!trimmed || !trimmedBrandName) return
+    // Topic is required - use defaultTopicId if available
+    if (defaultTopicId === undefined) {
+      console.error("Cannot create group without a topic")
+      return
+    }
 
     const variations = brandVariations
       .split(",")
@@ -148,13 +156,14 @@ export function GroupSelector({
       variations,
     }
 
-    await onCreateGroup(trimmed, brand)
+    const topic: TopicInput = { existing_topic_id: defaultTopicId }
+    await onCreateGroup(trimmed, topic, brand)
     setNewGroupTitle("")
     setBrandName("")
     setBrandDomain("")
     setBrandVariations("")
     setIsCreatingNew(false)
-  }, [newGroupTitle, brandName, brandDomain, brandVariations, onCreateGroup])
+  }, [newGroupTitle, brandName, brandDomain, brandVariations, onCreateGroup, defaultTopicId])
 
   const handleTitleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Escape") {

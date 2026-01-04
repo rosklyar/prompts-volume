@@ -1,4 +1,4 @@
-import { createFileRoute, redirect } from "@tanstack/react-router"
+import { createFileRoute, redirect, Link } from "@tanstack/react-router"
 import { useState, useRef, useEffect, useCallback, useMemo } from "react"
 import useAuth, { isLoggedIn } from "@/hooks/useAuth"
 import { useSimilarPrompts } from "@/hooks/useSimilarPrompts"
@@ -11,11 +11,9 @@ import {
 } from "@/hooks/useGroups"
 import { Button } from "@/components/ui/button"
 import { GroupsGrid, GroupSelector } from "@/components/groups"
-import { InspirationModal } from "@/components/inspiration"
 import { BalanceIndicator } from "@/components/billing"
-import { Check, Sparkles } from "lucide-react"
-import { Tooltip } from "@/components/ui/tooltip"
-import type { BrandInfo, CompetitorInfo } from "@/types/groups"
+import { Check } from "lucide-react"
+import type { BrandInfo, CompetitorInfo, TopicInput } from "@/types/groups"
 
 export const Route = createFileRoute("/")({
   component: PromptDiscovery,
@@ -33,7 +31,7 @@ interface PendingPrompts {
 }
 
 function PromptDiscovery() {
-  const { logout, isUserLoading } = useAuth()
+  const { logout, isUserLoading, user } = useAuth()
   const [searchQuery, setSearchQuery] = useState("")
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState(-1)
@@ -51,8 +49,6 @@ function PromptDiscovery() {
   const [showGroupSelector, setShowGroupSelector] = useState(false)
   const [addingToGroupId, setAddingToGroupId] = useState<number | null>(null)
 
-  // State for inspiration modal
-  const [showInspirationModal, setShowInspirationModal] = useState(false)
 
   const { suggestions, isLoading, isFetching, shouldSearch } =
     useSimilarPrompts(searchQuery)
@@ -225,8 +221,8 @@ function PromptDiscovery() {
 
   // Handle creating a new group (from GroupSelector)
   const handleCreateGroup = useCallback(
-    async (title: string, brand: BrandInfo, competitors?: CompetitorInfo[]) => {
-      const result = await createGroup.mutateAsync({ title, brand, competitors })
+    async (title: string, topic: TopicInput, brand: BrandInfo, competitors?: CompetitorInfo[]) => {
+      const result = await createGroup.mutateAsync({ title, topic, brand, competitors })
       // After creating, auto-select the new group
       if (result?.id && pendingPrompts) {
         await handleSelectGroup(result.id)
@@ -438,6 +434,29 @@ function PromptDiscovery() {
       {/* Minimal header */}
       <header className="absolute top-0 right-0 p-6 z-10 flex items-center gap-3">
         <BalanceIndicator />
+        {user?.is_superuser && (
+          <Link
+            to="/admin"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium
+              text-[#C4553D] bg-[#C4553D]/10 rounded-full
+              hover:bg-[#C4553D]/20 transition-colors"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+              />
+            </svg>
+            Admin
+          </Link>
+        )}
         <Button
           variant="ghost"
           onClick={logout}
@@ -457,9 +476,8 @@ function PromptDiscovery() {
               Prompt Volume
             </h1>
 
-            {/* Search input with inspiration button */}
-            <div className="relative flex items-center gap-3">
-              <div className="relative flex-1">
+            {/* Search input */}
+            <div className="relative">
                 <input
                 ref={inputRef}
                 type="text"
@@ -512,23 +530,6 @@ function PromptDiscovery() {
                   <div className="w-5 h-5 border-2 border-[#C4553D]/30 border-t-[#C4553D] rounded-full animate-spin" />
                 </div>
               )}
-              </div>
-
-              {/* Inspiration button */}
-              <Tooltip content="Get prompt inspiration from DataForSEO" side="bottom">
-                <button
-                  onClick={() => setShowInspirationModal(true)}
-                  className="flex-shrink-0 w-14 h-14 flex items-center justify-center
-                    bg-white rounded-2xl border-0
-                    shadow-[0_4px_24px_-4px_rgba(0,0,0,0.08)]
-                    hover:shadow-[0_4px_32px_-4px_rgba(196,85,61,0.15)]
-                    text-[#C4553D] hover:bg-[#FEF7F5]
-                    transition-all duration-300"
-                  aria-label="Get prompt inspiration from DataForSEO"
-                >
-                  <Sparkles className="w-5 h-5" />
-                </button>
-              </Tooltip>
             </div>
 
             {/* Dropdown - either suggestions or group selector */}
@@ -737,11 +738,6 @@ function PromptDiscovery() {
         </div>
       </main>
 
-      {/* Inspiration Modal */}
-      <InspirationModal
-        isOpen={showInspirationModal}
-        onClose={() => setShowInspirationModal(false)}
-      />
     </div>
   )
 }

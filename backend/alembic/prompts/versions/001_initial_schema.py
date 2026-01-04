@@ -77,8 +77,10 @@ def upgrade() -> None:
         sa.Column("prompt_text", sa.Text(), nullable=False),
         sa.Column("embedding", postgresql.ARRAY(sa.Float()), nullable=False),  # Will be cast to vector
         sa.Column("topic_id", sa.Integer(), sa.ForeignKey("topics.id", ondelete="CASCADE"), nullable=True),
+        sa.Column("user_id", sa.String(36), nullable=True),  # No FK - user is in users_db
     )
     op.create_index("ix_prompts_topic_id", "prompts", ["topic_id"])
+    op.create_index("ix_prompts_user_id", "prompts", ["user_id"])
 
     # Alter embedding column to vector type
     op.execute("ALTER TABLE prompts ALTER COLUMN embedding TYPE vector(384) USING embedding::vector(384)")
@@ -95,6 +97,12 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("user_id", sa.String(36), nullable=False),
         sa.Column("title", sa.String(255), nullable=False),
+        sa.Column(
+            "topic_id",
+            sa.Integer(),
+            sa.ForeignKey("topics.id", ondelete="RESTRICT"),
+            nullable=False,
+        ),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("NOW()")),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("NOW()")),
         sa.Column(
@@ -112,6 +120,7 @@ def upgrade() -> None:
         sa.UniqueConstraint("user_id", "title", name="uq_prompt_groups_user_title"),
     )
     op.create_index("ix_prompt_groups_user_id", "prompt_groups", ["user_id"])
+    op.create_index("ix_prompt_groups_topic_id", "prompt_groups", ["topic_id"])
 
     # Create prompt_group_bindings table
     op.create_table(

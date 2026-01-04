@@ -69,15 +69,25 @@ export function useReportComparison(groupId: number, enabled: boolean = true) {
 
 /**
  * Check if there's new data to generate a report
- * Returns hasFreshData boolean and related data
+ * Returns hasFreshData boolean, canGenerate, and related data
  */
 export function useHasFreshData(groupId: number, enabled: boolean = true) {
   const { data: comparison, isLoading, error } = useReportComparison(groupId, enabled)
 
   return {
-    hasFreshData: comparison ? comparison.fresh_data_count > 0 : null,
-    freshDataCount: comparison?.fresh_data_count ?? 0,
+    // Legacy field for backward compatibility
+    hasFreshData: comparison ? comparison.fresh_evaluations > 0 : null,
+    freshDataCount: comparison?.fresh_evaluations ?? 0,
     hasExistingReport: comparison?.last_report_at !== null,
+
+    // New fields from enhanced comparison
+    canGenerate: comparison?.can_generate ?? false,
+    generationDisabledReason: comparison?.generation_disabled_reason ?? null,
+    promptsWithFresherAnswers: comparison?.prompts_with_fresher_answers ?? 0,
+    brandChanged: comparison?.brand_changes?.brand_changed ?? false,
+    competitorsChanged: comparison?.brand_changes?.competitors_changed ?? false,
+    promptFreshness: comparison?.prompt_freshness ?? [],
+
     isLoading,
     error,
     comparison,

@@ -16,6 +16,20 @@ export type CompetitorInfo = CompanyInfo
 // Legacy alias for backwards compatibility during migration
 export type BrandVariation = CompanyInfo
 
+// ===== Topic Input Types =====
+
+export interface CreateTopicInput {
+  title: string
+  description: string
+  business_domain_id: number
+  country_id: number
+}
+
+export interface TopicInput {
+  existing_topic_id?: number
+  new_topic?: CreateTopicInput
+}
+
 // ===== Group Types =====
 
 export interface GroupSummary {
@@ -24,6 +38,8 @@ export interface GroupSummary {
   prompt_count: number
   brand_name: string
   competitor_count: number
+  topic_id: number
+  topic_title: string
   created_at: string
   updated_at: string
 }
@@ -38,6 +54,9 @@ export interface PromptInGroup {
 export interface GroupDetail {
   id: number
   title: string
+  topic_id: number
+  topic_title: string
+  topic_description: string
   created_at: string
   updated_at: string
   brand: BrandInfo
@@ -107,6 +126,22 @@ export interface MentionPosition {
 export interface BrandMentionResult {
   brand_name: string
   mentions: MentionPosition[]
+}
+
+// ===== Domain Mention Types =====
+
+export interface DomainMentionPosition {
+  start: number
+  end: number
+  matched_text: string
+  matched_domain: string
+}
+
+export interface DomainMentionResult {
+  name: string           // Company name
+  domain: string         // The domain searched for
+  is_brand: boolean      // True for brand, False for competitor
+  mentions: DomainMentionPosition[]
 }
 
 // ===== Citation Leaderboard Types =====

@@ -20,6 +20,7 @@ from src.evaluations.models.api_models import (
     SubmitAnswerRequest,
     SubmitAnswerResponse,
 )
+from src.evaluations.deps import BotSecretDep
 from src.evaluations.services.evaluation_service import (
     EvaluationService,
     get_evaluation_service,
@@ -34,6 +35,7 @@ router = APIRouter(prefix="/evaluations/api/v1", tags=["evaluations"])
 @router.post("/poll", response_model=PollResponse)
 async def poll_for_evaluation(
     request: PollRequest,
+    _secret: BotSecretDep,
     evaluation_service: EvaluationService = Depends(get_evaluation_service),
 ) -> PollResponse:
     """
@@ -83,6 +85,7 @@ async def poll_for_evaluation(
 @router.post("/submit", response_model=SubmitAnswerResponse)
 async def submit_answer(
     request: SubmitAnswerRequest,
+    _secret: BotSecretDep,
     evaluation_service: EvaluationService = Depends(get_evaluation_service),
 ) -> SubmitAnswerResponse:
     """
@@ -106,6 +109,7 @@ async def submit_answer(
 @router.post("/release", response_model=ReleaseResponse)
 async def release_evaluation(
     request: ReleaseRequest,
+    _secret: BotSecretDep,
     evaluation_service: EvaluationService = Depends(get_evaluation_service),
 ) -> ReleaseResponse:
     """

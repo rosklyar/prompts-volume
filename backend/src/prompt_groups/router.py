@@ -17,20 +17,14 @@ from src.prompt_groups.models.api_models import (
     RemovePromptsFromGroupRequest,
     UpdateGroupRequest,
 )
-from src.prompt_groups.models.batch_models import (
-    BatchAnalyzeRequest,
-    BatchAnalyzeResponse,
-    BatchConfirmRequest,
-    BatchConfirmResponse,
-)
 from src.prompt_groups.models.brand_models import BrandModel, CompetitorModel
 from src.prompt_groups.services import (
-    BatchUploadService,
     PromptGroupBindingService,
     PromptGroupService,
-    get_batch_upload_service,
+    TopicResolutionService,
     get_prompt_group_binding_service,
     get_prompt_group_service,
+    get_topic_resolution_service,
 )
 
 router = APIRouter(prefix="/prompt-groups/api/v1", tags=["prompt-groups"])
@@ -41,8 +35,8 @@ PromptGroupServiceDep = Annotated[
 PromptGroupBindingServiceDep = Annotated[
     PromptGroupBindingService, Depends(get_prompt_group_binding_service)
 ]
-BatchUploadServiceDep = Annotated[
-    BatchUploadService, Depends(get_batch_upload_service)
+TopicResolutionServiceDep = Annotated[
+    TopicResolutionService, Depends(get_topic_resolution_service)
 ]
 
 
@@ -53,7 +47,7 @@ async def get_user_groups(
 ):
     """Get all prompt groups for the current user.
 
-    Returns groups with prompt counts and brand info, ordered by creation date.
+    Returns groups with prompt counts, brand, and topic info, ordered by creation date.
     """
     try:
         groups_with_counts = await group_service.get_user_groups(current_user.id)
@@ -65,6 +59,8 @@ async def get_user_groups(
                 prompt_count=prompt_count,
                 brand_name=group.brand.get("name", "") if group.brand else "",
                 competitor_count=len(group.competitors) if group.competitors else 0,
+                topic_id=group.topic_id,
+                topic_title=group.topic.title,
                 created_at=group.created_at,
                 updated_at=group.updated_at,
             )
@@ -83,9 +79,14 @@ async def create_group(
     request: CreateGroupRequest,
     current_user: CurrentUser,
     group_service: PromptGroupServiceDep,
+    topic_resolver: TopicResolutionServiceDep,
 ):
-    """Create a new prompt group with brand and optional competitors."""
+    """Create a new prompt group with topic binding, brand, and optional competitors."""
     try:
+        # Resolve topic first (validates existing or creates new)
+        topic_id = await topic_resolver.resolve(request.topic)
+        topic = await topic_resolver.get_topic(topic_id)
+
         # Convert Pydantic models to dicts for storage
         brand_data = request.brand.model_dump()
         competitors_data = None
@@ -95,6 +96,7 @@ async def create_group(
         group = await group_service.create_group(
             current_user.id,
             request.title,
+            topic_id=topic_id,
             brand=brand_data,
             competitors=competitors_data
         )
@@ -104,6 +106,8 @@ async def create_group(
             prompt_count=0,
             brand_name=request.brand.name,
             competitor_count=len(request.competitors) if request.competitors else 0,
+            topic_id=topic_id,
+            topic_title=topic.title,
             created_at=group.created_at,
             updated_at=group.updated_at,
         )
@@ -118,7 +122,7 @@ async def get_group_details(
     group_service: PromptGroupServiceDep,
     binding_service: PromptGroupBindingServiceDep,
 ):
-    """Get detailed information about a group including brand, competitors, and prompts."""
+    """Get detailed information about a group including topic, brand, competitors, and prompts."""
     try:
         group = await group_service.get_by_id_for_user(group_id, current_user.id)
         prompts_data = await binding_service.get_group_with_prompts(group)
@@ -134,6 +138,9 @@ async def get_group_details(
         return GroupDetailResponse(
             id=group.id,
             title=group.title,
+            topic_id=group.topic_id,
+            topic_title=group.topic.title,
+            topic_description=group.topic.description,
             created_at=group.created_at,
             updated_at=group.updated_at,
             brand=brand,
@@ -151,7 +158,7 @@ async def update_group(
     current_user: CurrentUser,
     group_service: PromptGroupServiceDep,
 ):
-    """Update a group's title, brand, and/or competitors."""
+    """Update a group's title, brand, and/or competitors (topic cannot be changed)."""
     try:
         # Convert models to dict format if provided
         brand_data = None
@@ -182,6 +189,8 @@ async def update_group(
             prompt_count=prompt_count,
             brand_name=group.brand.get("name", "") if group.brand else "",
             competitor_count=len(group.competitors) if group.competitors else 0,
+            topic_id=group.topic_id,
+            topic_title=group.topic.title,
             created_at=group.created_at,
             updated_at=group.updated_at,
         )
@@ -254,51 +263,6 @@ async def remove_prompts_from_group(
         raise to_http_exception(e)
 
 
-@router.post("/groups/{group_id}/batch/analyze", response_model=BatchAnalyzeResponse)
-async def analyze_batch(
-    group_id: int,
-    request: BatchAnalyzeRequest,
-    current_user: CurrentUser,
-    group_service: PromptGroupServiceDep,
-    batch_service: BatchUploadServiceDep,
-):
-    """Analyze batch of prompts and find similarity matches.
-
-    For each prompt in the batch, returns top 3 similar prompts from the database
-    (if similarity >= 0.75 threshold). Use this to preview matches before confirming.
-    """
-    try:
-        # Verify group ownership
-        await group_service.get_by_id_for_user(group_id, current_user.id)
-
-        # Analyze batch
-        return await batch_service.analyze_batch(request.prompts)
-    except PromptGroupError as e:
-        raise to_http_exception(e)
-
-
-@router.post("/groups/{group_id}/batch/confirm", response_model=BatchConfirmResponse)
-async def confirm_batch(
-    group_id: int,
-    request: BatchConfirmRequest,
-    current_user: CurrentUser,
-    group_service: PromptGroupServiceDep,
-    batch_service: BatchUploadServiceDep,
-):
-    """Confirm batch selections and add prompts to group.
-
-    For each selection:
-    - If use_existing=True: binds the selected existing prompt to the group
-    - If use_existing=False: creates a new prompt via priority pipeline and binds to group
-
-    New prompts go through deduplication (99% similarity check) and are added to
-    the evaluation priority queue.
-    """
-    try:
-        # Verify group ownership
-        group = await group_service.get_by_id_for_user(group_id, current_user.id)
-
-        # Process batch
-        return await batch_service.confirm_batch(group, request)
-    except PromptGroupError as e:
-        raise to_http_exception(e)
+# Note: Batch analyze/confirm endpoints moved to shared /prompts/api/v1/batch/* endpoints.
+# Use POST /prompts/api/v1/batch/analyze and POST /prompts/api/v1/batch/create
+# then POST /prompt-groups/api/v1/groups/{id}/prompts to bind.

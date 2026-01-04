@@ -42,6 +42,30 @@ class PromptNotFoundError(PromptGroupError):
         super().__init__(f"Prompt with id {prompt_id} not found")
 
 
+class TopicNotFoundError(PromptGroupError):
+    """Raised when a topic is not found."""
+
+    def __init__(self, topic_id: int):
+        self.topic_id = topic_id
+        super().__init__(f"Topic with id {topic_id} not found")
+
+
+class InvalidBusinessDomainError(PromptGroupError):
+    """Raised when business domain doesn't exist."""
+
+    def __init__(self, business_domain_id: int):
+        self.business_domain_id = business_domain_id
+        super().__init__(f"Business domain with id {business_domain_id} not found")
+
+
+class InvalidCountryError(PromptGroupError):
+    """Raised when country doesn't exist."""
+
+    def __init__(self, country_id: int):
+        self.country_id = country_id
+        super().__init__(f"Country with id {country_id} not found")
+
+
 def to_http_exception(error: PromptGroupError) -> HTTPException:
     """Convert domain exception to HTTP exception."""
     if isinstance(error, GroupNotFoundError):
@@ -52,6 +76,12 @@ def to_http_exception(error: PromptGroupError) -> HTTPException:
         return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error))
     if isinstance(error, PromptNotFoundError):
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error))
+    if isinstance(error, TopicNotFoundError):
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error))
+    if isinstance(error, InvalidBusinessDomainError):
+        return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error))
+    if isinstance(error, InvalidCountryError):
+        return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error))
     return HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(error)
     )

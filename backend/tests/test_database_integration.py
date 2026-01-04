@@ -30,16 +30,16 @@ async def test_country_service_get_all(country_service: CountryService):
 @pytest.mark.asyncio
 async def test_country_service_create(country_service: CountryService):
     """Test creating a new country using CountryService."""
-    new_country = await country_service.create(name="United States", iso_code="US")
+    new_country = await country_service.create(name="Germany", iso_code="DE")
 
     assert new_country.id is not None
-    assert new_country.name == "United States"
-    assert new_country.iso_code == "US"
+    assert new_country.name == "Germany"
+    assert new_country.iso_code == "DE"
 
     # Verify it was saved
-    retrieved = await country_service.get_by_iso_code("US")
+    retrieved = await country_service.get_by_iso_code("DE")
     assert retrieved is not None
-    assert retrieved.name == "United States"
+    assert retrieved.name == "Germany"
 
 
 @pytest.mark.asyncio
@@ -58,26 +58,27 @@ async def test_language_service_get_all(language_service: LanguageService):
     """Test that we can get all languages using LanguageService."""
     languages = await language_service.get_all()
 
-    assert len(languages) >= 3, "Should have at least 3 languages (Ukrainian, Russian, English)"
+    assert len(languages) >= 4, "Should have at least 4 languages (Ukrainian, Russian, English, Spanish)"
     codes = [lang.code for lang in languages]
     assert "uk" in codes
     assert "ru" in codes
     assert "en" in codes
+    assert "es" in codes
 
 
 @pytest.mark.asyncio
 async def test_language_service_create(language_service: LanguageService):
     """Test creating a new language using LanguageService."""
-    new_language = await language_service.create(name="Spanish", code="es")
+    new_language = await language_service.create(name="German", code="de")
 
     assert new_language.id is not None
-    assert new_language.name == "Spanish"
-    assert new_language.code == "es"
+    assert new_language.name == "German"
+    assert new_language.code == "de"
 
     # Verify it was saved
-    retrieved = await language_service.get_by_code("es")
+    retrieved = await language_service.get_by_code("de")
     assert retrieved is not None
-    assert retrieved.name == "Spanish"
+    assert retrieved.name == "German"
 
 
 @pytest.mark.asyncio
@@ -125,17 +126,17 @@ async def test_business_domain_service_create(
 ):
     """Test creating a new business domain using BusinessDomainService."""
     new_domain = await business_domain_service.create(
-        name="saas", description="Software as a Service companies"
+        name="travel", description="Travel and hospitality technology"
     )
 
     assert new_domain.id is not None
-    assert new_domain.name == "saas"
-    assert new_domain.description == "Software as a Service companies"
+    assert new_domain.name == "travel"
+    assert new_domain.description == "Travel and hospitality technology"
 
     # Verify it was saved
-    retrieved = await business_domain_service.get_by_name("saas")
+    retrieved = await business_domain_service.get_by_name("travel")
     assert retrieved is not None
-    assert retrieved.description == "Software as a Service companies"
+    assert retrieved.description == "Travel and hospitality technology"
 
 
 @pytest.mark.asyncio
@@ -223,13 +224,13 @@ async def test_services_integration(
 
     # Create a new business domain
     domain = await business_domain_service.create(
-        name="fintech", description="Financial technology companies"
+        name="logistics", description="Logistics and supply chain technology"
     )
 
     # Create a topic for the new country and domain
     topic = await topic_service.create(
-        title="Polish Fintech Topic",
-        description="A topic for Polish fintech",
+        title="Polish Logistics Topic",
+        description="A topic for Polish logistics",
         business_domain_id=domain.id,
         country_id=country.id,
     )
@@ -244,8 +245,8 @@ async def test_services_integration(
 
     topics_by_country = await topic_service.get_by_country(country.id)
     assert len(topics_by_country) == 1
-    assert topics_by_country[0].title == "Polish Fintech Topic"
+    assert topics_by_country[0].title == "Polish Logistics Topic"
 
     topics_by_domain = await topic_service.get_by_business_domain(domain.id)
     assert len(topics_by_domain) == 1
-    assert topics_by_domain[0].title == "Polish Fintech Topic"
+    assert topics_by_domain[0].title == "Polish Logistics Topic"

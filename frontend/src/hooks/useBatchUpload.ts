@@ -1,38 +1,51 @@
 /**
  * React Query hooks for Batch Prompts Upload feature
+ *
+ * 3-step flow:
+ * 1. useAnalyzeBatch - Analyze prompts for similarity matches
+ * 2. useCreateBatchPrompts - Create new prompts via priority pipeline
+ * 3. useBindPromptsToGroup - Bind prompt IDs to group (existing endpoint)
  */
 
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { groupsApi } from "@/client/api"
+import { batchApi, groupsApi } from "@/client/api"
 import { groupKeys } from "@/hooks/useGroups"
 import { reportKeys } from "@/hooks/useReports"
 import { billingKeys } from "@/hooks/useBilling"
-import type { BatchConfirmRequest } from "@/types/batch-upload"
+import type { BatchCreateRequest } from "@/types/batch-upload"
 
 /**
  * Hook to analyze a batch of prompts for similarity matches
  */
 export function useAnalyzeBatch() {
   return useMutation({
-    mutationFn: ({ groupId, prompts }: { groupId: number; prompts: string[] }) =>
-      groupsApi.analyzeBatch(groupId, prompts),
+    mutationFn: (prompts: string[]) => batchApi.analyze(prompts),
   })
 }
 
 /**
- * Hook to confirm batch selections and add prompts to group
+ * Hook to create new prompts via priority pipeline
  */
-export function useConfirmBatch() {
+export function useCreateBatchPrompts() {
+  return useMutation({
+    mutationFn: (request: BatchCreateRequest) => batchApi.create(request),
+  })
+}
+
+/**
+ * Hook to bind prompt IDs to a group
+ */
+export function useBindPromptsToGroup() {
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: ({
       groupId,
-      request,
+      promptIds,
     }: {
       groupId: number
-      request: BatchConfirmRequest
-    }) => groupsApi.confirmBatch(groupId, request),
+      promptIds: number[]
+    }) => groupsApi.addPromptsToGroup(groupId, promptIds),
     onSuccess: (_data, variables) => {
       const { groupId } = variables
       // Invalidate all group queries to ensure UI updates

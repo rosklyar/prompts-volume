@@ -4,11 +4,14 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, or_, select
 
-from src.auth.deps import CurrentUser
+from src.auth.deps import CurrentUser, UsersSessionDep, get_current_active_superuser
 from src.billing.exceptions import BillingError, to_http_exception
 from src.billing.models.api_models import (
+    AdminTopUpRequest,
+    AdminUsersListResponse,
     BalanceResponse,
     ChargeRequest,
     ChargeResponse,
@@ -17,6 +20,7 @@ from src.billing.models.api_models import (
     TopUpResponse,
     TransactionListResponse,
     TransactionResponse,
+    UserWithBalance,
 )
 from src.billing.services import (
     BalanceService,
@@ -25,6 +29,7 @@ from src.billing.services import (
     get_charge_service,
 )
 from src.config.settings import settings
+from src.database.users_models import User
 
 router = APIRouter(prefix="/billing/api/v1", tags=["billing"])
 
@@ -224,6 +229,112 @@ async def get_generation_price(
             price=price,
             user_balance=balance_info.available_balance,
             can_afford=balance_info.available_balance >= price,
+        )
+    except BillingError as e:
+        raise to_http_exception(e)
+
+
+# Admin endpoints
+
+
+@router.get(
+    "/admin/users",
+    response_model=AdminUsersListResponse,
+    dependencies=[Depends(get_current_active_superuser)],
+)
+async def admin_list_users(
+    session: UsersSessionDep,
+    balance_service: BalanceServiceDep,
+    search: str | None = Query(None, description="Search by email or name"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+):
+    """List users with their balances for admin dashboard.
+
+    Superuser only. Search by email or full name.
+    """
+    query = select(User).where(User.deleted_at.is_(None))
+
+    if search:
+        search_pattern = f"%{search}%"
+        query = query.where(
+            or_(
+                User.email.ilike(search_pattern),
+                User.full_name.ilike(search_pattern),
+            )
+        )
+
+    # Get total count
+    count_query = select(func.count()).select_from(query.subquery())
+    total = await session.scalar(count_query) or 0
+
+    # Get paginated users
+    query = query.offset(skip).limit(limit).order_by(User.email)
+    result = await session.execute(query)
+    users = result.scalars().all()
+
+    # Get balances for each user
+    users_with_balances = []
+    for user in users:
+        balance_info = await balance_service.get_balance(user.id)
+        users_with_balances.append(
+            UserWithBalance(
+                id=user.id,
+                email=user.email,
+                full_name=user.full_name,
+                is_active=user.is_active,
+                available_balance=balance_info.available_balance,
+                expiring_soon_amount=balance_info.expiring_soon_amount,
+                expiring_soon_at=balance_info.expiring_soon_at,
+            )
+        )
+
+    return AdminUsersListResponse(users=users_with_balances, total=total)
+
+
+@router.post(
+    "/admin/users/{user_id}/top-up",
+    response_model=TopUpResponse,
+    dependencies=[Depends(get_current_active_superuser)],
+)
+async def admin_top_up_balance(
+    user_id: str,
+    request: AdminTopUpRequest,
+    current_user: CurrentUser,
+    session: UsersSessionDep,
+    balance_service: BalanceServiceDep,
+):
+    """Add credits to any user's balance.
+
+    Superuser only. Creates audit trail with admin info.
+    """
+    # Verify target user exists
+    target_user = await session.get(User, user_id)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    reason = f"Admin top-up by {current_user.email}"
+    if request.note:
+        reason += f": {request.note}"
+
+    try:
+        transaction = await balance_service.credit(
+            user_id=user_id,
+            amount=request.amount,
+            reason=reason,
+            source="admin_grant",
+            expires_at=request.expires_at,
+            reference_type="admin_grant",
+            reference_id=current_user.id,
+        )
+
+        balance_info = await balance_service.get_balance(user_id)
+
+        return TopUpResponse(
+            transaction_id=transaction.id,
+            new_balance=balance_info.available_balance,
+            amount_added=request.amount,
+            expires_at=request.expires_at,
         )
     except BillingError as e:
         raise to_http_exception(e)

@@ -1,8 +1,8 @@
-import type { BrandInfo, CompetitorInfo } from "@/types/groups"
+import type { BrandInfo, CompetitorInfo, TopicInput } from "@/types/groups"
 import type {
   BatchAnalyzeResponse,
-  BatchConfirmRequest,
-  BatchConfirmResponse,
+  BatchCreateRequest,
+  BatchCreateResponse,
 } from "@/types/batch-upload"
 import type {
   UserBalance,
@@ -17,6 +17,17 @@ import type {
   FullReportResponse,
   ComparisonResponse,
 } from "@/types/billing"
+import type {
+  AdminUsersListResponse,
+  AdminTopUpRequest,
+  BusinessDomainsListResponse,
+  CountriesListResponse,
+  TopicsListResponse,
+  CreateTopicRequest,
+  Topic,
+  PromptUploadResponse,
+  UploadPromptsRequest,
+} from "@/types/admin"
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000"
 
@@ -162,6 +173,8 @@ export interface GroupSummary {
   prompt_count: number
   brand_name: string
   competitor_count: number
+  topic_id: number
+  topic_title: string
   created_at: string
   updated_at: string
 }
@@ -176,6 +189,9 @@ export interface PromptInGroup {
 export interface GroupDetail {
   id: number
   title: string
+  topic_id: number
+  topic_title: string
+  topic_description: string
   created_at: string
   updated_at: string
   brand: BrandInfo
@@ -227,6 +243,34 @@ export interface AddPriorityPromptsResponse {
   request_id: string
 }
 
+// ===== Batch Prompts API (shared) =====
+
+export const batchApi = {
+  /**
+   * Analyze prompts for similarity matches
+   */
+  async analyze(prompts: string[]): Promise<BatchAnalyzeResponse> {
+    const response = await fetchWithAuth("/prompts/api/v1/batch/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompts }),
+    })
+    return response.json()
+  },
+
+  /**
+   * Create prompts via priority pipeline
+   */
+  async create(request: BatchCreateRequest): Promise<BatchCreateResponse> {
+    const response = await fetchWithAuth("/prompts/api/v1/batch/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    })
+    return response.json()
+  },
+}
+
 // ===== Groups API =====
 
 export const groupsApi = {
@@ -244,13 +288,14 @@ export const groupsApi = {
 
   async createGroup(
     title: string,
+    topic: TopicInput,
     brand: BrandInfo,
     competitors?: CompetitorInfo[]
   ): Promise<GroupSummary> {
     const response = await fetchWithAuth("/prompt-groups/api/v1/groups", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, brand, competitors }),
+      body: JSON.stringify({ title, topic, brand, competitors }),
     })
     return response.json()
   },
@@ -305,36 +350,6 @@ export const groupsApi = {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt_ids: promptIds }),
-      }
-    )
-    return response.json()
-  },
-
-  async analyzeBatch(
-    groupId: number,
-    prompts: string[]
-  ): Promise<BatchAnalyzeResponse> {
-    const response = await fetchWithAuth(
-      `/prompt-groups/api/v1/groups/${groupId}/batch/analyze`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompts }),
-      }
-    )
-    return response.json()
-  },
-
-  async confirmBatch(
-    groupId: number,
-    request: BatchConfirmRequest
-  ): Promise<BatchConfirmResponse> {
-    const response = await fetchWithAuth(
-      `/prompt-groups/api/v1/groups/${groupId}/batch/confirm`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(request),
       }
     )
     return response.json()
@@ -408,6 +423,140 @@ export const billingApi = {
    */
   async getGenerationPrice(): Promise<GenerationPrice> {
     const response = await fetchWithAuth("/billing/api/v1/generation/price")
+    return response.json()
+  },
+}
+
+// ===== Reference Data API (all authenticated users) =====
+
+export const referenceApi = {
+  /**
+   * Get all business domains
+   */
+  async getBusinessDomains(): Promise<BusinessDomainsListResponse> {
+    const response = await fetchWithAuth("/api/v1/reference/business-domains")
+    return response.json()
+  },
+
+  /**
+   * Get all countries
+   */
+  async getCountries(): Promise<CountriesListResponse> {
+    const response = await fetchWithAuth("/api/v1/reference/countries")
+    return response.json()
+  },
+
+  /**
+   * Get topics with optional filtering
+   */
+  async getTopics(
+    businessDomainId?: number,
+    countryId?: number
+  ): Promise<TopicsListResponse> {
+    const params = new URLSearchParams()
+    if (businessDomainId !== undefined) {
+      params.append("business_domain_id", businessDomainId.toString())
+    }
+    if (countryId !== undefined) {
+      params.append("country_id", countryId.toString())
+    }
+    const response = await fetchWithAuth(`/api/v1/reference/topics?${params}`)
+    return response.json()
+  },
+}
+
+// ===== Admin API =====
+
+export const adminApi = {
+  /**
+   * Get users with balances (admin only)
+   */
+  async getUsers(
+    search?: string,
+    limit: number = 20,
+    offset: number = 0
+  ): Promise<AdminUsersListResponse> {
+    const params = new URLSearchParams({
+      limit: limit.toString(),
+      skip: offset.toString(),
+    })
+    if (search) {
+      params.append("search", search)
+    }
+    const response = await fetchWithAuth(`/billing/api/v1/admin/users?${params}`)
+    return response.json()
+  },
+
+  /**
+   * Top up a user's balance (admin only)
+   */
+  async topUpUser(
+    userId: string,
+    request: AdminTopUpRequest
+  ): Promise<TopUpResponse> {
+    const response = await fetchWithAuth(
+      `/billing/api/v1/admin/users/${userId}/top-up`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      }
+    )
+    return response.json()
+  },
+
+  /**
+   * Get all business domains (delegates to referenceApi)
+   */
+  async getBusinessDomains(): Promise<BusinessDomainsListResponse> {
+    return referenceApi.getBusinessDomains()
+  },
+
+  /**
+   * Get all countries (delegates to referenceApi)
+   */
+  async getCountries(): Promise<CountriesListResponse> {
+    return referenceApi.getCountries()
+  },
+
+  /**
+   * Get topics with optional filtering (delegates to referenceApi)
+   */
+  async getTopics(
+    businessDomainId?: number,
+    countryId?: number
+  ): Promise<TopicsListResponse> {
+    return referenceApi.getTopics(businessDomainId, countryId)
+  },
+
+  /**
+   * Create a new topic (admin only)
+   */
+  async createTopic(request: CreateTopicRequest): Promise<Topic> {
+    const response = await fetchWithAuth("/admin/api/v1/topics", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    })
+    return response.json()
+  },
+
+  /**
+   * Analyze prompts for similarity before uploading (uses shared endpoint)
+   */
+  async analyzePrompts(prompts: string[]): Promise<BatchAnalyzeResponse> {
+    return batchApi.analyze(prompts)
+  },
+
+  /**
+   * Upload selected prompts (admin only)
+   */
+  async uploadPrompts(request: UploadPromptsRequest): Promise<PromptUploadResponse> {
+    const response = await fetchWithAuth("/admin/api/v1/prompts/upload", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    })
     return response.json()
   },
 }

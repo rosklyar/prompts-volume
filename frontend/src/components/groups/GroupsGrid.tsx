@@ -21,6 +21,7 @@ import type { GroupDetail, PromptInGroup, EvaluationAnswer } from "@/client/api"
 import type {
   BrandInfo,
   CompetitorInfo,
+  TopicInput,
   BrandMentionResult,
   BrandVisibilityScore,
   CitationLeaderboard,
@@ -40,8 +41,8 @@ import { calculateVisibilityScores } from "@/lib/report-utils"
 import { GroupCard } from "./GroupCard"
 import { AddGroupCard } from "./AddGroupCard"
 import { PromptItem } from "./PromptItem"
+import { PromptSelectionModal } from "./PromptSelectionModal"
 import { MAX_GROUPS, getGroupColor } from "./constants"
-import { GroupInspirationModal } from "./GroupInspirationModal"
 
 interface PromptWithAnswer extends PromptInGroup {
   answer?: EvaluationAnswer | null
@@ -142,6 +143,14 @@ export function GroupsGrid() {
 
   // Track which groups are expanded (collapsed by default)
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(loadExpandedGroups)
+
+  // Modal state for prompt selection after group creation
+  const [promptSelectionModal, setPromptSelectionModal] = useState<{
+    groupId: number
+    groupTitle: string
+    topicId: number
+    topicTitle: string
+  } | null>(null)
 
   // Persist selected reports to localStorage when they change
   useEffect(() => {
@@ -284,8 +293,25 @@ export function GroupsGrid() {
   }
 
   // Handle group creation
-  const handleCreateGroup = (title: string, brand: BrandInfo, competitors?: CompetitorInfo[]) => {
-    createGroup.mutate({ title, brand, competitors })
+  const handleCreateGroup = async (
+    title: string,
+    topic: TopicInput,
+    brand: BrandInfo,
+    competitors?: CompetitorInfo[],
+    topicTitle?: string
+  ) => {
+    try {
+      const newGroup = await createGroup.mutateAsync({ title, topic, brand, competitors })
+      // Open prompt selection modal after successful group creation
+      setPromptSelectionModal({
+        groupId: newGroup.id,
+        groupTitle: title,
+        topicId: newGroup.topic_id,
+        topicTitle: topicTitle ?? newGroup.topic_title,
+      })
+    } catch (error) {
+      console.error("Failed to create group:", error)
+    }
   }
 
   // Handle group update
@@ -454,14 +480,6 @@ export function GroupsGrid() {
     })
   }
 
-  // State for inspiration modal
-  const [inspirationGroupId, setInspirationGroupId] = useState<number | null>(null)
-
-  // Handle showing inspiration modal for a group
-  const handleShowInspiration = (groupId: number) => {
-    setInspirationGroupId(groupId)
-  }
-
   // Loading state
   if (isLoadingGroups || isLoadingDetails) {
     return (
@@ -523,7 +541,6 @@ export function GroupsGrid() {
                   onLoadReport={(includePrevious) => handleLoadReport(group, includePrevious)}
                   onBrandChange={(brand) => handleBrandChange(group.id, brand)}
                   onCompetitorsChange={(competitors) => handleCompetitorsChange(group.id, competitors)}
-                  onShowInspiration={() => handleShowInspiration(group.id)}
                   isExpanded={expandedGroups.has(group.id)}
                   onToggleExpand={() => handleToggleExpand(group.id)}
                 />
@@ -567,20 +584,18 @@ export function GroupsGrid() {
         )}
       </DragOverlay>
 
-      {/* Group Inspiration Modal */}
-      {inspirationGroupId && (() => {
-        const group = sortedGroups.find((g) => g.id === inspirationGroupId)
-        if (!group || !group.brand?.domain) return null
-        return (
-          <GroupInspirationModal
-            groupId={group.id}
-            groupTitle={group.title}
-            brandDomain={group.brand.domain}
-            brandVariations={group.brand.variations}
-            onClose={() => setInspirationGroupId(null)}
-          />
-        )
-      })()}
+      {/* Prompt selection modal - opens after group creation */}
+      {promptSelectionModal && (
+        <PromptSelectionModal
+          isOpen={true}
+          groupId={promptSelectionModal.groupId}
+          groupTitle={promptSelectionModal.groupTitle}
+          topicId={promptSelectionModal.topicId}
+          topicTitle={promptSelectionModal.topicTitle}
+          onClose={() => setPromptSelectionModal(null)}
+          onSuccess={() => setPromptSelectionModal(null)}
+        />
+      )}
     </DndContext>
   )
 }

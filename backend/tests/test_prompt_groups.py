@@ -3,12 +3,17 @@
 import pytest
 
 
+# Default topic input using seeded topic ID 1
+DEFAULT_TOPIC = {"existing_topic_id": 1}
+
+
 def test_create_group_with_brand_only(client, auth_headers):
     """Test creating a group with brand only (no competitors)."""
     response = client.post(
         "/prompt-groups/api/v1/groups",
         json={
             "title": "Electronics Retailers",
+            "topic": DEFAULT_TOPIC,
             "brand": {
                 "name": "Rozetka",
                 "domain": "rozetka.com.ua",
@@ -23,6 +28,8 @@ def test_create_group_with_brand_only(client, auth_headers):
     assert data["brand_name"] == "Rozetka"
     assert data["competitor_count"] == 0
     assert data["prompt_count"] == 0
+    assert data["topic_id"] == 1
+    assert "topic_title" in data
 
 
 def test_create_group_with_brand_and_competitors(client, auth_headers):
@@ -31,6 +38,7 @@ def test_create_group_with_brand_and_competitors(client, auth_headers):
         "/prompt-groups/api/v1/groups",
         json={
             "title": "Tech Companies",
+            "topic": DEFAULT_TOPIC,
             "brand": {
                 "name": "Apple",
                 "domain": "apple.com",
@@ -62,7 +70,7 @@ def test_create_group_without_brand_fails(client, auth_headers):
     """Test that creating a group without brand fails validation."""
     response = client.post(
         "/prompt-groups/api/v1/groups",
-        json={"title": "No Brand Group"},
+        json={"title": "No Brand Group", "topic": DEFAULT_TOPIC},
         headers=auth_headers,
     )
     assert response.status_code == 422
@@ -75,6 +83,7 @@ def test_empty_brand_name_validation(client, auth_headers):
         "/prompt-groups/api/v1/groups",
         json={
             "title": "Empty Brand Name Test",
+            "topic": DEFAULT_TOPIC,
             "brand": {"name": "  ", "variations": ["test"]},
         },
         headers=auth_headers,
@@ -88,6 +97,7 @@ def test_competitor_name_uniqueness_validation(client, auth_headers):
         "/prompt-groups/api/v1/groups",
         json={
             "title": "Duplicate Competitors Test",
+            "topic": DEFAULT_TOPIC,
             "brand": {"name": "MyBrand", "variations": []},
             "competitors": [
                 {"name": "CompetitorA", "variations": ["a"]},
@@ -106,6 +116,7 @@ def test_brand_variations_filter_empty_strings(client, auth_headers):
         "/prompt-groups/api/v1/groups",
         json={
             "title": "Filter Variations Test",
+            "topic": DEFAULT_TOPIC,
             "brand": {
                 "name": "TestBrand",
                 "variations": ["valid", "  ", "", "also_valid"],
@@ -133,6 +144,7 @@ def test_domain_normalization(client, auth_headers):
         "/prompt-groups/api/v1/groups",
         json={
             "title": "Domain Normalization Test",
+            "topic": DEFAULT_TOPIC,
             "brand": {
                 "name": "TestBrand",
                 "domain": "https://www.EXAMPLE.COM/",
@@ -163,12 +175,13 @@ def test_domain_normalization(client, auth_headers):
 
 
 def test_get_group_includes_brand_and_competitors(client, auth_headers):
-    """Test that GET group detail endpoint includes brand and competitors."""
+    """Test that GET group detail endpoint includes brand, topic, and competitors."""
     # Create group with brand and competitors
     create_response = client.post(
         "/prompt-groups/api/v1/groups",
         json={
             "title": "Get Details Test",
+            "topic": DEFAULT_TOPIC,
             "brand": {
                 "name": "Brand1",
                 "domain": "brand1.com",
@@ -196,15 +209,20 @@ def test_get_group_includes_brand_and_competitors(client, auth_headers):
     assert "competitors" in data
     assert len(data["competitors"]) == 1
     assert data["competitors"][0]["name"] == "Comp1"
+    # Check topic info
+    assert data["topic_id"] == 1
+    assert "topic_title" in data
+    assert "topic_description" in data
 
 
 def test_get_groups_includes_brand_name_and_competitor_count(client, auth_headers):
-    """Test that GET groups list includes brand_name and competitor_count."""
+    """Test that GET groups list includes brand_name, topic, and competitor_count."""
     # Create group with brand and competitors
     client.post(
         "/prompt-groups/api/v1/groups",
         json={
             "title": "List Test",
+            "topic": DEFAULT_TOPIC,
             "brand": {"name": "MyBrand", "variations": []},
             "competitors": [
                 {"name": "Comp1", "variations": []},
@@ -227,15 +245,18 @@ def test_get_groups_includes_brand_name_and_competitor_count(client, auth_header
     test_group = next(g for g in groups if g["title"] == "List Test")
     assert test_group["brand_name"] == "MyBrand"
     assert test_group["competitor_count"] == 3
+    assert test_group["topic_id"] == 1
+    assert "topic_title" in test_group
 
 
 def test_update_group_brand(client, auth_headers):
-    """Test updating group brand."""
+    """Test updating group brand (topic cannot be changed)."""
     # Create group with initial brand
     create_response = client.post(
         "/prompt-groups/api/v1/groups",
         json={
             "title": "Update Brand Test",
+            "topic": DEFAULT_TOPIC,
             "brand": {"name": "InitialBrand", "domain": "initial.com", "variations": ["initial"]},
         },
         headers=auth_headers,
@@ -253,6 +274,8 @@ def test_update_group_brand(client, auth_headers):
     )
     assert update_response.status_code == 200
     assert update_response.json()["brand_name"] == "NewBrand"
+    # Topic should remain unchanged
+    assert update_response.json()["topic_id"] == 1
 
     # Verify brand was updated
     detail_response = client.get(
@@ -271,6 +294,7 @@ def test_update_group_competitors(client, auth_headers):
         "/prompt-groups/api/v1/groups",
         json={
             "title": "Update Competitors Test",
+            "topic": DEFAULT_TOPIC,
             "brand": {"name": "MyBrand", "variations": []},
             "competitors": [
                 {"name": "OldComp", "variations": []},
@@ -313,6 +337,7 @@ def test_clear_group_competitors(client, auth_headers):
         "/prompt-groups/api/v1/groups",
         json={
             "title": "Clear Competitors Test",
+            "topic": DEFAULT_TOPIC,
             "brand": {"name": "MyBrand", "variations": []},
             "competitors": [
                 {"name": "TempComp", "variations": []},
@@ -347,6 +372,7 @@ def test_update_group_title_only(client, auth_headers):
         "/prompt-groups/api/v1/groups",
         json={
             "title": "Original Title",
+            "topic": DEFAULT_TOPIC,
             "brand": {"name": "OriginalBrand", "domain": "original.com", "variations": ["var1"]},
             "competitors": [{"name": "Comp1", "variations": []}],
         },
@@ -382,6 +408,7 @@ def test_update_both_title_and_brand(client, auth_headers):
         "/prompt-groups/api/v1/groups",
         json={
             "title": "Old Title",
+            "topic": DEFAULT_TOPIC,
             "brand": {"name": "OldBrand", "variations": []},
         },
         headers=auth_headers,
@@ -419,6 +446,7 @@ def test_optional_domain_field(client, auth_headers):
         "/prompt-groups/api/v1/groups",
         json={
             "title": "No Domain Test",
+            "topic": DEFAULT_TOPIC,
             "brand": {"name": "BrandWithoutDomain", "variations": ["var"]},
             "competitors": [
                 {"name": "CompWithoutDomain", "variations": []},
@@ -438,3 +466,42 @@ def test_optional_domain_field(client, auth_headers):
     data = detail_response.json()
     assert data["brand"]["domain"] is None
     assert data["competitors"][0]["domain"] is None
+
+
+def test_create_group_with_new_topic(client, auth_headers):
+    """Test creating a group with a new topic inline."""
+    response = client.post(
+        "/prompt-groups/api/v1/groups",
+        json={
+            "title": "New Topic Test",
+            "topic": {
+                "new_topic": {
+                    "title": "Custom Topic",
+                    "description": "A custom topic for testing",
+                    "business_domain_id": 1,
+                    "country_id": 1,
+                }
+            },
+            "brand": {"name": "TestBrand", "variations": []},
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert data["topic_title"] == "Custom Topic"
+    assert data["topic_id"] > 0
+
+
+def test_create_group_with_invalid_topic_id(client, auth_headers):
+    """Test that creating a group with invalid topic ID fails."""
+    response = client.post(
+        "/prompt-groups/api/v1/groups",
+        json={
+            "title": "Invalid Topic Test",
+            "topic": {"existing_topic_id": 99999},
+            "brand": {"name": "TestBrand", "variations": []},
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 404
+    assert "not found" in response.json()["detail"].lower()

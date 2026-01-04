@@ -2,8 +2,13 @@
 
 Revision ID: 001
 Revises:
-Create Date: 2024-12-28
+Create Date: 2025-01-03
 
+Complete evals_db schema including:
+- AI assistants and plans
+- Prompt evaluations with polling optimization indexes
+- Consumed evaluations tracking
+- Group reports with brand snapshots
 """
 from typing import Sequence, Union
 
@@ -75,6 +80,23 @@ def upgrade() -> None:
     op.create_index("ix_prompt_evaluations_created_at", "prompt_evaluations", ["created_at"])
     op.create_index("ix_prompt_evaluations_completed_at", "prompt_evaluations", ["completed_at"])
 
+    # Partial composite indexes for poll_for_prompt optimization
+    op.execute("""
+        CREATE INDEX idx_pe_poll_in_progress
+        ON prompt_evaluations(assistant_plan_id, prompt_id, claimed_at DESC)
+        WHERE status = 'in_progress'
+    """)
+    op.execute("""
+        CREATE INDEX idx_pe_poll_completed
+        ON prompt_evaluations(assistant_plan_id, prompt_id, completed_at DESC)
+        WHERE status = 'completed'
+    """)
+    op.execute("""
+        CREATE INDEX idx_pe_claimed_at
+        ON prompt_evaluations(claimed_at DESC)
+        WHERE status = 'in_progress'
+    """)
+
     # Create consumed_evaluations table
     op.create_table(
         "consumed_evaluations",
@@ -105,6 +127,9 @@ def upgrade() -> None:
         sa.Column("prompts_awaiting", sa.Integer(), nullable=False),
         sa.Column("total_evaluations_loaded", sa.Integer(), nullable=False),
         sa.Column("total_cost", sa.Numeric(12, 4), nullable=False),
+        # Brand/competitors snapshot at report generation time
+        sa.Column("brand_snapshot", postgresql.JSON(), nullable=True),
+        sa.Column("competitors_snapshot", postgresql.JSON(), nullable=True),
     )
     op.create_index("ix_group_reports_group_id", "group_reports", ["group_id"])
     op.create_index("ix_group_reports_user_id", "group_reports", ["user_id"])
@@ -131,6 +156,12 @@ def downgrade() -> None:
     op.drop_table("group_report_items")
     op.drop_table("group_reports")
     op.drop_table("consumed_evaluations")
+
+    # Drop poll optimization indexes
+    op.drop_index("idx_pe_poll_in_progress", table_name="prompt_evaluations")
+    op.drop_index("idx_pe_poll_completed", table_name="prompt_evaluations")
+    op.drop_index("idx_pe_claimed_at", table_name="prompt_evaluations")
+
     op.drop_table("prompt_evaluations")
     op.drop_table("priority_prompt_queue")
     op.drop_table("ai_assistant_plans")

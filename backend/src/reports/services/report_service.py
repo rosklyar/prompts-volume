@@ -108,6 +108,8 @@ class ReportService:
         user_id: str,
         title: str | None = None,
         include_previous: bool = True,
+        brand_snapshot: dict | None = None,
+        competitors_snapshot: list[dict] | None = None,
     ) -> GroupReport:
         """Generate a report for a prompt group.
 
@@ -144,6 +146,8 @@ class ReportService:
                 prompts_awaiting=0,
                 total_evaluations_loaded=0,
                 total_cost=Decimal("0"),
+                brand_snapshot=brand_snapshot,
+                competitors_snapshot=competitors_snapshot,
             )
             self._evals_session.add(report)
             await self._evals_session.flush()
@@ -202,6 +206,8 @@ class ReportService:
             prompts_awaiting=prompts_awaiting,
             total_evaluations_loaded=total_evaluations_loaded,
             total_cost=total_cost,
+            brand_snapshot=brand_snapshot,
+            competitors_snapshot=competitors_snapshot,
         )
         self._evals_session.add(report)
         await self._evals_session.flush()
@@ -314,3 +320,44 @@ class ReportService:
     ) -> GroupReport | None:
         """Get the most recent report for a group."""
         return await self._comparison_service.get_latest_report(group_id, user_id)
+
+    def detect_brand_changes(
+        self,
+        current_brand: dict | None,
+        current_competitors: list[dict] | None,
+        last_report: GroupReport | None,
+    ) -> "BrandChangeInfo":
+        """Compare current brand config with last report snapshot.
+
+        Returns BrandChangeInfo indicating if brand or competitors changed.
+        """
+        from src.reports.models.api_models import BrandChangeInfo
+
+        if not last_report:
+            # No previous report - consider nothing changed (no basis for comparison)
+            return BrandChangeInfo(
+                brand_changed=False,
+                competitors_changed=False,
+                current_brand=current_brand,
+                current_competitors=current_competitors,
+                previous_brand=None,
+                previous_competitors=None,
+            )
+
+        previous_brand = last_report.brand_snapshot
+        previous_competitors = last_report.competitors_snapshot
+
+        # Compare brands
+        brand_changed = current_brand != previous_brand
+
+        # Compare competitors (order matters for list comparison)
+        competitors_changed = current_competitors != previous_competitors
+
+        return BrandChangeInfo(
+            brand_changed=brand_changed,
+            competitors_changed=competitors_changed,
+            current_brand=current_brand,
+            current_competitors=current_competitors,
+            previous_brand=previous_brand,
+            previous_competitors=previous_competitors,
+        )

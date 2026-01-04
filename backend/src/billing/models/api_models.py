@@ -80,3 +80,33 @@ class GenerationPriceResponse(BaseModel):
     price: Decimal
     user_balance: Decimal
     can_afford: bool
+
+
+# Admin models
+
+
+class AdminTopUpRequest(BaseModel):
+    """Request for admin top-up with notes."""
+
+    amount: Decimal = Field(..., gt=0)
+    expires_at: datetime | None = None
+    note: str | None = Field(None, max_length=255)
+
+
+class UserWithBalance(BaseModel):
+    """User with balance info for admin view."""
+
+    id: str
+    email: str
+    full_name: str | None
+    is_active: bool
+    available_balance: Decimal
+    expiring_soon_amount: Decimal
+    expiring_soon_at: datetime | None
+
+
+class AdminUsersListResponse(BaseModel):
+    """Paginated list of users with balances."""
+
+    users: list[UserWithBalance]
+    total: int

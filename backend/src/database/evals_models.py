@@ -257,6 +257,10 @@ class GroupReport(EvalsBase):
     total_evaluations_loaded: Mapped[int] = mapped_column(Integer, nullable=False)
     total_cost: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
 
+    # Brand/competitors snapshot at report generation time
+    brand_snapshot: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    competitors_snapshot: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+
     # Relationships (within evals_db only)
     items: Mapped[List["GroupReportItem"]] = relationship(
         back_populates="report",

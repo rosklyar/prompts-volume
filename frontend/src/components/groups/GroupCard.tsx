@@ -14,25 +14,31 @@ import type {
   BrandInfo,
   CompetitorInfo,
   BrandMentionResult,
+  DomainMentionResult,
   BrandVisibilityScore,
   CitationLeaderboard,
 } from "@/types/groups"
-import { useHasFreshData, useReportHistory, useReport } from "@/hooks/useReports"
-import { calculateVisibilityScores } from "@/lib/report-utils"
+import { useHasFreshData, useReport } from "@/hooks/useReports"
+import {
+  calculateVisibilityScores,
+  aggregateDomainMentions,
+  countBrandDomainsInCitations,
+  type BrandDomain,
+} from "@/lib/report-utils"
 import { EditableTitle } from "./EditableTitle"
 import { PromptItem } from "./PromptItem"
 import { ReportPanel } from "./ReportPanel"
 import { ReportHistoryPanel } from "./ReportHistoryPanel"
 import { BrandEditor } from "./BrandEditor"
 import { ReportPreviewModal, LowBalanceModal } from "@/components/billing"
-import type { ReportPreview } from "@/types/billing"
+import type { ReportPreview, PromptFreshnessInfo } from "@/types/billing"
 import { getGroupColor } from "./constants"
 import { BatchUploadModal } from "./BatchUploadModal"
-import { Sparkles } from "lucide-react"
 
 interface PromptWithAnswer extends PromptInGroup {
   answer?: EvaluationAnswer | null
   brand_mentions?: BrandMentionResult[] | null
+  domain_mentions?: DomainMentionResult[] | null
   isLoading?: boolean
 }
 
@@ -53,7 +59,6 @@ interface GroupCardProps {
   onLoadReport: (includePrevious?: boolean) => void
   onBrandChange: (brand: BrandInfo) => void
   onCompetitorsChange: (competitors: CompetitorInfo[]) => void
-  onShowInspiration: () => void
   isExpanded: boolean
   onToggleExpand: () => void
 }
@@ -75,12 +80,12 @@ export function GroupCard({
   onLoadReport,
   onBrandChange,
   onCompetitorsChange,
-  onShowInspiration,
   isExpanded,
   onToggleExpand,
 }: GroupCardProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showBrandEditor, setShowBrandEditor] = useState(false)
+  const [brandEditorFocus, setBrandEditorFocus] = useState<"brand" | "competitors">("brand")
   const [showBatchUpload, setShowBatchUpload] = useState(false)
   const [isReportCollapsed, setIsReportCollapsed] = useState(true)
   const [showPreviewModal, setShowPreviewModal] = useState(false)
@@ -88,15 +93,17 @@ export function GroupCard({
   const [lowBalancePreview, setLowBalancePreview] = useState<ReportPreview | null>(null)
   const colors = getGroupColor(colorIndex)
 
-  // Check for fresh data (for disabling Report button when no new data)
-  const { hasFreshData } = useHasFreshData(
+  // Check for fresh data and generation status
+  const { canGenerate, promptFreshness } = useHasFreshData(
     group.id,
     prompts.length > 0
   )
 
-  // Fetch report history to know if reports exist
-  const { data: reportHistory } = useReportHistory(group.id, prompts.length > 0)
-  const hasExistingReports = (reportHistory?.total ?? 0) > 0
+  // Create a map of prompt freshness for quick lookup
+  const freshnessMap = promptFreshness.reduce((acc, pf) => {
+    acc[pf.prompt_id] = pf
+    return acc
+  }, {} as Record<number, PromptFreshnessInfo>)
 
   // Fetch selected report data when a report is selected
   const { data: selectedReport } = useReport(
@@ -115,6 +122,7 @@ export function GroupCard({
           ...p,
           answer: reportItem?.answer || null,
           brand_mentions: reportItem?.brand_mentions || null,
+          domain_mentions: reportItem?.domain_mentions || null,
         }
       })
     : prompts
@@ -143,30 +151,37 @@ export function GroupCard({
       )
     : null
 
+  // Build brand domains list for citation counting
+  const brandDomains: BrandDomain[] = [
+    ...(brand?.domain ? [{ name: brand.name, domain: brand.domain, is_brand: true }] : []),
+    ...competitors.filter((c) => c.domain).map((c) => ({
+      name: c.name,
+      domain: c.domain!,
+      is_brand: false,
+    })),
+  ]
+
+  // Aggregate domain mentions from selected report
+  const aggregatedDomainMentions = selectedReport
+    ? aggregateDomainMentions(selectedReport.items)
+    : []
+
+  // Count brand domains in citations from selected report
+  const citationDomainCounts = selectedReport && brandDomains.length > 0
+    ? countBrandDomainsInCitations(selectedReport.items, brandDomains)
+    : []
+
   // Use selected report's data or passed props
   const displayVisibilityScores = selectedReportId ? selectedReportVisibilityScores : visibilityScores
   const displayCitationLeaderboard = selectedReportId ? selectedReport?.citation_leaderboard : citationLeaderboard
   const displayPrompts = selectedReportId ? promptsWithSelectedReportAnswers : prompts
 
-  // State for no new data modal
-  const [showNoNewDataModal, setShowNoNewDataModal] = useState(false)
-
-  // Report button only disabled when loading or no prompts
+  // Report button disabled when loading or no prompts
   const isReportDisabled = isLoadingAnswers || prompts.length === 0
 
-  // Check if there's no new data available
-  const isNoNewData = hasFreshData === false && hasExistingReports
-
-  // Handle report button click - check for fresh data first
+  // Handle report button click - always opens modal, canGenerate controls Generate button inside
   const handleReportClick = () => {
     if (prompts.length === 0) return
-
-    // If no new data, show the no-new-data modal instead
-    if (isNoNewData) {
-      setShowNoNewDataModal(true)
-      return
-    }
-
     setShowPreviewModal(true)
   }
 
@@ -227,7 +242,7 @@ export function GroupCard({
               {/* Expand/Collapse toggle */}
               <button
                 onClick={onToggleExpand}
-                className="p-1.5 -ml-1.5 rounded-lg hover:bg-white/80 transition-colors"
+                className="p-1.5 -ml-1.5 rounded-lg hover:bg-white/80 transition-colors flex-shrink-0"
                 aria-label={isExpanded ? "Collapse group" : "Expand group"}
               >
                 <svg
@@ -241,28 +256,46 @@ export function GroupCard({
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                 </svg>
               </button>
-              <EditableTitle
-                title={group.title}
-                isEditable={true}
-                accentColor={colors.accent}
-                onSave={onUpdateTitle}
-              />
-              <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-white/80 text-gray-500 uppercase tracking-wider">
-                {prompts.length} prompt{prompts.length !== 1 ? "s" : ""}
-              </span>
-              {brand && (
-                <span
-                  className="text-[10px] font-semibold px-2.5 py-1 rounded-full uppercase tracking-wider"
-                  style={{ backgroundColor: `${colors.accent}15`, color: colors.accent }}
+              {/* Fixed width container for group name */}
+              <div className="w-96 flex-shrink-0">
+                <EditableTitle
+                  title={group.title}
+                  isEditable={true}
+                  accentColor={colors.accent}
+                  onSave={onUpdateTitle}
+                />
+              </div>
+              {/* Badges */}
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-white/80 text-gray-500 uppercase tracking-wider">
+                  {prompts.length} prompt{prompts.length !== 1 ? "s" : ""}
+                </span>
+                {brand && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setBrandEditorFocus("brand")
+                      setShowBrandEditor(true)
+                    }}
+                    className="text-[10px] font-semibold px-2.5 py-1 rounded-full uppercase tracking-wider transition-all hover:scale-105"
+                    style={{ backgroundColor: `${colors.accent}15`, color: colors.accent }}
+                    title="Edit brand"
+                  >
+                    {brand.name}
+                  </button>
+                )}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setBrandEditorFocus("competitors")
+                    setShowBrandEditor(true)
+                  }}
+                  className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-gray-100 text-gray-500 uppercase tracking-wider transition-all hover:bg-gray-200 hover:text-gray-600"
+                  title="Edit competitors"
                 >
-                  {brand.name}
-                </span>
-              )}
-              {competitors.length > 0 && (
-                <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-gray-100 text-gray-500 uppercase tracking-wider">
                   {competitors.length} competitor{competitors.length !== 1 ? "s" : ""}
-                </span>
-              )}
+                </button>
+              </div>
             </div>
 
             {/* Actions */}
@@ -302,17 +335,6 @@ export function GroupCard({
                   )}
               </button>
 
-              {/* Inspiration button */}
-              <button
-                onClick={onShowInspiration}
-                disabled={!brand?.domain}
-                className="p-2 rounded-lg text-gray-400 hover:text-[#C4553D] hover:bg-[#FEF7F5] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                aria-label="Get prompt inspiration"
-                title={brand?.domain ? "Get prompt inspiration" : "Set brand domain first"}
-              >
-                <Sparkles className="w-4 h-4" />
-              </button>
-
               {/* Batch upload button */}
               <button
                 onClick={() => setShowBatchUpload(true)}
@@ -331,28 +353,6 @@ export function GroupCard({
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                  />
-                </svg>
-              </button>
-
-              {/* Brand config button */}
-              <button
-                onClick={() => setShowBrandEditor(true)}
-                className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-white/80 transition-colors"
-                aria-label="Configure brands"
-                title="Configure brands"
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z"
                   />
                 </svg>
               </button>
@@ -452,7 +452,10 @@ export function GroupCard({
                         prompt={prompt}
                         groupId={group.id}
                         accentColor={colors.accent}
+                        targetBrandName={brand?.name}
+                        competitorNames={competitors.map((c) => c.name)}
                         onDelete={onDeletePrompt}
+                        freshnessInfo={freshnessMap[prompt.prompt_id]}
                       />
                     ))}
                   </div>
@@ -476,7 +479,11 @@ export function GroupCard({
                 <ReportPanel
                   visibilityScores={displayVisibilityScores || []}
                   citationLeaderboard={displayCitationLeaderboard || { domains: [], subpaths: [], total_citations: 0 }}
+                  domainMentions={aggregatedDomainMentions}
+                  citationDomainCounts={citationDomainCounts}
                   accentColor={colors.accent}
+                  targetBrandName={brand?.name}
+                  competitorNames={competitors.map((c) => c.name)}
                   isCollapsed={isReportCollapsed}
                   onToggleCollapse={() => setIsReportCollapsed(!isReportCollapsed)}
                 />
@@ -495,6 +502,7 @@ export function GroupCard({
           onCompetitorsChange={onCompetitorsChange}
           accentColor={colors.accent}
           onClose={() => setShowBrandEditor(false)}
+          initialFocus={brandEditorFocus}
         />
       )}
 
@@ -516,6 +524,8 @@ export function GroupCard({
         onClose={() => setShowPreviewModal(false)}
         onConfirm={handlePreviewConfirm}
         onNeedsTopUp={handleNeedsTopUp}
+        promptFreshness={promptFreshness}
+        canGenerate={canGenerate}
       />
 
       {/* Low Balance Modal */}
@@ -532,70 +542,6 @@ export function GroupCard({
         />
       )}
 
-      {/* No New Data Modal */}
-      {showNoNewDataModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          {/* Backdrop */}
-          <div
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-            onClick={() => setShowNoNewDataModal(false)}
-          />
-
-          {/* Modal */}
-          <div
-            className="relative bg-white rounded-2xl shadow-xl max-w-sm w-full mx-4 overflow-hidden animate-in fade-in zoom-in-95 duration-200"
-          >
-            {/* Accent bar */}
-            <div
-              className="h-1.5 w-full"
-              style={{ backgroundColor: colors.accent }}
-            />
-
-            <div className="p-6">
-              {/* Icon */}
-              <div
-                className="w-12 h-12 rounded-full mx-auto mb-4 flex items-center justify-center"
-                style={{ backgroundColor: `${colors.accent}15` }}
-              >
-                <svg
-                  className="w-6 h-6"
-                  style={{ color: colors.accent }}
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-              </div>
-
-              {/* Title */}
-              <h3 className="text-lg font-semibold text-gray-900 text-center mb-2">
-                No new data available
-              </h3>
-
-              {/* Description */}
-              <p className="text-sm text-gray-500 text-center mb-6">
-                There are no new evaluations since your last report.
-                You can still view your previous reports from the history below.
-              </p>
-
-              {/* Action */}
-              <button
-                onClick={() => setShowNoNewDataModal(false)}
-                className="w-full py-2.5 px-4 rounded-lg text-sm font-medium text-white transition-colors"
-                style={{ backgroundColor: colors.accent }}
-              >
-                Got it
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   )
 }

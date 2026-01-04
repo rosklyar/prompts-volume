@@ -136,7 +136,10 @@ Most endpoints require JWT authentication via `Authorization: Bearer {token}` he
 **Public Endpoints** (no authentication required):
 - Health check: `/health`
 - Auth endpoints: `/api/v1/login/access-token`, `/api/v1/signup`
+
+**Bot Endpoints** (X-Bot-Secret header required):
 - Evaluation automation: `/evaluations/api/v1/poll`, `/submit`, `/release`, `/priority-prompts`
+- Use `X-Bot-Secret: {token}` header (configured via `EVALUATION_API_TOKENS` env var)
 
 **How to authenticate**:
 ```bash
@@ -401,10 +404,11 @@ The evaluation system provides atomic polling and submission APIs to:
 - Preserve evaluation history for analytics
 
 **Authentication**:
-- **Public endpoints** (for automation bots): `/poll`, `/submit`, `/release`, `/priority-prompts`
+- **Bot endpoints** (`X-Bot-Secret` header): `/poll`, `/submit`, `/release`, `/priority-prompts`
 - **Authenticated endpoints** (JWT required): `/results`, `/results/enriched`
 
 **Configuration**:
+- `EVALUATION_API_TOKENS=token1,token2` - Comma-separated list of valid bot secrets
 - `EVALUATION_TIMEOUT_HOURS=2` - Stale evaluations become available for retry after 2 hours
 - `MIN_DAYS_SINCE_LAST_EVALUATION=1` - Completed prompts unavailable for 1 day per assistant+plan
 
@@ -456,6 +460,7 @@ POST /evaluations/api/v1/poll
 ```bash
 curl -X POST "http://localhost:8000/evaluations/api/v1/poll" \
   -H "Content-Type: application/json" \
+  -H "X-Bot-Secret: your_bot_secret_here" \
   -d '{"assistant_name": "ChatGPT", "plan_name": "Plus"}'
 ```
 
@@ -514,6 +519,7 @@ POST /evaluations/api/v1/submit
 ```bash
 curl -X POST "http://localhost:8000/evaluations/api/v1/submit" \
   -H "Content-Type: application/json" \
+  -H "X-Bot-Secret: your_bot_secret_here" \
   -d '{
     "evaluation_id": 123,
     "answer": {
@@ -574,6 +580,7 @@ POST /evaluations/api/v1/release
 # Mark as failed (preserves record for analytics)
 curl -X POST "http://localhost:8000/evaluations/api/v1/release" \
   -H "Content-Type: application/json" \
+  -H "X-Bot-Secret: your_bot_secret_here" \
   -d '{
     "evaluation_id": 123,
     "mark_as_failed": true,
@@ -583,6 +590,7 @@ curl -X POST "http://localhost:8000/evaluations/api/v1/release" \
 # Delete (makes prompt immediately available)
 curl -X POST "http://localhost:8000/evaluations/api/v1/release" \
   -H "Content-Type: application/json" \
+  -H "X-Bot-Secret: your_bot_secret_here" \
   -d '{"evaluation_id": 123, "mark_as_failed": false}'
 ```
 
@@ -778,9 +786,13 @@ curl -X POST "http://localhost:8000/evaluations/api/v1/results/enriched?assistan
 **Example: Bot evaluating prompts**
 
 ```bash
+# Bot secret from EVALUATION_API_TOKENS env var
+BOT_SECRET="your_bot_secret_here"
+
 # Step 1: Poll for a prompt
 RESPONSE=$(curl -X POST "http://localhost:8000/evaluations/api/v1/poll" \
   -H "Content-Type: application/json" \
+  -H "X-Bot-Secret: $BOT_SECRET" \
   -d '{"assistant_name": "ChatGPT", "plan_name": "Plus"}')
 
 # Parse response (example uses jq)
@@ -802,6 +814,7 @@ echo "Evaluating prompt: $PROMPT_TEXT"
 # Step 3a: Submit successful answer
 curl -X POST "http://localhost:8000/evaluations/api/v1/submit" \
   -H "Content-Type: application/json" \
+  -H "X-Bot-Secret: $BOT_SECRET" \
   -d "{
     \"evaluation_id\": $EVAL_ID,
     \"answer\": {
@@ -814,6 +827,7 @@ curl -X POST "http://localhost:8000/evaluations/api/v1/submit" \
 # OR Step 3b: Release on failure
 # curl -X POST "http://localhost:8000/evaluations/api/v1/release" \
 #   -H "Content-Type: application/json" \
+#   -H "X-Bot-Secret: $BOT_SECRET" \
 #   -d "{\"evaluation_id\": $EVAL_ID, \"mark_as_failed\": true, \"failure_reason\": \"API timeout\"}"
 ```
 

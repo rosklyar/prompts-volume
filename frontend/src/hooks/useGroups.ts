@@ -10,7 +10,7 @@ import {
 } from "@/client/api"
 import { reportKeys } from "@/hooks/useReports"
 import { billingKeys } from "@/hooks/useBilling"
-import type { BrandInfo, CompetitorInfo } from "@/types/groups"
+import type { BrandInfo, CompetitorInfo, TopicInput } from "@/types/groups"
 
 // ===== Query Keys =====
 
@@ -59,13 +59,15 @@ export function useCreateGroup() {
   return useMutation({
     mutationFn: ({
       title,
+      topic,
       brand,
       competitors,
     }: {
       title: string
+      topic: TopicInput
       brand: BrandInfo
       competitors?: CompetitorInfo[]
-    }) => groupsApi.createGroup(title, brand, competitors),
+    }) => groupsApi.createGroup(title, topic, brand, competitors),
     onSuccess: () => {
       // Invalidate all group queries to ensure UI updates
       queryClient.invalidateQueries({ queryKey: groupKeys.all })
@@ -88,9 +90,11 @@ export function useUpdateGroup() {
       brand?: BrandInfo
       competitors?: CompetitorInfo[] | null
     }) => groupsApi.updateGroup(groupId, { title, brand, competitors }),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       // Invalidate all group queries to ensure UI updates
       queryClient.invalidateQueries({ queryKey: groupKeys.all })
+      // Invalidate compare query since brand/competitors may have changed
+      queryClient.invalidateQueries({ queryKey: reportKeys.compare(variables.groupId) })
     },
   })
 }

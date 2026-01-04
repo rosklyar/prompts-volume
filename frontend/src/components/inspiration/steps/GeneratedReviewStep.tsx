@@ -22,7 +22,7 @@ import {
 } from "lucide-react"
 import type { WizardAction } from "../InspirationModal"
 import type { WizardState } from "@/types/inspiration"
-import type { BrandInfo, CompetitorInfo } from "@/types/groups"
+import type { BrandInfo, CompetitorInfo, TopicInput } from "@/types/groups"
 
 interface GeneratedReviewStepProps {
   state: WizardState
@@ -173,9 +173,9 @@ export function GeneratedReviewStep({ state, dispatch, onClose }: GeneratedRevie
   }
 
   // Handle creating a new group
-  const handleCreateGroup = async (title: string, brand: BrandInfo, competitors?: CompetitorInfo[]) => {
+  const handleCreateGroup = async (title: string, topic: TopicInput, brand: BrandInfo, competitors?: CompetitorInfo[]) => {
     try {
-      const newGroup = await createGroup.mutateAsync({ title, brand, competitors })
+      const newGroup = await createGroup.mutateAsync({ title, topic, brand, competitors })
       await handleSelectGroup(newGroup.id)
     } catch {
       dispatch({

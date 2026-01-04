@@ -11,6 +11,7 @@ from src.prompt_groups.exceptions import GroupNotFoundError, to_http_exception
 from src.prompt_groups.services import PromptGroupService, get_prompt_group_service
 from src.reports.models.api_models import (
     ComparisonResponse,
+    EnhancedComparisonResponse,
     GenerateReportRequest,
     ReportItemResponse,
     ReportListResponse,
@@ -21,9 +22,12 @@ from src.reports.models.api_models import (
 from src.reports.services import (
     BrandInput,
     ComparisonService,
+    DomainInput,
+    FreshnessAnalyzerService,
     ReportEnricher,
     ReportService,
     get_comparison_service,
+    get_freshness_analyzer,
     get_report_enricher,
     get_report_service,
 )
@@ -34,9 +38,14 @@ ReportServiceDep = Annotated[ReportService, Depends(get_report_service)]
 ComparisonServiceDep = Annotated[ComparisonService, Depends(get_comparison_service)]
 PromptGroupServiceDep = Annotated[PromptGroupService, Depends(get_prompt_group_service)]
 ReportEnricherDep = Annotated[ReportEnricher, Depends(get_report_enricher)]
+FreshnessAnalyzerDep = Annotated[FreshnessAnalyzerService, Depends(get_freshness_analyzer)]
 
 
-@router.get("/groups/{group_id}/preview", response_model=ReportPreviewResponse)
+@router.get(
+    "/groups/{group_id}/preview",
+    response_model=ReportPreviewResponse,
+    deprecated=True,
+)
 async def preview_report(
     group_id: int,
     current_user: CurrentUser,
@@ -86,19 +95,35 @@ async def generate_report(
 
     # Extract brand and competitors from group for brand mention detection
     brands = None
+    domains = []
     if group.brand:
         brands = [BrandInput(name=group.brand["name"], variations=group.brand.get("variations", []))]
+        if group.brand.get("domain"):
+            domains.append(DomainInput(
+                name=group.brand["name"],
+                domain=group.brand["domain"],
+                is_brand=True,
+            ))
         if group.competitors:
             brands.extend(
                 BrandInput(name=c["name"], variations=c.get("variations", []))
                 for c in group.competitors
             )
+            for c in group.competitors:
+                if c.get("domain"):
+                    domains.append(DomainInput(
+                        name=c["name"],
+                        domain=c["domain"],
+                        is_brand=False,
+                    ))
 
     report = await report_service.generate_report(
         group_id=group_id,
         user_id=current_user.id,
         title=request.title,
         include_previous=request.include_previous,
+        brand_snapshot=group.brand,
+        competitors_snapshot=group.competitors,
     )
 
     # Get full report with items
@@ -113,14 +138,22 @@ async def generate_report(
             answer = item.evaluation.answer if item.evaluation else None
             all_answers.append(answer)
 
-            # Detect brand mentions if we have brands and an answer with response
+            # Get response text for detection
+            response_text = answer.get("response") if answer else None
+
+            # Detect brand mentions if we have brands and response text
             brand_mentions = None
-            if brands and answer:
-                response_text = answer.get("response")
-                if response_text:
-                    brand_mentions = enricher.detect_brand_mentions(response_text, brands)
-                    if not brand_mentions:
-                        brand_mentions = None
+            if brands and response_text:
+                brand_mentions = enricher.detect_brand_mentions(response_text, brands)
+                if not brand_mentions:
+                    brand_mentions = None
+
+            # Detect domain mentions if we have domains and response text
+            domain_mentions = None
+            if domains and response_text:
+                domain_mentions = enricher.detect_domain_mentions(response_text, domains)
+                if not domain_mentions:
+                    domain_mentions = None
 
             prompt = prompts_map.get(item.prompt_id)
             items.append(
@@ -133,6 +166,7 @@ async def generate_report(
                     amount_charged=item.amount_charged,
                     answer=answer,
                     brand_mentions=brand_mentions,
+                    domain_mentions=domain_mentions,
                 )
             )
 
@@ -224,13 +258,27 @@ async def get_report(
 
     # Extract brand and competitors from group for brand mention detection
     brands = None
+    domains = []
     if group.brand:
         brands = [BrandInput(name=group.brand["name"], variations=group.brand.get("variations", []))]
+        if group.brand.get("domain"):
+            domains.append(DomainInput(
+                name=group.brand["name"],
+                domain=group.brand["domain"],
+                is_brand=True,
+            ))
         if group.competitors:
             brands.extend(
                 BrandInput(name=c["name"], variations=c.get("variations", []))
                 for c in group.competitors
             )
+            for c in group.competitors:
+                if c.get("domain"):
+                    domains.append(DomainInput(
+                        name=c["name"],
+                        domain=c["domain"],
+                        is_brand=False,
+                    ))
 
     items = []
     all_answers = []
@@ -238,14 +286,22 @@ async def get_report(
         answer = item.evaluation.answer if item.evaluation else None
         all_answers.append(answer)
 
-        # Detect brand mentions if we have brands and an answer with response
+        # Get response text for detection
+        response_text = answer.get("response") if answer else None
+
+        # Detect brand mentions if we have brands and response text
         brand_mentions = None
-        if brands and answer:
-            response_text = answer.get("response")
-            if response_text:
-                brand_mentions = enricher.detect_brand_mentions(response_text, brands)
-                if not brand_mentions:
-                    brand_mentions = None
+        if brands and response_text:
+            brand_mentions = enricher.detect_brand_mentions(response_text, brands)
+            if not brand_mentions:
+                brand_mentions = None
+
+        # Detect domain mentions if we have domains and response text
+        domain_mentions = None
+        if domains and response_text:
+            domain_mentions = enricher.detect_domain_mentions(response_text, domains)
+            if not domain_mentions:
+                domain_mentions = None
 
         prompt = prompts_map.get(item.prompt_id)
         items.append(
@@ -258,6 +314,7 @@ async def get_report(
                 amount_charged=item.amount_charged,
                 answer=answer,
                 brand_mentions=brand_mentions,
+                domain_mentions=domain_mentions,
             )
         )
 
@@ -279,21 +336,26 @@ async def get_report(
     )
 
 
-@router.get("/groups/{group_id}/compare", response_model=ComparisonResponse)
+@router.get("/groups/{group_id}/compare", response_model=EnhancedComparisonResponse)
 async def compare_with_latest_report(
     group_id: int,
     current_user: CurrentUser,
     report_service: ReportServiceDep,
     comparison_service: ComparisonServiceDep,
     group_service: PromptGroupServiceDep,
+    freshness_analyzer: FreshnessAnalyzerDep,
 ):
-    """Compare current data with the latest report.
+    """Enhanced comparison with per-prompt freshness and brand change detection.
 
-    Shows how much new data is available since the last report.
+    Returns detailed information about:
+    - Per-prompt freshness (which prompts have newer answers than last report)
+    - Brand/competitors change detection
+    - Cost estimation
+    - Whether generation should be enabled
     """
-    # Verify user owns the group
+    # Get group with brand/competitors
     try:
-        await group_service.get_by_id_for_user(group_id, current_user.id)
+        group = await group_service.get_by_id_for_user(group_id, current_user.id)
     except Exception as e:
         raise to_http_exception(GroupNotFoundError(group_id))
 
@@ -307,18 +369,44 @@ async def compare_with_latest_report(
         current_user.id, evaluation_ids
     )
 
+    # Calculate fresh evaluations (not consumed)
     fresh_count = len(evaluation_ids) - len(consumed_ids)
     price_per = Decimal(str(settings.billing_price_per_evaluation))
     estimated_cost = price_per * fresh_count
 
-    # Get user balance
+    # Get user balance via preview
     preview = await report_service.preview_report(
         group_id=group_id,
         user_id=current_user.id,
         price_per_evaluation=price_per,
     )
 
-    return ComparisonResponse(
+    # Analyze per-prompt freshness
+    prompt_freshness = await freshness_analyzer.analyze_freshness(
+        group_id=group_id,
+        last_report=latest_report,
+    )
+    prompts_with_fresher_answers = sum(
+        1 for pf in prompt_freshness if pf.has_fresher_answer
+    )
+
+    # Detect brand/competitors changes
+    brand_changes = report_service.detect_brand_changes(
+        current_brand=group.brand,
+        current_competitors=group.competitors,
+        last_report=latest_report,
+    )
+
+    # Determine if generation should be enabled
+    can_generate = (
+        prompts_with_fresher_answers > 0
+        or fresh_count > 0
+        or brand_changes.brand_changed
+        or brand_changes.competitors_changed
+    )
+    generation_disabled_reason = None if can_generate else "no_new_data_or_changes"
+
+    return EnhancedComparisonResponse(
         group_id=group_id,
         last_report_at=latest_report.created_at if latest_report else None,
         current_prompts_count=len(prompt_ids),
@@ -328,10 +416,15 @@ async def compare_with_latest_report(
             if latest_report
             else len(prompt_ids)
         ),
-        new_evaluations_available=fresh_count,
-        fresh_data_count=fresh_count,
+        prompts_with_fresher_answers=prompts_with_fresher_answers,
+        prompt_freshness=prompt_freshness,
+        brand_changes=brand_changes,
+        fresh_evaluations=fresh_count,
+        already_consumed=len(consumed_ids),
         estimated_cost=estimated_cost,
         user_balance=preview["user_balance"],
         affordable_count=preview["affordable_count"],
         needs_top_up=preview["needs_top_up"],
+        can_generate=can_generate,
+        generation_disabled_reason=generation_disabled_reason,
     )

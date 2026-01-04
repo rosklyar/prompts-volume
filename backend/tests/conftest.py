@@ -21,6 +21,7 @@ from src.main import app
 from src.auth.crud import create_user
 from src.auth.models import UserCreate
 from src.auth.security import create_access_token
+from src.config.settings import settings
 from src.businessdomain.services import BusinessDomainService
 from src.evaluations.services.evaluation_service import EvaluationService
 from src.geography.services import CountryService, LanguageService
@@ -281,3 +282,83 @@ def auth_headers(auth_token):
     Returns a dict with Authorization header.
     """
     return {"Authorization": f"Bearer {auth_token}"}
+
+
+@pytest_asyncio.fixture(scope="function")
+async def test_superuser(test_engine):
+    """
+    Fixture that creates a test superuser in the database.
+    Uses the test_engine to create a session and user.
+    Each invocation creates a superuser with a unique email to avoid conflicts.
+    Returns the created User object.
+    """
+    async_session_maker = async_sessionmaker(
+        bind=test_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autocommit=False,
+        autoflush=False,
+    )
+
+    unique_email = f"admin-{uuid.uuid4()}@example.com"
+
+    async with async_session_maker() as session:
+        user = await create_user(
+            session,
+            UserCreate(
+                email=unique_email,
+                password="adminpassword123",
+                full_name="Admin User",
+                is_active=True,
+                is_superuser=True,
+            ),
+        )
+        session.expunge(user)
+        return user
+
+
+@pytest.fixture(scope="function")
+def superuser_auth_token(test_superuser):
+    """
+    Fixture that creates a JWT access token for the test superuser.
+    Returns the token string.
+    """
+    token = create_access_token(
+        subject=test_superuser.id,
+        expires_delta=timedelta(minutes=30),
+    )
+    return token
+
+
+@pytest.fixture(scope="function")
+def superuser_auth_headers(superuser_auth_token):
+    """
+    Fixture that provides authorization headers with Bearer token for superuser.
+    Returns a dict with Authorization header.
+    """
+    return {"Authorization": f"Bearer {superuser_auth_token}"}
+
+
+# Test token for evaluation API
+TEST_EVALUATION_TOKEN = "test-eval-token-12345"
+
+
+@pytest.fixture(scope="function", autouse=True)
+def setup_evaluation_token():
+    """
+    Fixture that sets up a test evaluation token for all tests.
+    This token is used by the evaluation API endpoints.
+    """
+    original_value = settings.evaluation_api_tokens
+    settings.evaluation_api_tokens = TEST_EVALUATION_TOKEN
+    yield
+    settings.evaluation_api_tokens = original_value
+
+
+@pytest.fixture(scope="function")
+def eval_auth_headers():
+    """
+    Fixture that provides bot secret headers for evaluation API.
+    Returns a dict with X-Bot-Secret header containing the test token.
+    """
+    return {"X-Bot-Secret": TEST_EVALUATION_TOKEN}

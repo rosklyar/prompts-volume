@@ -12,7 +12,7 @@ from src.evaluations.services.evaluation_service import EvaluationService
 
 
 @pytest.mark.asyncio
-async def test_poll_for_evaluation_success(client):
+async def test_poll_for_evaluation_success(client, eval_auth_headers):
     """Test successfully polling for a prompt evaluation."""
     # Poll for a prompt
     response = client.post(
@@ -20,7 +20,8 @@ async def test_poll_for_evaluation_success(client):
         json={
             "assistant_name": "ChatGPT",
             "plan_name": "Plus"
-        }
+        },
+        headers=eval_auth_headers,
     )
 
     # Should return 200 with a prompt
@@ -43,7 +44,7 @@ async def test_poll_for_evaluation_success(client):
 
 
 @pytest.mark.asyncio
-async def test_concurrent_bot_polling(client):
+async def test_concurrent_bot_polling(client, eval_auth_headers):
     """Test concurrent bot polling with locking mechanism.
 
     Scenario:
@@ -59,7 +60,8 @@ async def test_concurrent_bot_polling(client):
         json={
             "assistant_name": "ChatGPT",
             "plan_name": "Plus"
-        }
+        },
+        headers=eval_auth_headers,
     )
 
     assert response1.status_code == 200
@@ -76,7 +78,8 @@ async def test_concurrent_bot_polling(client):
         json={
             "assistant_name": "ChatGPT",
             "plan_name": "Plus"
-        }
+        },
+        headers=eval_auth_headers,
     )
 
     assert response2.status_code == 200
@@ -109,7 +112,8 @@ async def test_concurrent_bot_polling(client):
                 ],
                 "timestamp": datetime.now().isoformat()
             }
-        }
+        },
+        headers=eval_auth_headers,
     )
 
     assert submit_response1.status_code == 200
@@ -135,7 +139,8 @@ async def test_concurrent_bot_polling(client):
                 ],
                 "timestamp": datetime.now().isoformat()
             }
-        }
+        },
+        headers=eval_auth_headers,
     )
 
     assert submit_response2.status_code == 200
@@ -149,7 +154,8 @@ async def test_concurrent_bot_polling(client):
         json={
             "assistant_name": "ChatGPT",
             "plan_name": "Plus"
-        }
+        },
+        headers=eval_auth_headers,
     )
 
     assert response3.status_code == 200
@@ -277,14 +283,15 @@ async def test_fresh_evaluation_remains_locked(client, test_session):
 
 
 @pytest.mark.asyncio
-async def test_poll_with_valid_assistant_plan(client):
+async def test_poll_with_valid_assistant_plan(client, eval_auth_headers):
     """Test polling with valid assistant/plan combination."""
     response = client.post(
         "/evaluations/api/v1/poll",
         json={
             "assistant_name": "ChatGPT",
             "plan_name": "PLUS"
-        }
+        },
+        headers=eval_auth_headers,
     )
 
     assert response.status_code == 200
@@ -295,14 +302,15 @@ async def test_poll_with_valid_assistant_plan(client):
 
 
 @pytest.mark.asyncio
-async def test_poll_with_invalid_assistant(client):
+async def test_poll_with_invalid_assistant(client, eval_auth_headers):
     """Test polling with non-existent assistant returns 422."""
     response = client.post(
         "/evaluations/api/v1/poll",
         json={
             "assistant_name": "NonExistentBot",
             "plan_name": "PLUS"
-        }
+        },
+        headers=eval_auth_headers,
     )
 
     assert response.status_code == 422
@@ -313,14 +321,15 @@ async def test_poll_with_invalid_assistant(client):
 
 
 @pytest.mark.asyncio
-async def test_poll_with_invalid_plan(client):
+async def test_poll_with_invalid_plan(client, eval_auth_headers):
     """Test polling with valid assistant but invalid plan returns 422."""
     response = client.post(
         "/evaluations/api/v1/poll",
         json={
             "assistant_name": "ChatGPT",
             "plan_name": "ENTERPRISE"  # Not seeded
-        }
+        },
+        headers=eval_auth_headers,
     )
 
     assert response.status_code == 422
@@ -331,14 +340,15 @@ async def test_poll_with_invalid_plan(client):
 
 
 @pytest.mark.asyncio
-async def test_poll_with_invalid_assistant_and_plan(client):
+async def test_poll_with_invalid_assistant_and_plan(client, eval_auth_headers):
     """Test polling with both invalid assistant and plan returns 422."""
     response = client.post(
         "/evaluations/api/v1/poll",
         json={
             "assistant_name": "RandomBot",
             "plan_name": "RandomPlan"
-        }
+        },
+        headers=eval_auth_headers,
     )
 
     assert response.status_code == 422
@@ -347,7 +357,7 @@ async def test_poll_with_invalid_assistant_and_plan(client):
 
 
 @pytest.mark.asyncio
-async def test_poll_case_insensitive_validation(client):
+async def test_poll_case_insensitive_validation(client, eval_auth_headers):
     """Test that validation is case-insensitive."""
     # Test lowercase
     response1 = client.post(
@@ -355,7 +365,8 @@ async def test_poll_case_insensitive_validation(client):
         json={
             "assistant_name": "chatgpt",  # lowercase
             "plan_name": "plus"          # lowercase
-        }
+        },
+        headers=eval_auth_headers,
     )
     assert response1.status_code == 200
 
@@ -365,7 +376,8 @@ async def test_poll_case_insensitive_validation(client):
         json={
             "assistant_name": "ChatGPT",  # exact case
             "plan_name": "Plus"           # mixed case
-        }
+        },
+        headers=eval_auth_headers,
     )
     assert response2.status_code == 200
 
@@ -375,13 +387,14 @@ async def test_poll_case_insensitive_validation(client):
         json={
             "assistant_name": "CHATGPT",  # uppercase
             "plan_name": "FREE"           # uppercase
-        }
+        },
+        headers=eval_auth_headers,
     )
     assert response3.status_code == 200
 
 
 @pytest.mark.asyncio
-async def test_poll_all_chatgpt_plans(client):
+async def test_poll_all_chatgpt_plans(client, eval_auth_headers):
     """Test polling with all seeded ChatGPT plans."""
     plans = ["FREE", "PLUS", "PRO"]
 
@@ -391,7 +404,8 @@ async def test_poll_all_chatgpt_plans(client):
             json={
                 "assistant_name": "ChatGPT",
                 "plan_name": plan
-            }
+            },
+            headers=eval_auth_headers,
         )
         assert response.status_code == 200, f"Plan {plan} should be valid"
 

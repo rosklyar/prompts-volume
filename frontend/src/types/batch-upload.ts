@@ -15,16 +15,33 @@ export interface BatchPromptAnalysis {
   input_text: string
   matches: SimilarPromptMatch[]
   has_matches: boolean
+  is_duplicate: boolean  // True if best match >= 99.5% similarity
 }
 
 export interface BatchAnalyzeResponse {
   items: BatchPromptAnalysis[]
   total_prompts: number
-  prompts_with_matches: number
-  prompts_without_matches: number
+  duplicates_count: number
+  with_matches_count: number
 }
 
-// ===== Selection Types =====
+// ===== Create Prompts Types (new shared endpoint) =====
+
+export interface BatchCreateRequest {
+  prompts: string[]          // Original prompt texts
+  selected_indices: number[] // Indices to create
+  topic_id?: number | null   // Optional topic (for admin)
+  group_id?: number | null   // Optional group (for user - derives topic from group)
+}
+
+export interface BatchCreateResponse {
+  created_count: number
+  reused_count: number
+  prompt_ids: number[]
+  request_id: string
+}
+
+// ===== Legacy Types (for backward compatibility during migration) =====
 
 export interface BatchPromptSelection {
   index: number

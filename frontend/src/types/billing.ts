@@ -61,6 +61,17 @@ export interface GeneratedReportItem {
       variation: string
     }>
   }> | null
+  domain_mentions: Array<{
+    name: string
+    domain: string
+    is_brand: boolean
+    mentions: Array<{
+      start: number
+      end: number
+      matched_text: string
+      matched_domain: string
+    }>
+  }> | null
   completed_at: string | null
 }
 
@@ -133,19 +144,62 @@ export interface ReportListResponse {
   total: number
 }
 
-export interface ComparisonResponse {
+// ===== Per-Prompt Freshness Types =====
+
+export interface PromptFreshnessInfo {
+  prompt_id: number
+  prompt_text: string
+  has_fresher_answer: boolean
+  latest_answer_at: string | null
+  previous_answer_at: string | null
+  next_refresh_estimate: string
+  has_in_progress_evaluation: boolean
+}
+
+export interface BrandChangeInfo {
+  brand_changed: boolean
+  competitors_changed: boolean
+  current_brand: Record<string, unknown> | null
+  current_competitors: Array<Record<string, unknown>> | null
+  previous_brand: Record<string, unknown> | null
+  previous_competitors: Array<Record<string, unknown>> | null
+}
+
+// ===== Enhanced Comparison Response =====
+
+export interface EnhancedComparisonResponse {
   group_id: number
   last_report_at: string | null
+
+  // Current state
   current_prompts_count: number
   current_evaluations_count: number
+
+  // Comparison with last report
   new_prompts_added: number
-  new_evaluations_available: number
-  fresh_data_count: number
+  prompts_with_fresher_answers: number
+
+  // Per-prompt freshness details
+  prompt_freshness: PromptFreshnessInfo[]
+
+  // Brand change detection
+  brand_changes: BrandChangeInfo
+
+  // Cost estimation (merged from preview)
+  fresh_evaluations: number
+  already_consumed: number
   estimated_cost: number
   user_balance: number
   affordable_count: number
   needs_top_up: boolean
+
+  // Generate button state
+  can_generate: boolean
+  generation_disabled_reason: string | null
 }
+
+// Legacy type alias for backward compatibility
+export type ComparisonResponse = EnhancedComparisonResponse
 
 // ===== Full Report Types (for viewing historical reports) =====
 
