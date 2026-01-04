@@ -12,7 +12,7 @@ import { useCountries, useBusinessDomains, useTopicsFiltered } from "@/hooks/use
 import { MAX_GROUPS } from "./constants"
 
 interface AddGroupCardProps {
-  onAdd: (title: string, topic: TopicInput, brand: BrandInfo, competitors?: CompetitorInfo[]) => void
+  onAdd: (title: string, topic: TopicInput, brand: BrandInfo, competitors?: CompetitorInfo[], topicTitle?: string) => void
   isLoading: boolean
 }
 
@@ -161,7 +161,10 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
         return // Should not happen if validation is correct
       }
 
-      onAdd(trimmedTitle, topicInput, brand, competitors.length > 0 ? competitors : undefined)
+      // Get the topic title to pass to the modal
+      const topicTitleForModal = isCreatingNewTopic ? newTopicTitle.trim() : selectedTopic?.title
+
+      onAdd(trimmedTitle, topicInput, brand, competitors.length > 0 ? competitors : undefined, topicTitleForModal)
       resetForm()
     }
   }
