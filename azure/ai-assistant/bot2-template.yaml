@@ -1,0 +1,42 @@
+properties:
+  template:
+    containers:
+      - name: ai-assistant-2
+        image: promptsacr.azurecr.io/ai-assistant:v1.0.release
+        resources:
+          cpu: 1.0
+          memory: 2Gi
+        env:
+          - name: SESSIONS_DIR
+            value: /app/sessions
+          - name: API_URL
+            value: https://prompts-backend.jollydune-754acd02.canadacentral.azurecontainerapps.io
+          - name: RESULTS_API_URL
+            value: https://prompts-backend.jollydune-754acd02.canadacentral.azurecontainerapps.io
+          - name: ASSISTANT_NAME
+            value: ChatGPT
+          - name: PLAN_NAME
+            value: Free
+          - name: MAX_ATTEMPTS
+            value: "3"
+          - name: PER_SESSION_RUNS
+            value: "10"
+          - name: POLL_BASE_INTERVAL
+            value: "5"
+          - name: POLL_MAX_INTERVAL
+            value: "300"
+          - name: POLL_BACKOFF_MULTIPLIER
+            value: "2.0"
+          - name: API_ERROR_RETRY_INTERVAL
+            value: "300"
+          - name: BROWSER_CLOSE_THRESHOLD
+            value: "60"
+          - name: BOT_SECRET
+            secretRef: bot-secret
+        volumeMounts:
+          - volumeName: pool-2-volume
+            mountPath: /app/sessions
+    volumes:
+      - name: pool-2-volume
+        storageName: pool-2-storage
+        storageType: AzureFile
