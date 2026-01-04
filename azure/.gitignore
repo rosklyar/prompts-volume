@@ -1,0 +1,6 @@
+# Secrets directory (actual secret values)
+secrets/secrets.sh
+
+# Any other secret files
+*.secret
+*.credentials
