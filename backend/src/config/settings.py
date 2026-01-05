@@ -77,6 +77,14 @@ class Settings(BaseSettings):
     # CORS configuration
     frontend_url: str = "http://localhost:5173"
 
+    # Brevo email configuration (uses HTTP API instead of SMTP to avoid port blocking)
+    brevo_api_key: str = ""  # Set via BREVO_API_KEY env var
+    brevo_sender_email: str = "llmheroai@gmail.com"
+    brevo_sender_name: str = "LLM Hero"
+
+    # Email verification configuration
+    email_verification_token_expire_hours: int = 24
+
     # Billing configuration
     billing_price_per_evaluation: float = 0.01  # Price in dollars per evaluation
     billing_price_per_generation: float = 1.00  # Price in dollars per generate call

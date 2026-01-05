@@ -36,6 +36,7 @@ services:
       FIRST_SUPERUSER_PASSWORD: ${FIRST_SUPERUSER_PASSWORD:-changethis}
       FRONTEND_URL: http://localhost:5173
       EVALUATION_API_TOKENS: ${EVALUATION_API_TOKENS}
+      BREVO_API_KEY: ${BREVO_API_KEY}
     ports:
       - "8000:8000"
     healthcheck:

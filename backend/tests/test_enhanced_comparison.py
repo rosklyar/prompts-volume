@@ -1,7 +1,7 @@
-"""Integration tests for enhanced comparison endpoint.
+"""Integration tests for selectable comparison endpoint.
 
-Tests the new EnhancedComparisonResponse with:
-- Per-prompt freshness detection
+Tests the SelectableComparisonResponse with:
+- Per-prompt selection options
 - Brand/competitors change detection
 - Time estimations
 - can_generate logic
@@ -14,27 +14,22 @@ from decimal import Decimal
 DEFAULT_TOPIC = {"existing_topic_id": 1}
 
 
-def test_enhanced_comparison_fresh_data_detection(client, eval_auth_headers):
-    """Test that compare detects prompts with fresher answers than last report."""
+def _build_selections_from_compare(compare_response: dict) -> list[dict]:
+    """Build selections list from compare response using default selections."""
+    selections = []
+    for ps in compare_response["prompt_selections"]:
+        selections.append({
+            "prompt_id": ps["prompt_id"],
+            "evaluation_id": ps["default_selection"],
+        })
+    return selections
+
+
+def test_enhanced_comparison_fresh_data_detection(client, eval_auth_headers, create_verified_user):
+    """Test that compare detects prompts with available selection options."""
     # === STEP 1: Sign up and login ===
     unique_email = f"test-fresh-{uuid.uuid4()}@example.com"
-    signup_response = client.post(
-        "/api/v1/users/signup",
-        json={
-            "email": unique_email,
-            "password": "testpassword123",
-            "full_name": "Fresh Test User",
-        },
-    )
-    assert signup_response.status_code == 200
-
-    login_response = client.post(
-        "/api/v1/login/access-token",
-        data={"username": unique_email, "password": "testpassword123"},
-    )
-    assert login_response.status_code == 200
-    token = login_response.json()["access_token"]
-    auth_headers = {"Authorization": f"Bearer {token}"}
+    auth_headers = create_verified_user(unique_email, "testpassword123", "Fresh Test User")
 
     # === STEP 2: Create group with brand ===
     group_response = client.post(
@@ -89,24 +84,25 @@ def test_enhanced_comparison_fresh_data_detection(client, eval_auth_headers):
     assert compare_response.status_code == 200
     compare = compare_response.json()
 
-    # Should have prompt freshness info
-    assert "prompt_freshness" in compare
-    assert len(compare["prompt_freshness"]) == 1
+    # Should have prompt selection info
+    assert "prompt_selections" in compare
+    assert len(compare["prompt_selections"]) == 1
 
-    # First prompt should show as fresh (no previous report to compare to)
-    pf = compare["prompt_freshness"][0]
-    assert pf["prompt_id"] == prompt_id
-    assert pf["has_fresher_answer"] is True  # Fresh since no previous report
-    assert pf["latest_answer_at"] is not None
+    # First prompt should have available options (fresh since no previous report)
+    ps = compare["prompt_selections"][0]
+    assert ps["prompt_id"] == prompt_id
+    assert len(ps["available_options"]) >= 1  # Has options
+    assert ps["default_selection"] is not None  # Has default
 
     # Should be able to generate
     assert compare["can_generate"] is True
     assert compare["generation_disabled_reason"] is None
 
-    # === STEP 6: Generate first report ===
+    # === STEP 6: Generate first report with selections ===
+    selections = _build_selections_from_compare(compare)
     report_response = client.post(
         f"/reports/api/v1/groups/{group_id}/generate",
-        json={"include_previous": True},
+        json={"selections": selections},
         headers=auth_headers,
     )
     assert report_response.status_code == 200
@@ -119,39 +115,21 @@ def test_enhanced_comparison_fresh_data_detection(client, eval_auth_headers):
     assert compare_response.status_code == 200
     compare = compare_response.json()
 
-    # Prompt should NOT show as fresh (same answer as in report)
-    pf = compare["prompt_freshness"][0]
-    assert pf["has_fresher_answer"] is False
-
-    # No fresh evaluations (already consumed)
-    assert compare["fresh_evaluations"] == 0
+    # Prompt should NOT have fresh options (no fresher answers than report)
+    ps = compare["prompt_selections"][0]
+    # Options are only fresher evaluations, so after consuming, no fresh options
+    assert compare["default_fresh_count"] == 0
 
     # Should NOT be able to generate (no new data, no brand changes)
     assert compare["can_generate"] is False
     assert compare["generation_disabled_reason"] == "no_new_data_or_changes"
 
 
-def test_enhanced_comparison_brand_change_detection(client, eval_auth_headers):
+def test_enhanced_comparison_brand_change_detection(client, eval_auth_headers, create_verified_user):
     """Test that compare detects brand/competitors changes."""
     # === STEP 1: Sign up and login ===
     unique_email = f"test-brand-{uuid.uuid4()}@example.com"
-    signup_response = client.post(
-        "/api/v1/users/signup",
-        json={
-            "email": unique_email,
-            "password": "testpassword123",
-            "full_name": "Brand Test User",
-        },
-    )
-    assert signup_response.status_code == 200
-
-    login_response = client.post(
-        "/api/v1/login/access-token",
-        data={"username": unique_email, "password": "testpassword123"},
-    )
-    assert login_response.status_code == 200
-    token = login_response.json()["access_token"]
-    auth_headers = {"Authorization": f"Bearer {token}"}
+    auth_headers = create_verified_user(unique_email, "testpassword123", "Brand Test User")
 
     # === STEP 2: Create group with brand ===
     group_response = client.post(
@@ -198,10 +176,17 @@ def test_enhanced_comparison_brand_change_detection(client, eval_auth_headers):
     )
     assert add_response.status_code == 200
 
-    # === STEP 4: Generate first report ===
+    # === STEP 4: Generate first report with selections ===
+    compare_response = client.get(
+        f"/reports/api/v1/groups/{group_id}/compare",
+        headers=auth_headers,
+    )
+    assert compare_response.status_code == 200
+    selections = _build_selections_from_compare(compare_response.json())
+
     report_response = client.post(
         f"/reports/api/v1/groups/{group_id}/generate",
-        json={"include_previous": True},
+        json={"selections": selections},
         headers=auth_headers,
     )
     assert report_response.status_code == 200
@@ -266,27 +251,11 @@ def test_enhanced_comparison_brand_change_detection(client, eval_auth_headers):
     assert compare["can_generate"] is True
 
 
-def test_enhanced_comparison_time_estimations(client, eval_auth_headers):
-    """Test that compare returns correct time estimations."""
+def test_enhanced_comparison_time_estimations(client, eval_auth_headers, create_verified_user):
+    """Test that compare returns correct time estimations (in_progress indicator)."""
     # === STEP 1: Sign up and login ===
     unique_email = f"test-time-{uuid.uuid4()}@example.com"
-    signup_response = client.post(
-        "/api/v1/users/signup",
-        json={
-            "email": unique_email,
-            "password": "testpassword123",
-            "full_name": "Time Test User",
-        },
-    )
-    assert signup_response.status_code == 200
-
-    login_response = client.post(
-        "/api/v1/login/access-token",
-        data={"username": unique_email, "password": "testpassword123"},
-    )
-    assert login_response.status_code == 200
-    token = login_response.json()["access_token"]
-    auth_headers = {"Authorization": f"Bearer {token}"}
+    auth_headers = create_verified_user(unique_email, "testpassword123", "Time Test User")
 
     # === STEP 2: Create group ===
     group_response = client.post(
@@ -327,11 +296,10 @@ def test_enhanced_comparison_time_estimations(client, eval_auth_headers):
     assert compare_response.status_code == 200
     compare = compare_response.json()
 
-    # Should show in_progress estimation
-    assert len(compare["prompt_freshness"]) == 1
-    pf = compare["prompt_freshness"][0]
-    assert pf["has_in_progress_evaluation"] is True
-    assert pf["next_refresh_estimate"] == "~15 minutes"
+    # Should have prompt selection info showing in_progress
+    assert len(compare["prompt_selections"]) == 1
+    ps = compare["prompt_selections"][0]
+    assert ps["has_in_progress_evaluation"] is True
 
     # === STEP 5: Complete the evaluation ===
     submit_resp = client.post(
@@ -348,14 +316,7 @@ def test_enhanced_comparison_time_estimations(client, eval_auth_headers):
     )
     assert submit_resp.status_code == 200
 
-    # === STEP 6: Generate report and compare again ===
-    report_response = client.post(
-        f"/reports/api/v1/groups/{group_id}/generate",
-        json={"include_previous": True},
-        headers=auth_headers,
-    )
-    assert report_response.status_code == 200
-
+    # === STEP 6: Compare again - no longer in_progress ===
     compare_response = client.get(
         f"/reports/api/v1/groups/{group_id}/compare",
         headers=auth_headers,
@@ -363,33 +324,15 @@ def test_enhanced_comparison_time_estimations(client, eval_auth_headers):
     assert compare_response.status_code == 200
     compare = compare_response.json()
 
-    # Should show next refresh estimation (no in_progress)
-    pf = compare["prompt_freshness"][0]
-    assert pf["has_in_progress_evaluation"] is False
-    assert pf["next_refresh_estimate"] == "up to 6 hours"
+    ps = compare["prompt_selections"][0]
+    assert ps["has_in_progress_evaluation"] is False
 
 
-def test_enhanced_comparison_cost_estimation(client, eval_auth_headers):
+def test_enhanced_comparison_cost_estimation(client, eval_auth_headers, create_verified_user):
     """Test that compare returns accurate cost estimation."""
     # === STEP 1: Sign up and login ===
     unique_email = f"test-cost-{uuid.uuid4()}@example.com"
-    signup_response = client.post(
-        "/api/v1/users/signup",
-        json={
-            "email": unique_email,
-            "password": "testpassword123",
-            "full_name": "Cost Test User",
-        },
-    )
-    assert signup_response.status_code == 200
-
-    login_response = client.post(
-        "/api/v1/login/access-token",
-        data={"username": unique_email, "password": "testpassword123"},
-    )
-    assert login_response.status_code == 200
-    token = login_response.json()["access_token"]
-    auth_headers = {"Authorization": f"Bearer {token}"}
+    auth_headers = create_verified_user(unique_email, "testpassword123", "Cost Test User")
 
     # === STEP 2: Create group ===
     group_response = client.post(
@@ -439,7 +382,7 @@ def test_enhanced_comparison_cost_estimation(client, eval_auth_headers):
     )
     assert add_response.status_code == 200
 
-    # === STEP 4: Compare - should show cost for 3 fresh evaluations ===
+    # === STEP 4: Compare - should show cost for 3 fresh default selections ===
     compare_response = client.get(
         f"/reports/api/v1/groups/{group_id}/compare",
         headers=auth_headers,
@@ -447,43 +390,23 @@ def test_enhanced_comparison_cost_estimation(client, eval_auth_headers):
     assert compare_response.status_code == 200
     compare = compare_response.json()
 
-    fresh_count = compare["fresh_evaluations"]
+    fresh_count = compare["default_fresh_count"]
     assert fresh_count >= 3, f"Expected at least 3 fresh, got {fresh_count}"
 
     # Cost should be 0.01 per evaluation
     expected_cost = Decimal("0.01") * fresh_count
-    actual_cost = Decimal(str(compare["estimated_cost"]))
+    actual_cost = Decimal(str(compare["default_estimated_cost"]))
     assert actual_cost == expected_cost, f"Expected {expected_cost}, got {actual_cost}"
 
     # User balance from signup credits
     assert Decimal(str(compare["user_balance"])) == Decimal("10.00")
 
-    # Should be able to afford all
-    assert compare["affordable_count"] >= fresh_count
-    assert compare["needs_top_up"] is False
 
-
-def test_enhanced_comparison_can_generate_logic(client, eval_auth_headers):
+def test_enhanced_comparison_can_generate_logic(client, eval_auth_headers, create_verified_user):
     """Test can_generate logic with various scenarios."""
     # === STEP 1: Sign up and login ===
     unique_email = f"test-gen-{uuid.uuid4()}@example.com"
-    signup_response = client.post(
-        "/api/v1/users/signup",
-        json={
-            "email": unique_email,
-            "password": "testpassword123",
-            "full_name": "Generate Test User",
-        },
-    )
-    assert signup_response.status_code == 200
-
-    login_response = client.post(
-        "/api/v1/login/access-token",
-        data={"username": unique_email, "password": "testpassword123"},
-    )
-    assert login_response.status_code == 200
-    token = login_response.json()["access_token"]
-    auth_headers = {"Authorization": f"Bearer {token}"}
+    auth_headers = create_verified_user(unique_email, "testpassword123", "Generate Test User")
 
     # === STEP 2: Create group ===
     group_response = client.post(
@@ -508,8 +431,8 @@ def test_enhanced_comparison_can_generate_logic(client, eval_auth_headers):
 
     # Empty group - no data to generate
     assert compare["can_generate"] is False
-    assert compare["prompts_with_fresher_answers"] == 0
-    assert compare["fresh_evaluations"] == 0
+    assert compare["prompts_with_options"] == 0
+    assert compare["default_fresh_count"] == 0
 
     # === STEP 4: Add prompt with evaluation ===
     poll_resp = client.post(
@@ -551,12 +474,13 @@ def test_enhanced_comparison_can_generate_logic(client, eval_auth_headers):
     compare = compare_response.json()
 
     assert compare["can_generate"] is True
-    assert compare["fresh_evaluations"] >= 1
+    assert compare["default_fresh_count"] >= 1
 
-    # === STEP 6: Generate report ===
+    # === STEP 6: Generate report with selections ===
+    selections = _build_selections_from_compare(compare)
     report_response = client.post(
         f"/reports/api/v1/groups/{group_id}/generate",
-        json={"include_previous": True},
+        json={"selections": selections},
         headers=auth_headers,
     )
     assert report_response.status_code == 200

@@ -144,7 +144,7 @@ export interface ReportListResponse {
   total: number
 }
 
-// ===== Per-Prompt Freshness Types =====
+// ===== Per-Prompt Freshness Types (Legacy) =====
 
 export interface PromptFreshnessInfo {
   prompt_id: number
@@ -165,7 +165,58 @@ export interface BrandChangeInfo {
   previous_competitors: Array<Record<string, unknown>> | null
 }
 
-// ===== Enhanced Comparison Response =====
+// ===== New Selection-based Types =====
+
+export interface EvaluationOption {
+  evaluation_id: number
+  assistant_plan_id: number
+  assistant_plan_name: string // e.g., "PLUS", "PRO"
+  assistant_name: string // e.g., "ChatGPT", "Claude"
+  completed_at: string // ISO datetime
+  is_fresh: boolean // true if not yet consumed (will be charged)
+  unit_price: string // decimal string e.g., "0.01"
+}
+
+export interface PromptSelectionInfo {
+  prompt_id: number
+  prompt_text: string
+  available_options: EvaluationOption[]
+  default_selection: number | null // evaluation_id
+  was_awaiting_in_last_report: boolean
+  last_report_evaluation_id: number | null
+  last_report_evaluation_at: string | null
+  has_in_progress_evaluation: boolean
+}
+
+export interface SelectableComparisonResponse {
+  group_id: number
+  last_report_at: string | null
+  prompt_selections: PromptSelectionInfo[]
+  total_prompts: number
+  prompts_with_options: number
+  prompts_awaiting: number
+  brand_changes: BrandChangeInfo
+  default_selection_count: number
+  default_fresh_count: number
+  default_estimated_cost: string // decimal string
+  user_balance: string // decimal string
+  price_per_evaluation: string // decimal string
+  can_generate: boolean
+  generation_disabled_reason: string | null // "no_new_data_or_changes" if disabled
+}
+
+export interface PromptSelection {
+  prompt_id: number
+  evaluation_id: number | null // null = skip/awaiting
+}
+
+export interface SelectiveGenerateReportRequest {
+  title?: string
+  selections: PromptSelection[]
+  use_defaults_for_unspecified?: boolean // default: true
+}
+
+// ===== Enhanced Comparison Response (Legacy - now alias) =====
 
 export interface EnhancedComparisonResponse {
   group_id: number
@@ -198,8 +249,8 @@ export interface EnhancedComparisonResponse {
   generation_disabled_reason: string | null
 }
 
-// Legacy type alias for backward compatibility
-export type ComparisonResponse = EnhancedComparisonResponse
+// The new response type for comparison endpoint
+export type ComparisonResponse = SelectableComparisonResponse
 
 // ===== Full Report Types (for viewing historical reports) =====
 

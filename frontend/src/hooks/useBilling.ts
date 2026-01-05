@@ -5,7 +5,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { billingApi, reportsApi } from "@/client/api"
-import type { GenerateReportRequest, TopUpRequest } from "@/types/billing"
+import type { TopUpRequest, SelectiveGenerateReportRequest } from "@/types/billing"
 import { reportKeys } from "./useReports"
 
 // ===== Query Keys =====
@@ -89,7 +89,7 @@ export function useTopUp() {
 }
 
 /**
- * Generate report mutation - charges for fresh evaluations
+ * Generate report mutation with evaluation selections - charges for fresh evaluations
  */
 export function useGenerateReport() {
   const queryClient = useQueryClient()
@@ -100,7 +100,7 @@ export function useGenerateReport() {
       request,
     }: {
       groupId: number
-      request?: GenerateReportRequest
+      request: SelectiveGenerateReportRequest
     }) => reportsApi.generate(groupId, request),
     onSuccess: (data, { groupId }) => {
       // Cache the generated report to avoid redundant GET request

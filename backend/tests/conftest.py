@@ -16,6 +16,7 @@ from testcontainers.postgres import PostgresContainer
 
 from src.database import Base, seed_initial_data, seed_evals_data
 from src.database.users_session import UsersBase
+from src.database.users_models import User
 from src.database.evals_session import EvalsBase
 from src.main import app
 from src.auth.crud import create_user
@@ -362,3 +363,67 @@ def eval_auth_headers():
     Returns a dict with X-Bot-Secret header containing the test token.
     """
     return {"X-Bot-Secret": TEST_EVALUATION_TOKEN}
+
+
+@pytest.fixture(scope="function")
+def create_verified_user(client, test_engine):
+    """
+    Fixture that provides a factory function to create verified users.
+
+    Since public signup now requires email verification, this fixture:
+    1. Signs up the user via public API
+    2. Verifies the user using the CRUD function (which also grants signup credits)
+    3. Logs in and returns auth headers
+
+    Usage in tests:
+        def test_example(client, create_verified_user):
+            auth_headers = create_verified_user(
+                email="test@example.com",
+                password="testpassword123"
+            )
+    """
+    import asyncio
+
+    def _create_user(email: str, password: str, full_name: str = "Test User") -> dict:
+        # Step 1: Sign up
+        signup_response = client.post(
+            "/api/v1/users/signup",
+            json={
+                "email": email,
+                "password": password,
+                "full_name": full_name,
+            },
+        )
+        assert signup_response.status_code == 200, f"Signup failed: {signup_response.json()}"
+
+        # Step 2: Verify email using CRUD function (grants signup credits too)
+        async def verify_user():
+            from sqlalchemy import select
+            from src.auth.crud import verify_user_email as crud_verify_user_email
+
+            async_session_maker = async_sessionmaker(
+                bind=test_engine,
+                class_=AsyncSession,
+                expire_on_commit=False,
+                autocommit=False,
+                autoflush=False,
+            )
+            async with async_session_maker() as session:
+                result = await session.execute(
+                    select(User).where(User.email == email)
+                )
+                user = result.scalar_one()
+                await crud_verify_user_email(session, user)
+
+        asyncio.get_event_loop().run_until_complete(verify_user())
+
+        # Step 3: Login and return auth headers
+        login_response = client.post(
+            "/api/v1/login/access-token",
+            data={"username": email, "password": password},
+        )
+        assert login_response.status_code == 200, f"Login failed: {login_response.json()}"
+        token = login_response.json()["access_token"]
+        return {"Authorization": f"Bearer {token}"}
+
+    return _create_user

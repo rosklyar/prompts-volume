@@ -361,3 +361,154 @@ class ReportService:
             previous_brand=previous_brand,
             previous_competitors=previous_competitors,
         )
+
+    async def generate_report_with_selections(
+        self,
+        group_id: int,
+        user_id: str,
+        selections: list["PromptSelection"],
+        title: str | None = None,
+        brand_snapshot: dict | None = None,
+        competitors_snapshot: list[dict] | None = None,
+    ) -> GroupReport:
+        """Generate a report with explicit evaluation selections.
+
+        Unlike generate_report(), this only includes the user's selected
+        evaluations (one per prompt) and only charges for fresh ones.
+
+        Args:
+            group_id: The prompt group ID
+            user_id: The user ID
+            selections: List of PromptSelection with prompt_id and evaluation_id
+            title: Optional report title
+            brand_snapshot: Current brand config to snapshot
+            competitors_snapshot: Current competitors config to snapshot
+
+        Returns:
+            The created GroupReport
+        """
+        from src.reports.models.api_models import PromptSelection
+
+        # Get group to verify it exists (from prompts_db)
+        group_query = select(PromptGroup).where(PromptGroup.id == group_id)
+        group_result = await self._prompts_session.execute(group_query)
+        group = group_result.scalar_one_or_none()
+        if not group:
+            raise ValueError(f"Group {group_id} not found")
+
+        # Get prompts in group (from prompts_db)
+        prompts_query = (
+            select(Prompt)
+            .join(PromptGroupBinding, Prompt.id == PromptGroupBinding.prompt_id)
+            .where(PromptGroupBinding.group_id == group_id)
+        )
+        prompts_result = await self._prompts_session.execute(prompts_query)
+        prompts = list(prompts_result.scalars().all())
+        prompts_map = {p.id: p for p in prompts}
+
+        if not prompts:
+            # Empty group - create empty report
+            report = GroupReport(
+                group_id=group_id,
+                user_id=user_id,
+                title=title,
+                total_prompts=0,
+                prompts_with_data=0,
+                prompts_awaiting=0,
+                total_evaluations_loaded=0,
+                total_cost=Decimal("0"),
+                brand_snapshot=brand_snapshot,
+                competitors_snapshot=competitors_snapshot,
+            )
+            self._evals_session.add(report)
+            await self._evals_session.flush()
+            return report
+
+        # Build selection map: prompt_id -> evaluation_id (or None)
+        selection_map = {s.prompt_id: s.evaluation_id for s in selections}
+
+        # Get all selected evaluation IDs (non-None)
+        selected_eval_ids = [
+            s.evaluation_id for s in selections if s.evaluation_id is not None
+        ]
+
+        # Get consumed evaluation IDs to determine which are fresh
+        consumed_ids = set()
+        if selected_eval_ids:
+            consumed_ids = await self._comparison_service.get_consumed_evaluation_ids(
+                user_id, selected_eval_ids
+            )
+
+        # Fresh evaluations = selected but not consumed
+        fresh_eval_ids = [
+            eid for eid in selected_eval_ids if eid not in consumed_ids
+        ]
+
+        # Charge for fresh evaluations
+        charge_result = None
+        if fresh_eval_ids:
+            charge_result = await self._charge_service.charge_for_evaluations(
+                user_id=user_id,
+                evaluation_ids=fresh_eval_ids,
+            )
+
+        charged_eval_ids = set(
+            charge_result.charged_evaluation_ids if charge_result else []
+        )
+
+        # Calculate stats
+        prompts_with_data = len([s for s in selections if s.evaluation_id is not None])
+        prompts_awaiting = len(prompts) - prompts_with_data
+        total_cost = charge_result.total_charged if charge_result else Decimal("0")
+
+        # Create report (in evals_db)
+        report = GroupReport(
+            group_id=group_id,
+            user_id=user_id,
+            title=title,
+            total_prompts=len(prompts),
+            prompts_with_data=prompts_with_data,
+            prompts_awaiting=prompts_awaiting,
+            total_evaluations_loaded=len(selected_eval_ids),
+            total_cost=total_cost,
+            brand_snapshot=brand_snapshot,
+            competitors_snapshot=competitors_snapshot,
+        )
+        self._evals_session.add(report)
+        await self._evals_session.flush()
+
+        # Create report items (in evals_db)
+        # Calculate per-item cost for charged evaluations
+        per_item_cost = (
+            total_cost / len(charged_eval_ids) if charged_eval_ids else None
+        )
+
+        for prompt in prompts:
+            eval_id = selection_map.get(prompt.id)
+
+            if eval_id is None:
+                # No evaluation selected - awaiting
+                item = GroupReportItem(
+                    report_id=report.id,
+                    prompt_id=prompt.id,
+                    evaluation_id=None,
+                    status=ReportItemStatus.AWAITING,
+                    is_fresh=False,
+                    amount_charged=None,
+                )
+            else:
+                # Evaluation selected - included
+                is_fresh = eval_id in charged_eval_ids
+                item = GroupReportItem(
+                    report_id=report.id,
+                    prompt_id=prompt.id,
+                    evaluation_id=eval_id,
+                    status=ReportItemStatus.INCLUDED,
+                    is_fresh=is_fresh,
+                    amount_charged=per_item_cost if is_fresh else None,
+                )
+
+            self._evals_session.add(item)
+
+        await self._evals_session.flush()
+        return report

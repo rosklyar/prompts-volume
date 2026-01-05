@@ -30,8 +30,8 @@ import { PromptItem } from "./PromptItem"
 import { ReportPanel } from "./ReportPanel"
 import { ReportHistoryPanel } from "./ReportHistoryPanel"
 import { BrandEditor } from "./BrandEditor"
-import { ReportPreviewModal, LowBalanceModal } from "@/components/billing"
-import type { ReportPreview, PromptFreshnessInfo } from "@/types/billing"
+import { ReportPreviewModal } from "@/components/billing"
+import type { PromptSelection, PromptSelectionInfo } from "@/types/billing"
 import { getGroupColor } from "./constants"
 import { BatchUploadModal } from "./BatchUploadModal"
 
@@ -56,7 +56,7 @@ interface GroupCardProps {
   onUpdateTitle: (title: string) => void
   onDeleteGroup: () => void
   onDeletePrompt: (promptId: number) => void
-  onLoadReport: (includePrevious?: boolean) => void
+  onLoadReport: (selections: PromptSelection[]) => void
   onBrandChange: (brand: BrandInfo) => void
   onCompetitorsChange: (competitors: CompetitorInfo[]) => void
   isExpanded: boolean
@@ -90,20 +90,20 @@ export function GroupCard({
   const [isReportCollapsed, setIsReportCollapsed] = useState(true)
   const [showPreviewModal, setShowPreviewModal] = useState(false)
   const [showLowBalanceModal, setShowLowBalanceModal] = useState(false)
-  const [lowBalancePreview, setLowBalancePreview] = useState<ReportPreview | null>(null)
+  const [lowBalanceCost, setLowBalanceCost] = useState<number>(0)
   const colors = getGroupColor(colorIndex)
 
   // Check for fresh data and generation status
-  const { canGenerate, promptFreshness } = useHasFreshData(
+  const { promptSelections } = useHasFreshData(
     group.id,
     prompts.length > 0
   )
 
-  // Create a map of prompt freshness for quick lookup
-  const freshnessMap = promptFreshness.reduce((acc, pf) => {
-    acc[pf.prompt_id] = pf
+  // Create a map of prompt selection info for quick lookup
+  const selectionInfoMap = promptSelections.reduce((acc, ps) => {
+    acc[ps.prompt_id] = ps
     return acc
-  }, {} as Record<number, PromptFreshnessInfo>)
+  }, {} as Record<number, PromptSelectionInfo>)
 
   // Fetch selected report data when a report is selected
   const { data: selectedReport } = useReport(
@@ -185,24 +185,23 @@ export function GroupCard({
     setShowPreviewModal(true)
   }
 
-  // Handle preview confirm - proceed with loading
-  const handlePreviewConfirm = (includePrevious: boolean) => {
+  // Handle preview confirm - proceed with loading using selections
+  const handlePreviewConfirm = (selections: PromptSelection[]) => {
     setShowPreviewModal(false)
-    onLoadReport(includePrevious)
+    onLoadReport(selections)
   }
 
   // Handle low balance scenario from preview
-  const handleNeedsTopUp = (preview: ReportPreview) => {
+  const handleNeedsTopUp = (estimatedCost: number) => {
     setShowPreviewModal(false)
-    setLowBalancePreview(preview)
+    setLowBalanceCost(estimatedCost)
     setShowLowBalanceModal(true)
   }
 
-  // Handle partial load from low balance modal
-  const handleLoadPartial = () => {
+  // Handle close low balance modal
+  const handleCloseLowBalance = () => {
     setShowLowBalanceModal(false)
-    setLowBalancePreview(null)
-    onLoadReport(true) // Load what we can afford
+    setLowBalanceCost(0)
   }
 
   const { setNodeRef, isOver } = useDroppable({
@@ -455,7 +454,7 @@ export function GroupCard({
                         targetBrandName={brand?.name}
                         competitorNames={competitors.map((c) => c.name)}
                         onDelete={onDeletePrompt}
-                        freshnessInfo={freshnessMap[prompt.prompt_id]}
+                        selectionInfo={selectionInfoMap[prompt.prompt_id]}
                       />
                     ))}
                   </div>
@@ -524,22 +523,41 @@ export function GroupCard({
         onClose={() => setShowPreviewModal(false)}
         onConfirm={handlePreviewConfirm}
         onNeedsTopUp={handleNeedsTopUp}
-        promptFreshness={promptFreshness}
-        canGenerate={canGenerate}
       />
 
-      {/* Low Balance Modal */}
-      {lowBalancePreview && (
-        <LowBalanceModal
-          preview={lowBalancePreview}
-          accentColor={colors.accent}
-          isOpen={showLowBalanceModal}
-          onClose={() => {
-            setShowLowBalanceModal(false)
-            setLowBalancePreview(null)
-          }}
-          onLoadPartial={handleLoadPartial}
-        />
+      {/* Low Balance Modal - simplified to just show top-up prompt */}
+      {showLowBalanceModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/20 backdrop-blur-sm"
+            onClick={handleCloseLowBalance}
+          />
+          <div className="relative w-full max-w-sm mx-4 bg-white rounded-xl shadow-2xl p-6">
+            <div className="h-1 w-full -mt-6 mb-6 rounded-t-xl" style={{ backgroundColor: colors.accent }} />
+            <h3 className="text-lg font-medium mb-2" style={{ color: colors.accent }}>
+              Insufficient balance
+            </h3>
+            <p className="text-sm text-gray-500 mb-4 font-['DM_Sans']">
+              You need ${lowBalanceCost.toFixed(2)} to generate this report.
+              Please top up your balance to continue.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={handleCloseLowBalance}
+                className="flex-1 py-2.5 px-4 rounded-lg text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors font-['DM_Sans']"
+              >
+                Cancel
+              </button>
+              <a
+                href="/top-up"
+                className="flex-1 py-2.5 px-4 rounded-lg text-sm font-medium text-white text-center transition-colors font-['DM_Sans']"
+                style={{ backgroundColor: colors.accent }}
+              >
+                Top up
+              </a>
+            </div>
+          </div>
+        </div>
       )}
 
     </>
