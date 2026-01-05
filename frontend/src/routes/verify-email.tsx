@@ -20,14 +20,16 @@ type VerificationState =
 
 function VerifyEmail() {
   const { token } = useSearch({ from: "/verify-email" })
-  const [state, setState] = useState<VerificationState>("loading")
-  const [errorMessage, setErrorMessage] = useState<string>("")
+  // Determine initial state synchronously
+  const initialState: VerificationState = token ? "loading" : "error"
+  const initialError = token ? "" : "No verification token provided"
+
+  const [state, setState] = useState<VerificationState>(initialState)
+  const [errorMessage, setErrorMessage] = useState<string>(initialError)
   const verificationAttempted = useRef(false)
 
   useEffect(() => {
     if (!token) {
-      setState("error")
-      setErrorMessage("No verification token provided")
       return
     }
 

@@ -62,6 +62,7 @@ if az containerapp show --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE
             FRONTEND_URL="https://placeholder-frontend.com" \
             EVALUATION_API_TOKENS="$EVALUATION_API_TOKENS" \
             TOPICS_PROVIDER_SIMILARITY_THRESHOLD="$TOPICS_PROVIDER_SIMILARITY_THRESHOLD" \
+            BREVO_API_KEY="$BREVO_API_KEY" \
         --output table
 else
     echo "Creating new container app..."
@@ -92,6 +93,7 @@ else
             FRONTEND_URL="https://placeholder-frontend.com" \
             EVALUATION_API_TOKENS="$EVALUATION_API_TOKENS" \
             TOPICS_PROVIDER_SIMILARITY_THRESHOLD="$TOPICS_PROVIDER_SIMILARITY_THRESHOLD" \
+            BREVO_API_KEY="$BREVO_API_KEY" \
         --output table
 fi
 

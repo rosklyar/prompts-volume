@@ -19,7 +19,7 @@ interface ReportPreviewModalProps {
   isOpen: boolean
   onClose: () => void
   onConfirm: (selections: PromptSelection[]) => void
-  onNeedsTopUp?: (estimatedCost: number, userBalance: number) => void
+  onNeedsTopUp?: (estimatedCost: number) => void
 }
 
 // Format short datetime for compact display
@@ -329,7 +329,7 @@ export function ReportPreviewModal({
 
   const handleConfirm = () => {
     if (needsTopUp && onNeedsTopUp) {
-      onNeedsTopUp(estimatedCost, parseFloat(comparison?.user_balance ?? "0"))
+      onNeedsTopUp(estimatedCost)
     } else {
       onConfirm(buildSelectionsArray())
     }

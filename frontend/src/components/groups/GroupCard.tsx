@@ -192,7 +192,7 @@ export function GroupCard({
   }
 
   // Handle low balance scenario from preview
-  const handleNeedsTopUp = (estimatedCost: number, _userBalance: number) => {
+  const handleNeedsTopUp = (estimatedCost: number) => {
     setShowPreviewModal(false)
     setLowBalanceCost(estimatedCost)
     setShowLowBalanceModal(true)
