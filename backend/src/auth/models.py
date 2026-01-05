@@ -32,6 +32,7 @@ class UserPublic(UserBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
+    email_verified: bool = False
 
 
 class UsersPublic(BaseModel):
@@ -82,3 +83,23 @@ class Message(BaseModel):
     """Generic message response model."""
 
     message: str
+
+
+class SignupResponse(BaseModel):
+    """Response after successful public signup."""
+
+    message: str
+    email: str
+
+
+class ResendVerificationRequest(BaseModel):
+    """Request to resend verification email."""
+
+    email: EmailStr
+
+
+class VerifyEmailResponse(BaseModel):
+    """Response after email verification attempt."""
+
+    message: str
+    status: str  # "success" or "already_verified"

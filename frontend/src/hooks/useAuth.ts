@@ -27,9 +27,8 @@ const useAuth = () => {
 
   const signUpMutation = useMutation({
     mutationFn: (data: UserRegister) => authApi.signup(data),
-    onSuccess: () => {
-      navigate({ to: "/login" })
-    },
+    // Note: No redirect on success - the signup component handles showing the
+    // email verification screen
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] })
     },

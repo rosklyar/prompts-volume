@@ -30,7 +30,7 @@ def _build_selections_from_compare(compare_response: dict) -> list[dict]:
     return selections
 
 
-def test_complete_report_user_flow(client, eval_auth_headers):
+def test_complete_report_user_flow(client, eval_auth_headers, create_verified_user):
     """Test complete user journey: signup → reports → billing.
 
     This test validates the entire reports and billing integration:
@@ -41,29 +41,9 @@ def test_complete_report_user_flow(client, eval_auth_headers):
     - New evaluations are charged when added
     - Balance decreases correctly with each charge
     """
-    # === STEP 1: Sign up ===
+    # === STEP 1 & 2: Sign up and login ===
     unique_email = f"test-flow-{uuid.uuid4()}@example.com"
-    signup_response = client.post(
-        "/api/v1/users/signup",
-        json={
-            "email": unique_email,
-            "password": "testpassword123",
-            "full_name": "Flow Test User",
-        },
-    )
-    assert signup_response.status_code == 200, f"Signup failed: {signup_response.json()}"
-
-    # === STEP 2: Login ===
-    login_response = client.post(
-        "/api/v1/login/access-token",
-        data={
-            "username": unique_email,
-            "password": "testpassword123",
-        },
-    )
-    assert login_response.status_code == 200, f"Login failed: {login_response.json()}"
-    token = login_response.json()["access_token"]
-    auth_headers = {"Authorization": f"Bearer {token}"}
+    auth_headers = create_verified_user(unique_email, "testpassword123", "Flow Test User")
 
     # === STEP 3: Check initial balance (should be 10.00 from signup credits) ===
     balance_response = client.get("/billing/api/v1/balance", headers=auth_headers)

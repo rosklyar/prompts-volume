@@ -25,27 +25,11 @@ def _build_selections_from_compare(compare_response: dict) -> list[dict]:
     return selections
 
 
-def test_enhanced_comparison_fresh_data_detection(client, eval_auth_headers):
+def test_enhanced_comparison_fresh_data_detection(client, eval_auth_headers, create_verified_user):
     """Test that compare detects prompts with available selection options."""
     # === STEP 1: Sign up and login ===
     unique_email = f"test-fresh-{uuid.uuid4()}@example.com"
-    signup_response = client.post(
-        "/api/v1/users/signup",
-        json={
-            "email": unique_email,
-            "password": "testpassword123",
-            "full_name": "Fresh Test User",
-        },
-    )
-    assert signup_response.status_code == 200
-
-    login_response = client.post(
-        "/api/v1/login/access-token",
-        data={"username": unique_email, "password": "testpassword123"},
-    )
-    assert login_response.status_code == 200
-    token = login_response.json()["access_token"]
-    auth_headers = {"Authorization": f"Bearer {token}"}
+    auth_headers = create_verified_user(unique_email, "testpassword123", "Fresh Test User")
 
     # === STEP 2: Create group with brand ===
     group_response = client.post(
@@ -141,27 +125,11 @@ def test_enhanced_comparison_fresh_data_detection(client, eval_auth_headers):
     assert compare["generation_disabled_reason"] == "no_new_data_or_changes"
 
 
-def test_enhanced_comparison_brand_change_detection(client, eval_auth_headers):
+def test_enhanced_comparison_brand_change_detection(client, eval_auth_headers, create_verified_user):
     """Test that compare detects brand/competitors changes."""
     # === STEP 1: Sign up and login ===
     unique_email = f"test-brand-{uuid.uuid4()}@example.com"
-    signup_response = client.post(
-        "/api/v1/users/signup",
-        json={
-            "email": unique_email,
-            "password": "testpassword123",
-            "full_name": "Brand Test User",
-        },
-    )
-    assert signup_response.status_code == 200
-
-    login_response = client.post(
-        "/api/v1/login/access-token",
-        data={"username": unique_email, "password": "testpassword123"},
-    )
-    assert login_response.status_code == 200
-    token = login_response.json()["access_token"]
-    auth_headers = {"Authorization": f"Bearer {token}"}
+    auth_headers = create_verified_user(unique_email, "testpassword123", "Brand Test User")
 
     # === STEP 2: Create group with brand ===
     group_response = client.post(
@@ -283,27 +251,11 @@ def test_enhanced_comparison_brand_change_detection(client, eval_auth_headers):
     assert compare["can_generate"] is True
 
 
-def test_enhanced_comparison_time_estimations(client, eval_auth_headers):
+def test_enhanced_comparison_time_estimations(client, eval_auth_headers, create_verified_user):
     """Test that compare returns correct time estimations (in_progress indicator)."""
     # === STEP 1: Sign up and login ===
     unique_email = f"test-time-{uuid.uuid4()}@example.com"
-    signup_response = client.post(
-        "/api/v1/users/signup",
-        json={
-            "email": unique_email,
-            "password": "testpassword123",
-            "full_name": "Time Test User",
-        },
-    )
-    assert signup_response.status_code == 200
-
-    login_response = client.post(
-        "/api/v1/login/access-token",
-        data={"username": unique_email, "password": "testpassword123"},
-    )
-    assert login_response.status_code == 200
-    token = login_response.json()["access_token"]
-    auth_headers = {"Authorization": f"Bearer {token}"}
+    auth_headers = create_verified_user(unique_email, "testpassword123", "Time Test User")
 
     # === STEP 2: Create group ===
     group_response = client.post(
@@ -376,27 +328,11 @@ def test_enhanced_comparison_time_estimations(client, eval_auth_headers):
     assert ps["has_in_progress_evaluation"] is False
 
 
-def test_enhanced_comparison_cost_estimation(client, eval_auth_headers):
+def test_enhanced_comparison_cost_estimation(client, eval_auth_headers, create_verified_user):
     """Test that compare returns accurate cost estimation."""
     # === STEP 1: Sign up and login ===
     unique_email = f"test-cost-{uuid.uuid4()}@example.com"
-    signup_response = client.post(
-        "/api/v1/users/signup",
-        json={
-            "email": unique_email,
-            "password": "testpassword123",
-            "full_name": "Cost Test User",
-        },
-    )
-    assert signup_response.status_code == 200
-
-    login_response = client.post(
-        "/api/v1/login/access-token",
-        data={"username": unique_email, "password": "testpassword123"},
-    )
-    assert login_response.status_code == 200
-    token = login_response.json()["access_token"]
-    auth_headers = {"Authorization": f"Bearer {token}"}
+    auth_headers = create_verified_user(unique_email, "testpassword123", "Cost Test User")
 
     # === STEP 2: Create group ===
     group_response = client.post(
@@ -466,27 +402,11 @@ def test_enhanced_comparison_cost_estimation(client, eval_auth_headers):
     assert Decimal(str(compare["user_balance"])) == Decimal("10.00")
 
 
-def test_enhanced_comparison_can_generate_logic(client, eval_auth_headers):
+def test_enhanced_comparison_can_generate_logic(client, eval_auth_headers, create_verified_user):
     """Test can_generate logic with various scenarios."""
     # === STEP 1: Sign up and login ===
     unique_email = f"test-gen-{uuid.uuid4()}@example.com"
-    signup_response = client.post(
-        "/api/v1/users/signup",
-        json={
-            "email": unique_email,
-            "password": "testpassword123",
-            "full_name": "Generate Test User",
-        },
-    )
-    assert signup_response.status_code == 200
-
-    login_response = client.post(
-        "/api/v1/login/access-token",
-        data={"username": unique_email, "password": "testpassword123"},
-    )
-    assert login_response.status_code == 200
-    token = login_response.json()["access_token"]
-    auth_headers = {"Authorization": f"Bearer {token}"}
+    auth_headers = create_verified_user(unique_email, "testpassword123", "Generate Test User")
 
     # === STEP 2: Create group ===
     group_response = client.post(

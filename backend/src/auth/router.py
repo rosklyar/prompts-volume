@@ -1,5 +1,6 @@
 """Authentication API routes."""
 
+import logging
 from datetime import timedelta
 from typing import Annotated, Any
 
@@ -11,6 +12,8 @@ from src.auth import crud, security
 from src.auth.deps import CurrentUser, UsersSessionDep, get_current_active_superuser
 from src.auth.models import (
     Message,
+    ResendVerificationRequest,
+    SignupResponse,
     Token,
     UpdatePassword,
     UserCreate,
@@ -19,11 +22,35 @@ from src.auth.models import (
     UsersPublic,
     UserUpdate,
     UserUpdateMe,
+    VerifyEmailResponse,
 )
+from src.auth.verification import is_token_expired
 from src.config.settings import settings
 from src.database.users_models import User
+from src.email.services.email_service import EmailService
+from src.email.services.verification_email_service import VerificationEmailService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["auth"])
+
+
+def get_email_service() -> EmailService:
+    """Get email service instance."""
+    return EmailService(
+        api_key=settings.brevo_api_key,
+        sender_email=settings.brevo_sender_email,
+        sender_name=settings.brevo_sender_name,
+    )
+
+
+def get_verification_email_service() -> VerificationEmailService:
+    """Get verification email service instance."""
+    return VerificationEmailService(
+        email_service=get_email_service(),
+        frontend_url=settings.frontend_url,
+        expires_in_hours=settings.email_verification_token_expire_hours,
+    )
 
 
 # Login endpoints
@@ -36,6 +63,11 @@ async def login_access_token(
     user = await crud.authenticate(session, form_data.username, form_data.password)
     if not user:
         raise HTTPException(status_code=400, detail="Incorrect email or password")
+    if not user.email_verified:
+        raise HTTPException(
+            status_code=400,
+            detail="Please verify your email before logging in. Check your inbox for the verification link.",
+        )
     if not user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
     access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
@@ -82,9 +114,9 @@ async def create_user(session: UsersSessionDep, user_in: UserCreate) -> Any:
     return await crud.create_user(session, user_in)
 
 
-@router.post("/users/signup", response_model=UserPublic)
+@router.post("/users/signup", response_model=SignupResponse)
 async def register_user(session: UsersSessionDep, user_in: UserRegister) -> Any:
-    """Create new user without the need to be logged in (public registration)."""
+    """Create new user and send verification email."""
     user = await crud.get_user_by_email(session, user_in.email)
     if user:
         raise HTTPException(
@@ -96,7 +128,24 @@ async def register_user(session: UsersSessionDep, user_in: UserRegister) -> Any:
         password=user_in.password,
         full_name=user_in.full_name,
     )
-    return await crud.create_user(session, user_create)
+    db_user, raw_token = await crud.create_user_with_verification(
+        session, user_create, settings.email_verification_token_expire_hours
+    )
+
+    # Send verification email (fire and forget - don't fail signup if email fails)
+    verification_service = get_verification_email_service()
+    email_sent = verification_service.send_verification_email(
+        to_email=db_user.email,
+        user_name=db_user.full_name,
+        verification_token=raw_token,
+    )
+    if not email_sent:
+        logger.warning(f"Failed to send verification email to {db_user.email}")
+
+    return SignupResponse(
+        message="Registration successful. Please check your email to verify your account.",
+        email=db_user.email,
+    )
 
 
 @router.get("/users/me", response_model=UserPublic)
@@ -211,3 +260,63 @@ async def delete_user(
     await session.delete(user)
     await session.commit()
     return Message(message="User deleted successfully")
+
+
+# Email verification endpoints
+@router.get("/verify-email", response_model=VerifyEmailResponse)
+async def verify_email(session: UsersSessionDep, token: str) -> Any:
+    """Verify user email address.
+
+    This endpoint is called when user clicks the verification link in their email.
+    """
+    user = await crud.get_user_by_verification_token(session, token)
+
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid verification token")
+
+    if is_token_expired(user.email_verification_token_expires_at):
+        raise HTTPException(
+            status_code=400,
+            detail="Verification token has expired. Please request a new one.",
+        )
+
+    if user.email_verified:
+        return VerifyEmailResponse(
+            message="Email already verified", status="already_verified"
+        )
+
+    await crud.verify_user_email(session, user)
+
+    return VerifyEmailResponse(message="Email verified successfully", status="success")
+
+
+@router.post("/resend-verification", response_model=Message)
+async def resend_verification(
+    session: UsersSessionDep, request: ResendVerificationRequest
+) -> Any:
+    """Resend verification email."""
+    user = await crud.get_user_by_email(session, request.email)
+
+    # Don't reveal if email exists - return generic response
+    if not user:
+        return Message(
+            message="If an account exists with this email, a verification link will be sent."
+        )
+
+    if user.email_verified:
+        return Message(message="Email is already verified. You can log in.")
+
+    raw_token = await crud.regenerate_verification_token(
+        session, user, settings.email_verification_token_expire_hours
+    )
+
+    verification_service = get_verification_email_service()
+    email_sent = verification_service.send_verification_email(
+        to_email=user.email,
+        user_name=user.full_name,
+        verification_token=raw_token,
+    )
+    if not email_sent:
+        logger.warning(f"Failed to resend verification email to {user.email}")
+
+    return Message(message="Verification email sent. Please check your inbox.")

@@ -2,11 +2,13 @@ import { createFileRoute, Link, redirect } from "@tanstack/react-router"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
+import { useState } from "react"
 import { AuthLayout } from "@/components/AuthLayout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import useAuth, { isLoggedIn } from "@/hooks/useAuth"
+import { authApi } from "@/client/api"
 
 const formSchema = z.object({
   username: z.string().email("Please enter a valid email"),
@@ -26,6 +28,10 @@ export const Route = createFileRoute("/login")({
 
 function Login() {
   const { loginMutation } = useAuth()
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null)
+  const [resendStatus, setResendStatus] = useState<"idle" | "sending" | "sent">(
+    "idle"
+  )
   const {
     register,
     handleSubmit,
@@ -36,7 +42,26 @@ function Login() {
 
   const onSubmit = (data: FormData) => {
     if (loginMutation.isPending) return
-    loginMutation.mutate(data)
+    setUnverifiedEmail(null) // Reset
+    setResendStatus("idle")
+    loginMutation.mutate(data, {
+      onError: (error) => {
+        if (error.message.toLowerCase().includes("verify your email")) {
+          setUnverifiedEmail(data.username)
+        }
+      },
+    })
+  }
+
+  const handleResendVerification = async () => {
+    if (!unverifiedEmail || resendStatus !== "idle") return
+    setResendStatus("sending")
+    try {
+      await authApi.resendVerification(unverifiedEmail)
+      setResendStatus("sent")
+    } catch {
+      setResendStatus("idle")
+    }
   }
 
   return (
@@ -78,9 +103,23 @@ function Login() {
           </div>
 
           {loginMutation.isError && (
-            <p className="text-sm text-red-600 text-center">
-              {loginMutation.error?.message || "Login failed"}
-            </p>
+            <div className="text-sm text-center">
+              <p className="text-red-600">
+                {loginMutation.error?.message || "Login failed"}
+              </p>
+              {unverifiedEmail && (
+                <button
+                  type="button"
+                  onClick={handleResendVerification}
+                  disabled={resendStatus !== "idle"}
+                  className="underline underline-offset-4 mt-2 text-gray-900 disabled:text-gray-400 disabled:cursor-not-allowed"
+                >
+                  {resendStatus === "sending" && "Sending..."}
+                  {resendStatus === "sent" && "Verification email sent!"}
+                  {resendStatus === "idle" && "Resend verification email"}
+                </button>
+              )}
+            </div>
           )}
 
           <Button type="submit" disabled={loginMutation.isPending}>

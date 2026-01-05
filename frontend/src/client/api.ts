@@ -37,6 +37,17 @@ export interface UserPublic {
   full_name: string | null
   is_active: boolean
   is_superuser: boolean
+  email_verified: boolean
+}
+
+export interface SignupResponse {
+  message: string
+  email: string
+}
+
+export interface VerifyEmailResponse {
+  message: string
+  status: "success" | "already_verified"
 }
 
 export interface Token {
@@ -126,7 +137,7 @@ export const authApi = {
     return response.json()
   },
 
-  async signup(data: UserRegister): Promise<UserPublic> {
+  async signup(data: UserRegister): Promise<SignupResponse> {
     const response = await fetch(`${API_URL}/api/v1/users/signup`, {
       method: "POST",
       headers: {
@@ -145,6 +156,42 @@ export const authApi = {
 
   async getCurrentUser(): Promise<UserPublic> {
     const response = await fetchWithAuth("/api/v1/users/me")
+    return response.json()
+  },
+
+  async verifyEmail(token: string): Promise<VerifyEmailResponse> {
+    const response = await fetch(
+      `${API_URL}/api/v1/verify-email?token=${encodeURIComponent(token)}`
+    )
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new ApiError(
+        response.status,
+        errorData.detail || "Verification failed"
+      )
+    }
+
+    return response.json()
+  },
+
+  async resendVerification(email: string): Promise<{ message: string }> {
+    const response = await fetch(`${API_URL}/api/v1/resend-verification`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new ApiError(
+        response.status,
+        errorData.detail || "Failed to resend verification"
+      )
+    }
+
     return response.json()
   },
 }
