@@ -8,7 +8,6 @@ import type {
   UserBalance,
   GenerationPrice,
   ReportPreview,
-  GenerateReportRequest,
   GenerateReportResponse,
   TopUpRequest,
   TopUpResponse,
@@ -16,6 +15,7 @@ import type {
   ReportListResponse,
   FullReportResponse,
   ComparisonResponse,
+  SelectiveGenerateReportRequest,
 } from "@/types/billing"
 import type {
   AdminUsersListResponse,
@@ -575,11 +575,11 @@ export const reportsApi = {
   },
 
   /**
-   * Generate report (charges for fresh evaluations)
+   * Generate report with evaluation selections (charges for fresh evaluations)
    */
   async generate(
     groupId: number,
-    request: GenerateReportRequest = {}
+    request: SelectiveGenerateReportRequest
   ): Promise<GenerateReportResponse> {
     const response = await fetchWithAuth(
       `/reports/api/v1/groups/${groupId}/generate`,

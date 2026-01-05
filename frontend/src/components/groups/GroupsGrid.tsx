@@ -26,6 +26,7 @@ import type {
   BrandVisibilityScore,
   CitationLeaderboard,
 } from "@/types/groups"
+import type { PromptSelection } from "@/types/billing"
 import {
   useGroups,
   useAllGroupDetails,
@@ -353,8 +354,8 @@ export function GroupsGrid() {
     })
   }
 
-  // Handle load report (using billing API with charging)
-  const handleLoadReport = async (group: GroupDetail, includePrevious: boolean = true) => {
+  // Handle load report with selections (using billing API with charging)
+  const handleLoadReport = async (group: GroupDetail, selections: PromptSelection[]) => {
     if (group.prompts.length === 0) return
 
     // Build brands array from brand + competitors
@@ -379,10 +380,10 @@ export function GroupsGrid() {
     }))
 
     try {
-      // Use the new billing-aware generate API
+      // Use the selection-based generate API
       const result = await generateReport.mutateAsync({
         groupId: group.id,
-        request: { include_previous: includePrevious },
+        request: { selections },
       })
 
       // Merge answers and brand mentions into prompts from the response
@@ -538,7 +539,7 @@ export function GroupsGrid() {
                   onDeletePrompt={(promptId) =>
                     handleDeletePrompt(group.id, promptId)
                   }
-                  onLoadReport={(includePrevious) => handleLoadReport(group, includePrevious)}
+                  onLoadReport={(selections) => handleLoadReport(group, selections)}
                   onBrandChange={(brand) => handleBrandChange(group.id, brand)}
                   onCompetitorsChange={(competitors) => handleCompetitorsChange(group.id, competitors)}
                   isExpanded={expandedGroups.has(group.id)}

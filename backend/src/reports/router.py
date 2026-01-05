@@ -3,7 +3,7 @@
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from src.auth.deps import CurrentUser
 from src.config.settings import settings
@@ -13,11 +13,14 @@ from src.reports.models.api_models import (
     ComparisonResponse,
     EnhancedComparisonResponse,
     GenerateReportRequest,
+    PromptSelection,
     ReportItemResponse,
     ReportListResponse,
     ReportPreviewResponse,
     ReportResponse,
     ReportSummaryResponse,
+    SelectableComparisonResponse,
+    SelectiveGenerateReportRequest,
 )
 from src.reports.services import (
     BrandInput,
@@ -26,10 +29,16 @@ from src.reports.services import (
     FreshnessAnalyzerService,
     ReportEnricher,
     ReportService,
+    SelectionAnalyzerService,
+    SelectionPricingService,
+    SelectionValidatorService,
     get_comparison_service,
     get_freshness_analyzer,
     get_report_enricher,
     get_report_service,
+    get_selection_analyzer,
+    get_selection_pricing,
+    get_selection_validator,
 )
 
 router = APIRouter(prefix="/reports/api/v1", tags=["reports"])
@@ -39,6 +48,9 @@ ComparisonServiceDep = Annotated[ComparisonService, Depends(get_comparison_servi
 PromptGroupServiceDep = Annotated[PromptGroupService, Depends(get_prompt_group_service)]
 ReportEnricherDep = Annotated[ReportEnricher, Depends(get_report_enricher)]
 FreshnessAnalyzerDep = Annotated[FreshnessAnalyzerService, Depends(get_freshness_analyzer)]
+SelectionAnalyzerDep = Annotated[SelectionAnalyzerService, Depends(get_selection_analyzer)]
+SelectionPricingDep = Annotated[SelectionPricingService, Depends(get_selection_pricing)]
+SelectionValidatorDep = Annotated[SelectionValidatorService, Depends(get_selection_validator)]
 
 
 @router.get(
@@ -75,16 +87,18 @@ async def preview_report(
 @router.post("/groups/{group_id}/generate", response_model=ReportResponse)
 async def generate_report(
     group_id: int,
-    request: GenerateReportRequest,
+    request: SelectiveGenerateReportRequest,
     current_user: CurrentUser,
     report_service: ReportServiceDep,
     group_service: PromptGroupServiceDep,
+    selection_analyzer: SelectionAnalyzerDep,
+    selection_validator: SelectionValidatorDep,
     enricher: ReportEnricherDep,
 ):
-    """Generate a report for a prompt group.
+    """Generate a report with explicit evaluation selections.
 
-    Charges for fresh (not previously consumed) evaluations.
-    Already-consumed evaluations are included for free.
+    Accepts user's selections of which evaluation to include per prompt.
+    Charges only for fresh (not previously consumed) selected evaluations.
     Returns enriched data with brand mentions and citation leaderboard.
     """
     # Verify user owns the group and get group data for brands
@@ -92,6 +106,29 @@ async def generate_report(
         group = await group_service.get_by_id_for_user(group_id, current_user.id)
     except Exception as e:
         raise to_http_exception(GroupNotFoundError(group_id))
+
+    # Get latest report for validation
+    latest_report = await report_service.get_latest_report(group_id, current_user.id)
+
+    # Get available options for validation
+    prompt_selection_info = await selection_analyzer.analyze_selections(
+        group_id=group_id,
+        user_id=current_user.id,
+        last_report=latest_report,
+    )
+
+    # Validate user's selections
+    validation = selection_validator.validate_selections(
+        selections=request.selections,
+        prompt_selection_info=prompt_selection_info,
+        use_defaults_for_unspecified=request.use_defaults_for_unspecified,
+    )
+
+    if not validation.is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"errors": validation.errors},
+        )
 
     # Extract brand and competitors from group for brand mention detection
     brands = None
@@ -117,11 +154,12 @@ async def generate_report(
                         is_brand=False,
                     ))
 
-    report = await report_service.generate_report(
+    # Generate report with validated selections
+    report = await report_service.generate_report_with_selections(
         group_id=group_id,
         user_id=current_user.id,
+        selections=validation.normalized_selections,
         title=request.title,
-        include_previous=request.include_previous,
         brand_snapshot=group.brand,
         competitors_snapshot=group.competitors,
     )
@@ -336,22 +374,23 @@ async def get_report(
     )
 
 
-@router.get("/groups/{group_id}/compare", response_model=EnhancedComparisonResponse)
+@router.get("/groups/{group_id}/compare", response_model=SelectableComparisonResponse)
 async def compare_with_latest_report(
     group_id: int,
     current_user: CurrentUser,
     report_service: ReportServiceDep,
-    comparison_service: ComparisonServiceDep,
     group_service: PromptGroupServiceDep,
-    freshness_analyzer: FreshnessAnalyzerDep,
+    selection_analyzer: SelectionAnalyzerDep,
+    selection_pricing: SelectionPricingDep,
 ):
-    """Enhanced comparison with per-prompt freshness and brand change detection.
+    """Get selectable evaluation options for report preview.
 
-    Returns detailed information about:
-    - Per-prompt freshness (which prompts have newer answers than last report)
-    - Brand/competitors change detection
-    - Cost estimation
-    - Whether generation should be enabled
+    Returns per-prompt selection info with:
+    - Available fresher evaluations for each prompt (with assistant info and dates)
+    - Default selection (most recent fresher evaluation)
+    - Pricing based on default selections
+    - Brand change detection
+    - Generation button state
     """
     # Get group with brand/competitors
     try:
@@ -362,32 +401,39 @@ async def compare_with_latest_report(
     # Get latest report
     latest_report = await report_service.get_latest_report(group_id, current_user.id)
 
-    # Get current state
-    prompt_ids = await comparison_service.get_prompt_ids_in_group(group_id)
-    evaluation_ids = await comparison_service.get_evaluation_ids_for_prompts(prompt_ids)
-    consumed_ids = await comparison_service.get_consumed_evaluation_ids(
-        current_user.id, evaluation_ids
+    # Analyze selections for all prompts
+    prompt_selections = await selection_analyzer.analyze_selections(
+        group_id=group_id,
+        user_id=current_user.id,
+        last_report=latest_report,
     )
 
-    # Calculate fresh evaluations (not consumed)
-    fresh_count = len(evaluation_ids) - len(consumed_ids)
-    price_per = Decimal(str(settings.billing_price_per_evaluation))
-    estimated_cost = price_per * fresh_count
+    # Calculate stats
+    total_prompts = len(prompt_selections)
+    prompts_with_options = sum(
+        1 for ps in prompt_selections if ps.available_options
+    )
+    prompts_awaiting = total_prompts - prompts_with_options
+
+    # Get default selections (non-None)
+    default_eval_ids = [
+        ps.default_selection
+        for ps in prompt_selections
+        if ps.default_selection is not None
+    ]
+
+    # Calculate pricing for default selections
+    pricing_result = await selection_pricing.calculate_price(
+        user_id=current_user.id,
+        evaluation_ids=default_eval_ids,
+    )
 
     # Get user balance via preview
+    price_per = Decimal(str(settings.billing_price_per_evaluation))
     preview = await report_service.preview_report(
         group_id=group_id,
         user_id=current_user.id,
         price_per_evaluation=price_per,
-    )
-
-    # Analyze per-prompt freshness
-    prompt_freshness = await freshness_analyzer.analyze_freshness(
-        group_id=group_id,
-        last_report=latest_report,
-    )
-    prompts_with_fresher_answers = sum(
-        1 for pf in prompt_freshness if pf.has_fresher_answer
     )
 
     # Detect brand/competitors changes
@@ -398,33 +444,27 @@ async def compare_with_latest_report(
     )
 
     # Determine if generation should be enabled
+    # Enable if: has fresh selections OR brand/competitors changed
     can_generate = (
-        prompts_with_fresher_answers > 0
-        or fresh_count > 0
+        pricing_result.fresh_count > 0
         or brand_changes.brand_changed
         or brand_changes.competitors_changed
     )
     generation_disabled_reason = None if can_generate else "no_new_data_or_changes"
 
-    return EnhancedComparisonResponse(
+    return SelectableComparisonResponse(
         group_id=group_id,
         last_report_at=latest_report.created_at if latest_report else None,
-        current_prompts_count=len(prompt_ids),
-        current_evaluations_count=len(evaluation_ids),
-        new_prompts_added=(
-            len(prompt_ids) - latest_report.total_prompts
-            if latest_report
-            else len(prompt_ids)
-        ),
-        prompts_with_fresher_answers=prompts_with_fresher_answers,
-        prompt_freshness=prompt_freshness,
+        prompt_selections=prompt_selections,
+        total_prompts=total_prompts,
+        prompts_with_options=prompts_with_options,
+        prompts_awaiting=prompts_awaiting,
         brand_changes=brand_changes,
-        fresh_evaluations=fresh_count,
-        already_consumed=len(consumed_ids),
-        estimated_cost=estimated_cost,
+        default_selection_count=len(default_eval_ids),
+        default_fresh_count=pricing_result.fresh_count,
+        default_estimated_cost=pricing_result.total_cost,
         user_balance=preview["user_balance"],
-        affordable_count=preview["affordable_count"],
-        needs_top_up=preview["needs_top_up"],
+        price_per_evaluation=price_per,
         can_generate=can_generate,
         generation_disabled_reason=generation_disabled_reason,
     )

@@ -4,10 +4,10 @@ Tests the complete user journey:
 1. Sign up (gets signup credits)
 2. Login
 3. Create group with prompts
-4. Generate report (charges for fresh evaluations)
+4. Generate report with selections (charges for fresh evaluations)
 5. Generating again is free (already consumed)
 6. Add more evaluations
-7. Compare (shows fresh data)
+7. Compare (shows fresh data with selection options)
 8. Generate another report (charges only for new)
 9. Verify balance changes correctly
 """
@@ -17,6 +17,17 @@ from decimal import Decimal
 
 # Default topic input using seeded topic ID 1
 DEFAULT_TOPIC = {"existing_topic_id": 1}
+
+
+def _build_selections_from_compare(compare_response: dict) -> list[dict]:
+    """Build selections list from compare response using default selections."""
+    selections = []
+    for ps in compare_response["prompt_selections"]:
+        selections.append({
+            "prompt_id": ps["prompt_id"],
+            "evaluation_id": ps["default_selection"],
+        })
+    return selections
 
 
 def test_complete_report_user_flow(client, eval_auth_headers):
@@ -112,28 +123,30 @@ def test_complete_report_user_flow(client, eval_auth_headers):
     assert add_response.status_code == 200, f"Add prompts failed: {add_response.json()}"
     assert add_response.json()["added_count"] == 2
 
-    # === STEP 7: Preview report ===
-    preview_response = client.get(
-        f"/reports/api/v1/groups/{group_id}/preview",
+    # === STEP 7: Compare (get selection options) ===
+    compare_response = client.get(
+        f"/reports/api/v1/groups/{group_id}/compare",
         headers=auth_headers,
     )
-    assert preview_response.status_code == 200, f"Preview failed: {preview_response.json()}"
-    preview = preview_response.json()
+    assert compare_response.status_code == 200, f"Compare failed: {compare_response.json()}"
+    compare = compare_response.json()
 
-    # Group has 2 prompts, both should have data
-    assert preview["total_prompts"] == 2, f"Expected 2 prompts, got {preview['total_prompts']}"
-    assert preview["prompts_with_data"] == 2, f"Expected 2 with data, got {preview['prompts_with_data']}"
-    assert preview["prompts_awaiting"] == 0, f"Expected 0 awaiting, got {preview['prompts_awaiting']}"
+    # Group has 2 prompts, both should have options
+    assert compare["total_prompts"] == 2, f"Expected 2 prompts, got {compare['total_prompts']}"
+    assert compare["prompts_with_options"] == 2, f"Expected 2 with options, got {compare['prompts_with_options']}"
+    assert compare["prompts_awaiting"] == 0, f"Expected 0 awaiting, got {compare['prompts_awaiting']}"
 
-    # Fresh evaluations count includes ALL evaluations user hasn't consumed
-    # (including any from seed data for these prompts)
-    initial_fresh_count = preview["fresh_evaluations"]
+    # Fresh count based on default selections
+    initial_fresh_count = compare["default_fresh_count"]
     assert initial_fresh_count >= 2, f"Expected at least 2 fresh, got {initial_fresh_count}"
 
-    # === STEP 8: Generate first report (charges for all fresh evaluations) ===
+    # Build selections from compare response
+    selections = _build_selections_from_compare(compare)
+
+    # === STEP 8: Generate first report with selections (charges for fresh) ===
     report_response = client.post(
         f"/reports/api/v1/groups/{group_id}/generate",
-        json={"include_previous": True},
+        json={"selections": selections},
         headers=auth_headers,
     )
     assert report_response.status_code == 200, f"Generate report failed: {report_response.json()}"
@@ -158,9 +171,24 @@ def test_complete_report_user_flow(client, eval_auth_headers):
         f"Expected {expected_after_first}, got {balance_after_first}"
 
     # === STEP 10: Generate same report again - should be FREE ===
+    # Get fresh selections (should have no fresh options since we just consumed them)
+    compare2_response = client.get(
+        f"/reports/api/v1/groups/{group_id}/compare",
+        headers=auth_headers,
+    )
+    assert compare2_response.status_code == 200
+    compare2 = compare2_response.json()
+
+    # No fresh evaluations since we just consumed them all
+    assert compare2["default_fresh_count"] == 0, \
+        f"Expected 0 fresh, got {compare2['default_fresh_count']}"
+
+    # Build selections (should use same evaluations but now they're consumed)
+    selections2 = _build_selections_from_compare(compare2)
+
     report2_response = client.post(
         f"/reports/api/v1/groups/{group_id}/generate",
-        json={"include_previous": True},
+        json={"selections": selections2},
         headers=auth_headers,
     )
     assert report2_response.status_code == 200, f"Generate 2nd report failed: {report2_response.json()}"
@@ -211,21 +239,24 @@ def test_complete_report_user_flow(client, eval_auth_headers):
     assert add_response.status_code == 200, f"Add 3rd prompt failed: {add_response.json()}"
 
     # === STEP 12: Compare - should show fresh evaluations for new prompt ===
-    compare_response = client.get(
+    compare3_response = client.get(
         f"/reports/api/v1/groups/{group_id}/compare",
         headers=auth_headers,
     )
-    assert compare_response.status_code == 200, f"Compare failed: {compare_response.json()}"
-    compare = compare_response.json()
+    assert compare3_response.status_code == 200, f"Compare failed: {compare3_response.json()}"
+    compare3 = compare3_response.json()
 
     # The newly added prompt's evaluations should be fresh
-    new_fresh_count = compare["fresh_evaluations"]
+    new_fresh_count = compare3["default_fresh_count"]
     assert new_fresh_count >= 1, f"Expected at least 1 fresh, got {new_fresh_count}"
+
+    # Build selections for third report
+    selections3 = _build_selections_from_compare(compare3)
 
     # === STEP 13: Generate third report (charges for fresh evaluations) ===
     report3_response = client.post(
         f"/reports/api/v1/groups/{group_id}/generate",
-        json={"include_previous": True},
+        json={"selections": selections3},
         headers=auth_headers,
     )
     assert report3_response.status_code == 200, f"Generate 3rd report failed: {report3_response.json()}"
@@ -256,9 +287,18 @@ def test_complete_report_user_flow(client, eval_auth_headers):
     assert total_spent == expected_spent, f"Expected to spend {expected_spent}, spent {total_spent}"
 
     # === STEP 15: Generate one more report - should be FREE again ===
+    # Get fresh selections (should have no fresh options)
+    compare4_response = client.get(
+        f"/reports/api/v1/groups/{group_id}/compare",
+        headers=auth_headers,
+    )
+    assert compare4_response.status_code == 200
+    compare4 = compare4_response.json()
+    selections4 = _build_selections_from_compare(compare4)
+
     report4_response = client.post(
         f"/reports/api/v1/groups/{group_id}/generate",
-        json={"include_previous": True},
+        json={"selections": selections4},
         headers=auth_headers,
     )
     assert report4_response.status_code == 200

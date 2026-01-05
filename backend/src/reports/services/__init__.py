@@ -1,5 +1,7 @@
 """Reports services with dependency injection."""
 
+from decimal import Decimal
+
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +12,12 @@ from src.billing.services import get_charge_service, ChargeService
 from src.reports.services.report_service import ReportService
 from src.reports.services.comparison_service import ComparisonService
 from src.reports.services.freshness_analyzer import FreshnessAnalyzerService
+from src.reports.services.selection_analyzer import (
+    SelectionAnalyzerService,
+    MostRecentSelectionStrategy,
+)
+from src.reports.services.selection_pricing import SelectionPricingService
+from src.reports.services.selection_validator import SelectionValidatorService
 from src.reports.services.brand_mention_detector import (
     BrandMentionDetector,
     BrandInput,
@@ -60,13 +68,47 @@ def get_freshness_analyzer(
     )
 
 
+def get_selection_analyzer(
+    prompts_session: AsyncSession = Depends(get_async_session),
+    evals_session: AsyncSession = Depends(get_evals_session),
+) -> SelectionAnalyzerService:
+    """Dependency injection for SelectionAnalyzerService."""
+    return SelectionAnalyzerService(
+        prompts_session,
+        evals_session,
+        price_per_evaluation=Decimal(str(settings.billing_price_per_evaluation)),
+        selection_strategy=MostRecentSelectionStrategy(),
+    )
+
+
+def get_selection_pricing(
+    evals_session: AsyncSession = Depends(get_evals_session),
+) -> SelectionPricingService:
+    """Dependency injection for SelectionPricingService."""
+    return SelectionPricingService(
+        evals_session,
+        price_per_evaluation=Decimal(str(settings.billing_price_per_evaluation)),
+    )
+
+
+def get_selection_validator() -> SelectionValidatorService:
+    """Dependency injection for SelectionValidatorService."""
+    return SelectionValidatorService()
+
+
 __all__ = [
     "ReportService",
     "ComparisonService",
     "FreshnessAnalyzerService",
+    "SelectionAnalyzerService",
+    "SelectionPricingService",
+    "SelectionValidatorService",
     "get_report_service",
     "get_comparison_service",
     "get_freshness_analyzer",
+    "get_selection_analyzer",
+    "get_selection_pricing",
+    "get_selection_validator",
     "BrandMentionDetector",
     "BrandInput",
     "get_brand_mention_detector",

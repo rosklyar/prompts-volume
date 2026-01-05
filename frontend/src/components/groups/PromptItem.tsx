@@ -7,9 +7,8 @@ import { CSS } from "@dnd-kit/utilities"
 import { useState } from "react"
 import type { PromptInGroup, EvaluationAnswer } from "@/client/api"
 import type { BrandMentionResult, DomainMentionResult } from "@/types/groups"
-import type { PromptFreshnessInfo } from "@/types/billing"
+import type { PromptSelectionInfo } from "@/types/billing"
 import { HighlightedResponse } from "./HighlightedResponse"
-import { formatReportTime } from "@/hooks/useReports"
 import { getBrandColor } from "./constants"
 import { getBrandMentionOrder } from "@/lib/report-utils"
 
@@ -26,7 +25,7 @@ interface PromptItemProps {
   competitorNames?: string[]
   onDelete: (promptId: number) => void
   isDragOverlay?: boolean
-  freshnessInfo?: PromptFreshnessInfo
+  selectionInfo?: PromptSelectionInfo
 }
 
 
@@ -38,7 +37,7 @@ export function PromptItem({
   competitorNames = [],
   onDelete,
   isDragOverlay = false,
-  freshnessInfo,
+  selectionInfo,
 }: PromptItemProps) {
   const [isExpanded, setIsExpanded] = useState(false)
 
@@ -184,11 +183,11 @@ export function PromptItem({
             </div>
           </div>
 
-          {/* Freshness info */}
-          {freshnessInfo && (
+          {/* Selection/status info */}
+          {selectionInfo && (
             <div className="mt-1.5 flex items-center gap-2 text-[10px]">
-              {/* Fresh badge */}
-              {freshnessInfo.has_fresher_answer && (
+              {/* Fresh options available badge */}
+              {selectionInfo.available_options.some((opt) => opt.is_fresh) && (
                 <span
                   className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-medium"
                   style={{ backgroundColor: "#dcfce7", color: "#16a34a" }}
@@ -199,25 +198,25 @@ export function PromptItem({
                   Fresh
                 </span>
               )}
-              {/* Latest answer timestamp */}
-              {freshnessInfo.latest_answer_at && (
+              {/* Options count */}
+              {selectionInfo.available_options.length > 0 && (
                 <span className="text-gray-400">
-                  Updated {formatReportTime(freshnessInfo.latest_answer_at)}
+                  {selectionInfo.available_options.length} option{selectionInfo.available_options.length !== 1 ? "s" : ""}
                 </span>
               )}
-              {/* Next refresh estimate (when not fresh) */}
-              {!freshnessInfo.has_fresher_answer && !freshnessInfo.has_in_progress_evaluation && (
+              {/* No options - awaiting */}
+              {selectionInfo.available_options.length === 0 && !selectionInfo.has_in_progress_evaluation && (
                 <span className="text-gray-400">
-                  Next: {freshnessInfo.next_refresh_estimate}
+                  Awaiting evaluation
                 </span>
               )}
               {/* In progress indicator */}
-              {freshnessInfo.has_in_progress_evaluation && (
+              {selectionInfo.has_in_progress_evaluation && (
                 <span className="inline-flex items-center gap-1 text-amber-600">
                   <div
                     className="w-2 h-2 border border-amber-600 border-t-transparent rounded-full animate-spin"
                   />
-                  {freshnessInfo.next_refresh_estimate}
+                  In progress
                 </span>
               )}
             </div>
