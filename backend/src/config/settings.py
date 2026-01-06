@@ -54,7 +54,7 @@ class Settings(BaseSettings):
 
     # Similar prompts search configuration
     similar_prompts_max_k: int = 100
-    similar_prompts_min_similarity_threshold: float = 0.7
+    similar_prompts_min_similarity_threshold: float = 0.5
 
     # Batch upload configuration
     batch_upload_max_prompts: int = 100

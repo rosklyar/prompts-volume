@@ -24,18 +24,16 @@ export function useSimilarPrompts(
     k?: number
     minSimilarity?: number
     debounceMs?: number
-    minQueryLength?: number
   }
 ) {
   const {
     k = 10,
-    minSimilarity = 0.75,
+    minSimilarity = 0.55,
     debounceMs = 300,
-    minQueryLength = 2,
   } = options || {}
 
   const debouncedQuery = useDebounce(searchQuery.trim(), debounceMs)
-  const shouldSearch = debouncedQuery.length >= minQueryLength
+  const shouldSearch = debouncedQuery.split(/\s+/).some(word => word.length > 3)
 
   const query = useQuery<SimilarPromptsResponse>({
     queryKey: ["similarPrompts", debouncedQuery, k, minSimilarity],

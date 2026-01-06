@@ -444,7 +444,7 @@ async def find_similar_prompts(
         description=f"Maximum number of results (max {settings.similar_prompts_max_k})",
     ),
     min_similarity: float = Query(
-        0.75,
+        0.55,
         gt=settings.similar_prompts_min_similarity_threshold,
         le=1.0,
         description=f"Minimum similarity threshold (must be > {settings.similar_prompts_min_similarity_threshold})",
