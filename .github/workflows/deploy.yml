@@ -1,0 +1,204 @@
+name: Deploy to Azure
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+env:
+  ACR_NAME: promptsacr
+  RESOURCE_GROUP: prompts-rg
+  CONTAINER_APP_NAME: prompts-backend
+  BACKEND_URL: https://prompts-backend.jollydune-754acd02.canadacentral.azurecontainerapps.io
+
+jobs:
+  # Job 1: Wait for CI to pass
+  wait-for-ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for Backend CI
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.sha }}
+          check-name: 'backend-test'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 10
+
+      - name: Wait for Frontend CI
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.sha }}
+          check-name: 'frontend-test'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 10
+
+  # Job 2: Bump version and create tag
+  version:
+    needs: wait-for-ci
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump Version
+        id: bump
+        run: |
+          CURRENT_VERSION=$(cat VERSION 2>/dev/null || echo "0.1.0")
+          MAJOR=$(echo $CURRENT_VERSION | cut -d. -f1)
+          MINOR=$(echo $CURRENT_VERSION | cut -d. -f2)
+          PATCH=$(echo $CURRENT_VERSION | cut -d. -f3)
+          NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
+
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "Bumping: $CURRENT_VERSION -> $NEW_VERSION"
+
+          # Update VERSION file
+          echo "$NEW_VERSION" > VERSION
+
+          # Update backend pyproject.toml
+          sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" backend/pyproject.toml
+
+          # Update frontend package.json
+          cd frontend && npm version $NEW_VERSION --no-git-tag-version --allow-same-version
+
+      - name: Commit and Tag
+        run: |
+          git add VERSION backend/pyproject.toml frontend/package.json
+          git commit -m "chore: bump version to v${{ steps.bump.outputs.version }} [skip ci]"
+          git push
+          git tag -a "v${{ steps.bump.outputs.version }}" -m "Release v${{ steps.bump.outputs.version }}"
+          git push origin "v${{ steps.bump.outputs.version }}"
+
+  # Job 3: Deploy Backend
+  deploy-backend:
+    needs: version
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.version.outputs.version }}
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Login to ACR
+        run: az acr login --name ${{ env.ACR_NAME }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and Push Backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ${{ env.ACR_NAME }}.azurecr.io/prompts-backend:v${{ needs.version.outputs.version }}
+            ${{ env.ACR_NAME }}.azurecr.io/prompts-backend:latest
+            ${{ env.ACR_NAME }}.azurecr.io/prompts-backend:sha-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy to Container Apps
+        run: |
+          az containerapp update \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image ${{ env.ACR_NAME }}.azurecr.io/prompts-backend:v${{ needs.version.outputs.version }} \
+            --set-env-vars \
+              DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+              USERS_DATABASE_URL="${{ secrets.USERS_DATABASE_URL }}" \
+              EVALS_DATABASE_URL="${{ secrets.EVALS_DATABASE_URL }}" \
+              OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+              DATAFORSEO_USERNAME="${{ secrets.DATAFORSEO_USERNAME }}" \
+              DATAFORSEO_PASSWORD="${{ secrets.DATAFORSEO_PASSWORD }}" \
+              SECRET_KEY="${{ secrets.SECRET_KEY }}" \
+              FIRST_SUPERUSER_EMAIL="${{ secrets.FIRST_SUPERUSER_EMAIL }}" \
+              FIRST_SUPERUSER_PASSWORD="${{ secrets.FIRST_SUPERUSER_PASSWORD }}" \
+              FRONTEND_URL="https://app.tryllmhero.com" \
+              EVALUATION_API_TOKENS="${{ secrets.EVALUATION_API_TOKENS }}" \
+              TOPICS_PROVIDER_SIMILARITY_THRESHOLD="0.8" \
+              BREVO_API_KEY="${{ secrets.BREVO_API_KEY }}"
+
+      - name: Health Check
+        run: |
+          echo "Waiting 30s for deployment..."
+          sleep 30
+          APP_URL=$(az containerapp show --name ${{ env.CONTAINER_APP_NAME }} --resource-group ${{ env.RESOURCE_GROUP }} --query "properties.configuration.ingress.fqdn" -o tsv)
+          for i in {1..5}; do
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://$APP_URL/health" || true)
+            [ "$HTTP_STATUS" = "200" ] && echo "Health check passed!" && exit 0
+            echo "Attempt $i: HTTP $HTTP_STATUS - retrying..."
+            sleep 10
+          done
+          exit 1
+
+  # Job 4: Deploy Frontend
+  deploy-frontend:
+    needs: version
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.version.outputs.version }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build Frontend
+        working-directory: ./frontend
+        run: |
+          npm ci
+          npm run build
+        env:
+          VITE_API_URL: ${{ env.BACKEND_URL }}
+
+      - name: Deploy to Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "/frontend"
+          output_location: "dist"
+          skip_app_build: true
+
+  # Job 5: Create GitHub Release
+  release:
+    needs: [version, deploy-backend, deploy-frontend]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.version.outputs.version }}
+          fetch-depth: 0
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ needs.version.outputs.version }}
+          name: Release v${{ needs.version.outputs.version }}
+          generate_release_notes: true
