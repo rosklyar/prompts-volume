@@ -4,6 +4,7 @@ on: [push, pull_request]
 
 jobs:
   test:
+    name: frontend-test
     runs-on: ubuntu-latest
 
     permissions:
