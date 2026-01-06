@@ -2,6 +2,8 @@
 
 Full-stack AI-powered prompts management platform
 
+You can try my tool for free [LLMHERO](https://app.tryllmhero.com)
+
 ## Overview
 
 **Backend:** FastAPI service for AI-powered prompt generation and management
