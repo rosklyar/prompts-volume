@@ -170,6 +170,7 @@ jobs:
         working-directory: ./frontend
         run: |
           npm ci
+          npx @tanstack/router-cli generate
           npm run build
         env:
           VITE_API_URL: ${{ env.BACKEND_URL }}
