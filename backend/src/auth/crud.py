@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.models import UserCreate, UserUpdate
@@ -15,6 +15,16 @@ from src.auth.verification import (
 )
 from src.config.settings import settings
 from src.database.users_models import CreditGrant, CreditSource, User
+
+
+async def count_signup_bonuses(session: AsyncSession) -> int:
+    """Count how many signup bonuses have been granted."""
+    result = await session.scalar(
+        select(func.count()).select_from(CreditGrant).where(
+            CreditGrant.source == CreditSource.SIGNUP_BONUS
+        )
+    )
+    return result or 0
 
 
 async def create_user(session: AsyncSession, user_create: UserCreate) -> User:
@@ -30,18 +40,22 @@ async def create_user(session: AsyncSession, user_create: UserCreate) -> User:
     session.add(db_user)
     await session.flush()  # Get the user ID
 
-    # Grant initial signup credits
-    expires_at = datetime.now(timezone.utc) + timedelta(
-        days=settings.billing_signup_credits_expiry_days
-    )
-    credit_grant = CreditGrant(
-        user_id=db_user.id,
-        source=CreditSource.SIGNUP_BONUS,
-        original_amount=Decimal(str(settings.billing_signup_credits)),
-        remaining_amount=Decimal(str(settings.billing_signup_credits)),
-        expires_at=expires_at,
-    )
-    session.add(credit_grant)
+    # Grant initial signup credits if limit not reached
+    if (
+        settings.billing_max_signup_bonuses is None
+        or await count_signup_bonuses(session) < settings.billing_max_signup_bonuses
+    ):
+        expires_at = datetime.now(timezone.utc) + timedelta(
+            days=settings.billing_signup_credits_expiry_days
+        )
+        credit_grant = CreditGrant(
+            user_id=db_user.id,
+            source=CreditSource.SIGNUP_BONUS,
+            original_amount=Decimal(str(settings.billing_signup_credits)),
+            remaining_amount=Decimal(str(settings.billing_signup_credits)),
+            expires_at=expires_at,
+        )
+        session.add(credit_grant)
 
     await session.commit()
     await session.refresh(db_user)
@@ -124,25 +138,29 @@ async def get_user_by_verification_token(
 
 
 async def verify_user_email(session: AsyncSession, user: User) -> User:
-    """Mark user email as verified, activate account, and grant signup credits."""
+    """Mark user email as verified, activate account, and grant signup credits if limit not reached."""
     user.email_verified = True
     user.is_active = True
     user.email_verification_token = None
     user.email_verification_token_expires_at = None
     session.add(user)
 
-    # Grant signup credits now that email is verified
-    expires_at = datetime.now(timezone.utc) + timedelta(
-        days=settings.billing_signup_credits_expiry_days
-    )
-    credit_grant = CreditGrant(
-        user_id=user.id,
-        source=CreditSource.SIGNUP_BONUS,
-        original_amount=Decimal(str(settings.billing_signup_credits)),
-        remaining_amount=Decimal(str(settings.billing_signup_credits)),
-        expires_at=expires_at,
-    )
-    session.add(credit_grant)
+    # Grant signup credits if limit not reached
+    if (
+        settings.billing_max_signup_bonuses is None
+        or await count_signup_bonuses(session) < settings.billing_max_signup_bonuses
+    ):
+        expires_at = datetime.now(timezone.utc) + timedelta(
+            days=settings.billing_signup_credits_expiry_days
+        )
+        credit_grant = CreditGrant(
+            user_id=user.id,
+            source=CreditSource.SIGNUP_BONUS,
+            original_amount=Decimal(str(settings.billing_signup_credits)),
+            remaining_amount=Decimal(str(settings.billing_signup_credits)),
+            expires_at=expires_at,
+        )
+        session.add(credit_grant)
 
     await session.commit()
     await session.refresh(user)

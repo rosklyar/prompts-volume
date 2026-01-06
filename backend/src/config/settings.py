@@ -90,6 +90,7 @@ class Settings(BaseSettings):
     billing_price_per_generation: float = 1.00  # Price in dollars per generate call
     billing_signup_credits: float = 10.00  # Initial credits for new users
     billing_signup_credits_expiry_days: int = 30  # Days until signup credits expire
+    billing_max_signup_bonuses: int | None = 100  # Max users to receive signup bonus (None = unlimited)
 
     # Comparison time estimations (for freshness analysis)
     comparison_in_progress_estimate: str = "~15 minutes"
