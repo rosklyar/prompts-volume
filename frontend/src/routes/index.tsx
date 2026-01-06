@@ -460,6 +460,14 @@ function PromptDiscovery() {
               Admin
             </Link>
           )}
+          <Link to="/settings">
+            <Button
+              variant="ghost"
+              className="text-[#9CA3AF] hover:text-[#1F2937] hover:bg-transparent transition-colors text-sm"
+            >
+              Settings
+            </Button>
+          </Link>
           <Button
             variant="ghost"
             onClick={logout}

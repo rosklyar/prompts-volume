@@ -59,7 +59,7 @@ if az containerapp show --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE
             SECRET_KEY="$SECRET_KEY" \
             FIRST_SUPERUSER_EMAIL="$FIRST_SUPERUSER_EMAIL" \
             FIRST_SUPERUSER_PASSWORD="$FIRST_SUPERUSER_PASSWORD" \
-            FRONTEND_URL="https://placeholder-frontend.com" \
+            FRONTEND_URL="https://app.tryllmhero.com" \
             EVALUATION_API_TOKENS="$EVALUATION_API_TOKENS" \
             TOPICS_PROVIDER_SIMILARITY_THRESHOLD="$TOPICS_PROVIDER_SIMILARITY_THRESHOLD" \
             BREVO_API_KEY="$BREVO_API_KEY" \
@@ -90,7 +90,7 @@ else
             SECRET_KEY="$SECRET_KEY" \
             FIRST_SUPERUSER_EMAIL="$FIRST_SUPERUSER_EMAIL" \
             FIRST_SUPERUSER_PASSWORD="$FIRST_SUPERUSER_PASSWORD" \
-            FRONTEND_URL="https://placeholder-frontend.com" \
+            FRONTEND_URL="https://app.tryllmhero.com" \
             EVALUATION_API_TOKENS="$EVALUATION_API_TOKENS" \
             TOPICS_PROVIDER_SIMILARITY_THRESHOLD="$TOPICS_PROVIDER_SIMILARITY_THRESHOLD" \
             BREVO_API_KEY="$BREVO_API_KEY" \

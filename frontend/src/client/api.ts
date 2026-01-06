@@ -61,6 +61,15 @@ export interface UserRegister {
   full_name?: string
 }
 
+export interface UpdatePasswordRequest {
+  current_password: string
+  new_password: string
+}
+
+export interface MessageResponse {
+  message: string
+}
+
 export interface SimilarPrompt {
   id: number
   prompt_text: string
@@ -192,6 +201,17 @@ export const authApi = {
       )
     }
 
+    return response.json()
+  },
+
+  async updatePassword(data: UpdatePasswordRequest): Promise<MessageResponse> {
+    const response = await fetchWithAuth("/api/v1/users/me/password", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    })
     return response.json()
   },
 }

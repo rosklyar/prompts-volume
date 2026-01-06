@@ -8,18 +8,8 @@ source "$SCRIPT_DIR/../secrets/secrets.sh"
 
 echo "=== Updating Backend CORS ==="
 
-# Get frontend URL
-FRONTEND_URL=$(az staticwebapp show \
-    --name "$STATIC_WEB_APP_NAME" \
-    --resource-group "$RESOURCE_GROUP" \
-    --query "defaultHostname" -o tsv)
-
-if [ -z "$FRONTEND_URL" ]; then
-    echo "Error: Could not get frontend URL. Is the Static Web App deployed?"
-    exit 1
-fi
-
-FRONTEND_URL="https://$FRONTEND_URL"
+# Custom domain for frontend
+FRONTEND_URL="https://app.tryllmhero.com"
 echo "Frontend URL: $FRONTEND_URL"
 echo ""
 
