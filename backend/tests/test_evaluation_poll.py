@@ -254,8 +254,7 @@ async def test_fresh_evaluation_remains_locked(client, test_session):
     service = EvaluationService(
         evals_session=test_session,
         prompts_session=test_session,
-        min_days_since_last_evaluation=1,
-        evaluation_timeout_hours=2
+        execution_timeout_hours=2
     )
 
     # Get assistant_plan_id for ChatGPT/PLUS (seeded plan)
@@ -416,8 +415,7 @@ async def test_validation_service_method_directly(test_session):
     service = EvaluationService(
         evals_session=test_session,
         prompts_session=test_session,
-        min_days_since_last_evaluation=1,
-        evaluation_timeout_hours=2
+        execution_timeout_hours=2
     )
 
     # Valid combinations - should return assistant_plan_id

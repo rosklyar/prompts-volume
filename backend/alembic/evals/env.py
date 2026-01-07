@@ -16,7 +16,8 @@ from src.database.evals_session import EvalsBase
 from src.database.evals_models import (  # noqa: F401
     AIAssistant,
     AIAssistantPlan,
-    PriorityPromptQueue,
+    ExecutionQueue,
+    ExecutionQueueStatus,
     PromptEvaluation,
     ConsumedEvaluation,
     GroupReport,

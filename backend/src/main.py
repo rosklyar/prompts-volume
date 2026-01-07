@@ -12,6 +12,7 @@ from src.database import close_db, get_session_maker, init_db, seed_evals_data, 
 from src.database.users_session import close_users_db, get_users_session_maker, init_users_db
 from src.database.evals_session import close_evals_db, get_evals_session_maker, init_evals_db
 from src.evaluations.router import router as evaluations_router
+from src.execution.router import router as execution_router
 from src.prompt_groups.router import router as prompt_groups_router
 from src.prompts import router as prompts_router
 from src.prompts.batch import batch_router
@@ -71,6 +72,7 @@ app.include_router(reference_router)
 app.include_router(prompts_router.router)
 app.include_router(batch_router)
 app.include_router(evaluations_router)
+app.include_router(execution_router)
 app.include_router(prompt_groups_router)
 app.include_router(billing_router)
 app.include_router(reports_router)

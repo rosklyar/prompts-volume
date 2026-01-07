@@ -222,8 +222,7 @@ def evaluation_service_short_timeout(test_session):
     return EvaluationService(
         evals_session=test_session,
         prompts_session=test_session,
-        min_days_since_last_evaluation=1,
-        evaluation_timeout_hours=0.001
+        execution_timeout_hours=0.001
     )
 
 

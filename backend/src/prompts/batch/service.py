@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config.settings import settings
 from src.database import get_async_session
-from src.database.evals_models import PriorityPromptQueue
+from src.database.evals_models import ExecutionQueue, ExecutionQueueStatus
 from src.database.evals_session import get_evals_session
 from src.database.models import Prompt
 from src.embeddings.embeddings_service import EmbeddingsService, get_embeddings_service
@@ -146,9 +146,12 @@ class BatchPromptsService:
             await self._prompts_session.flush()
             prompt_ids.append(new_prompt.id)
 
-            queue_entry = PriorityPromptQueue(
+            # Add to execution queue for immediate execution
+            queue_entry = ExecutionQueue(
                 prompt_id=new_prompt.id,
-                request_id=request_id,
+                requested_by="system",  # Admin-added prompts
+                request_batch_id=request_id,
+                status=ExecutionQueueStatus.PENDING,
             )
             self._evals_session.add(queue_entry)
 

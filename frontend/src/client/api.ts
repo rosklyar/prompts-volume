@@ -28,6 +28,12 @@ import type {
   PromptUploadResponse,
   UploadPromptsRequest,
 } from "@/types/admin"
+import type {
+  ReportDataResponse,
+  RequestFreshExecutionResponse,
+  QueueStatusResponse,
+  CancelExecutionResponse,
+} from "@/types/execution"
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000"
 
@@ -632,7 +638,18 @@ export const adminApi = {
 
 export const reportsApi = {
   /**
+   * Get report data with freshness metadata for report generation UI
+   */
+  async getReportData(groupId: number): Promise<ReportDataResponse> {
+    const response = await fetchWithAuth(
+      `/reports/api/v1/groups/${groupId}/report-data`
+    )
+    return response.json()
+  },
+
+  /**
    * Get report preview with cost breakdown (no charge)
+   * @deprecated Use getReportData instead
    */
   async getPreview(groupId: number): Promise<ReportPreview> {
     const response = await fetchWithAuth(
@@ -711,6 +728,53 @@ export const reportsApi = {
       throw new Error("Export failed")
     }
     return response.blob()
+  },
+}
+
+// ===== Execution Queue API =====
+
+export const executionApi = {
+  /**
+   * Request fresh execution for prompts
+   */
+  async requestFresh(promptIds: number[]): Promise<RequestFreshExecutionResponse> {
+    const response = await fetchWithAuth("/execution/api/v1/request-fresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt_ids: promptIds }),
+    })
+    return response.json()
+  },
+
+  /**
+   * Get current queue status for the user
+   */
+  async getQueueStatus(): Promise<QueueStatusResponse> {
+    const response = await fetchWithAuth("/execution/api/v1/queue/status")
+    return response.json()
+  },
+
+  /**
+   * Cancel a single pending execution
+   */
+  async cancelExecution(promptId: number): Promise<CancelExecutionResponse> {
+    const response = await fetchWithAuth(
+      `/execution/api/v1/queue/${promptId}`,
+      { method: "DELETE" }
+    )
+    return response.json()
+  },
+
+  /**
+   * Cancel multiple pending executions
+   */
+  async cancelExecutionsBatch(promptIds: number[]): Promise<CancelExecutionResponse> {
+    const response = await fetchWithAuth("/execution/api/v1/queue/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt_ids: promptIds }),
+    })
+    return response.json()
   },
 }
 
