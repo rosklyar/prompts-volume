@@ -108,24 +108,19 @@ class BatchPromptsService:
         selected_indices: list[int],
         topic_id: int | None = None,
     ) -> BatchCreateResponse:
-        """Create new prompts via priority pipeline.
+        """Create new prompts (already filtered by analyze step).
 
-        For each selected prompt:
-        1. Generate embedding
-        2. Check for duplicate (>= duplicate_threshold similarity)
-        3. If duplicate: reuse existing prompt
-        4. If new: create prompt with optional topic_id
-        5. Add to priority queue
+        All selected prompts are created as new entries - no duplicate detection.
+        The analyze step shows duplicates and users select only new prompts.
 
         Args:
             prompts: All original prompt texts
-            selected_indices: Indices of prompts to create
+            selected_indices: Indices of prompts to create (non-duplicates)
             topic_id: Optional topic ID to assign to new prompts
 
         Returns:
-            BatchCreateResponse with created/reused counts and prompt IDs
+            BatchCreateResponse with created count and prompt IDs
         """
-        # Filter to selected prompts only
         selected_texts = [
             prompts[i] for i in selected_indices if i < len(prompts)
         ]
@@ -133,64 +128,35 @@ class BatchPromptsService:
         if not selected_texts:
             raise ValueError("No valid prompts selected for creation")
 
-        # Generate embeddings
         text_embeddings = self._embeddings_service.encode_texts(
             selected_texts,
             batch_size=32,
         )
 
-        created_count = 0
-        reused_count = 0
         prompt_ids: list[int] = []
         request_id = str(uuid.uuid4())
 
         for text_with_embedding in text_embeddings:
-            prompt_text = text_with_embedding.text
-            embedding = text_with_embedding.embedding
-
-            # Check for duplicate
-            existing_prompt = await self._find_duplicate(
-                embedding,
-                similarity_threshold=self._duplicate_threshold,
+            new_prompt = Prompt(
+                prompt_text=text_with_embedding.text,
+                embedding=text_with_embedding.embedding.tolist(),
+                topic_id=topic_id,
             )
+            self._prompts_session.add(new_prompt)
+            await self._prompts_session.flush()
+            prompt_ids.append(new_prompt.id)
 
-            if existing_prompt:
-                # Reuse existing prompt
-                prompt_id = existing_prompt.id
-                reused_count += 1
-            else:
-                # Create new prompt
-                new_prompt = Prompt(
-                    prompt_text=prompt_text,
-                    embedding=embedding.tolist(),
-                    topic_id=topic_id,
-                )
-                self._prompts_session.add(new_prompt)
-                await self._prompts_session.flush()
-                prompt_id = new_prompt.id
-                created_count += 1
-
-            prompt_ids.append(prompt_id)
-
-            # Add to priority queue (in evals_db) if not already there
-            existing_queue = await self._evals_session.execute(
-                select(PriorityPromptQueue).where(
-                    PriorityPromptQueue.prompt_id == prompt_id
-                )
+            queue_entry = PriorityPromptQueue(
+                prompt_id=new_prompt.id,
+                request_id=request_id,
             )
-            if not existing_queue.scalar_one_or_none():
-                queue_entry = PriorityPromptQueue(
-                    prompt_id=prompt_id,
-                    request_id=request_id,
-                )
-                self._evals_session.add(queue_entry)
+            self._evals_session.add(queue_entry)
 
-        await self._prompts_session.flush()
         await self._evals_session.flush()
 
         return BatchCreateResponse(
-            created_count=created_count,
-            reused_count=reused_count,
+            created_count=len(prompt_ids),
+            reused_count=0,
             prompt_ids=prompt_ids,
             request_id=request_id,
         )
@@ -228,37 +194,6 @@ class BatchPromptsService:
             )
             for row in result.fetchall()
         ]
-
-    async def _find_duplicate(
-        self,
-        embedding: np.ndarray,
-        similarity_threshold: float,
-    ) -> Prompt | None:
-        """Find existing prompt with similarity >= threshold."""
-        embedding_list = embedding.tolist()
-
-        query = (
-            select(Prompt)
-            .order_by(Prompt.embedding.cosine_distance(embedding_list))
-            .limit(1)
-        )
-
-        result = await self._prompts_session.execute(query)
-        closest_prompt = result.scalar_one_or_none()
-
-        if closest_prompt:
-            # Calculate actual similarity
-            prompt_emb = np.array(closest_prompt.embedding)
-            query_emb = np.array(embedding_list)
-
-            cosine_similarity = np.dot(prompt_emb, query_emb) / (
-                np.linalg.norm(prompt_emb) * np.linalg.norm(query_emb)
-            )
-
-            if cosine_similarity >= similarity_threshold:
-                return closest_prompt
-
-        return None
 
 
 def get_batch_prompts_service(
