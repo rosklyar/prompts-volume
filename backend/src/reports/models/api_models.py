@@ -11,6 +11,11 @@ from src.reports.models.brand_models import (
     DomainMentionResultModel,
 )
 from src.reports.models.citation_models import CitationLeaderboardModel
+from src.reports.models.export_models import (
+    BrandVisibilityScore,
+    CitationDomainStat,
+    DomainMentionStat,
+)
 
 
 # --- Selection-based models for report preview ---
@@ -126,6 +131,14 @@ class ReportItemResponse(BaseModel):
     domain_mentions: Optional[List[DomainMentionResultModel]] = None
 
 
+class ReportStatistics(BaseModel):
+    """Pre-calculated statistics for a report."""
+
+    brand_visibility: List[BrandVisibilityScore] = []
+    domain_mentions: List[DomainMentionStat] = []
+    citation_domains: List[CitationDomainStat] = []
+
+
 class ReportResponse(BaseModel):
     """Response for a generated report."""
 
@@ -140,6 +153,10 @@ class ReportResponse(BaseModel):
     total_cost: Decimal
     items: list[ReportItemResponse]
     citation_leaderboard: Optional[CitationLeaderboardModel] = None
+    statistics: Optional[ReportStatistics] = None
+    # Brand/competitor snapshots from when report was generated
+    brand_snapshot: Optional[dict] = None
+    competitors_snapshot: Optional[List[dict]] = None
 
 
 class ReportSummaryResponse(BaseModel):

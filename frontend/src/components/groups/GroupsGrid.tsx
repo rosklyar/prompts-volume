@@ -16,6 +16,7 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core"
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable"
+import { toast } from "sonner"
 
 import type { GroupDetail, PromptInGroup, EvaluationAnswer } from "@/client/api"
 import type {
@@ -23,8 +24,6 @@ import type {
   CompetitorInfo,
   TopicInput,
   BrandMentionResult,
-  BrandVisibilityScore,
-  CitationLeaderboard,
 } from "@/types/groups"
 import type { PromptSelection } from "@/types/billing"
 import {
@@ -38,7 +37,6 @@ import {
 } from "@/hooks/useGroups"
 import { useGenerateReport } from "@/hooks/useBilling"
 import { useInvalidateReportQueries } from "@/hooks/useReports"
-import { calculateVisibilityScores } from "@/lib/report-utils"
 import { GroupCard } from "./GroupCard"
 import { AddGroupCard } from "./AddGroupCard"
 import { PromptItem } from "./PromptItem"
@@ -54,8 +52,6 @@ interface PromptWithAnswer extends PromptInGroup {
 interface GroupState {
   prompts: PromptWithAnswer[]
   isLoadingAnswers: boolean
-  visibilityScores: BrandVisibilityScore[] | null
-  citationLeaderboard: CitationLeaderboard | null
 }
 
 // LocalStorage key for persisting selected reports
@@ -358,14 +354,6 @@ export function GroupsGrid() {
   const handleLoadReport = async (group: GroupDetail, selections: PromptSelection[]) => {
     if (group.prompts.length === 0) return
 
-    // Build brands array from brand + competitors
-    const brands = group.brand
-      ? [
-          { name: group.brand.name, variations: group.brand.variations },
-          ...(group.competitors || []).map((c) => ({ name: c.name, variations: c.variations })),
-        ]
-      : []
-
     // Set loading state
     setGroupStates((prev) => ({
       ...prev,
@@ -374,8 +362,6 @@ export function GroupsGrid() {
           prev[group.id]?.prompts ||
           group.prompts.map((p) => ({ ...p, isLoading: true })),
         isLoadingAnswers: true,
-        visibilityScores: prev[group.id]?.visibilityScores || null,
-        citationLeaderboard: prev[group.id]?.citationLeaderboard || null,
       },
     }))
 
@@ -399,29 +385,11 @@ export function GroupsGrid() {
         }
       })
 
-      // Calculate visibility scores using the items from the response
-      const resultsForScoring = result.items.map((item) => ({
-        prompt_id: item.prompt_id,
-        prompt_text: item.prompt_text,
-        evaluation_id: item.evaluation_id,
-        status: item.status,
-        answer: item.answer,
-        completed_at: item.completed_at,
-        brand_mentions: item.brand_mentions,
-      }))
-
-      const visibilityScores =
-        brands.length > 0
-          ? calculateVisibilityScores(resultsForScoring, brands)
-          : null
-
       setGroupStates((prev) => ({
         ...prev,
         [group.id]: {
           prompts: promptsWithAnswers,
           isLoadingAnswers: false,
-          visibilityScores,
-          citationLeaderboard: result.citation_leaderboard,
         },
       }))
 
@@ -438,8 +406,6 @@ export function GroupsGrid() {
           ...prev[group.id],
           prompts: group.prompts.map((p) => ({ ...p, isLoading: false })),
           isLoadingAnswers: false,
-          visibilityScores: null,
-          citationLeaderboard: null,
         },
       }))
     }
@@ -447,38 +413,36 @@ export function GroupsGrid() {
 
   // Handle brand change for a group
   const handleBrandChange = (groupId: number, brand: BrandInfo) => {
-    // Update brand via API
-    updateGroup.mutate({ groupId, brand })
-    // Clear visibility scores (user must click Report to reload)
-    setGroupStates((prev) => {
-      const state = prev[groupId]
-      if (!state) return prev
-      return {
-        ...prev,
-        [groupId]: {
-          ...state,
-          visibilityScores: null,
+    // Update brand via API - statistics are recalculated on-the-fly for all reports
+    updateGroup.mutate(
+      { groupId, brand },
+      {
+        onSuccess: () => {
+          toast.success("Settings saved", {
+            description: "All reports now reflect your brand changes",
+          })
+          // Invalidate report queries to refetch with new brand settings
+          invalidateReportQueries(groupId)
         },
       }
-    })
+    )
   }
 
   // Handle competitors change for a group
   const handleCompetitorsChange = (groupId: number, competitors: CompetitorInfo[]) => {
-    // Update competitors via API
-    updateGroup.mutate({ groupId, competitors })
-    // Clear visibility scores (user must click Report to reload)
-    setGroupStates((prev) => {
-      const state = prev[groupId]
-      if (!state) return prev
-      return {
-        ...prev,
-        [groupId]: {
-          ...state,
-          visibilityScores: null,
+    // Update competitors via API - statistics are recalculated on-the-fly for all reports
+    updateGroup.mutate(
+      { groupId, competitors },
+      {
+        onSuccess: () => {
+          toast.success("Settings saved", {
+            description: "All reports now reflect your competitor changes",
+          })
+          // Invalidate report queries to refetch with new competitor settings
+          invalidateReportQueries(groupId)
         },
       }
-    })
+    )
   }
 
   // Loading state
@@ -530,8 +494,6 @@ export function GroupsGrid() {
                   isLoadingAnswers={state?.isLoadingAnswers || false}
                   brand={group.brand}
                   competitors={group.competitors || []}
-                  visibilityScores={state?.visibilityScores || null}
-                  citationLeaderboard={state?.citationLeaderboard || null}
                   selectedReportId={selectedReports[group.id] ?? null}
                   onSelectReport={(reportId) => handleSelectReport(group.id, reportId)}
                   onUpdateTitle={(title) => handleUpdateGroup(group.id, title)}

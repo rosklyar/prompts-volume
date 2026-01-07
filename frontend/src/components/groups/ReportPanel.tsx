@@ -1,26 +1,26 @@
 /**
  * ReportPanel - Collapsible panel showing visibility scores, domain mentions, and citation leaderboard
  * Editorial/magazine aesthetic with refined data visualization
+ * Uses pre-calculated statistics from backend
  */
 
 import { useState } from "react"
-import type { BrandVisibilityScore, CitationLeaderboard } from "@/types/groups"
-import type {
-  AggregatedDomainMention,
-  CitationDomainCount,
-} from "@/lib/report-utils"
+import type { CitationLeaderboard } from "@/types/groups"
+import type { ReportStatistics } from "@/types/billing"
 import { getBrandColor } from "./constants"
 
 interface ReportPanelProps {
-  visibilityScores: BrandVisibilityScore[]
+  statistics: ReportStatistics | null
   citationLeaderboard: CitationLeaderboard
-  domainMentions: AggregatedDomainMention[]
-  citationDomainCounts: CitationDomainCount[]
   accentColor: string
   targetBrandName?: string | null
   competitorNames?: string[]
   isCollapsed: boolean
   onToggleCollapse: () => void
+  // Export functionality
+  reportId?: number | null
+  onExportJson?: () => void
+  isExporting?: boolean
 }
 
 // Chevron icon component for consistent styling
@@ -37,6 +37,52 @@ function ChevronIcon({ isCollapsed, color }: { isCollapsed: boolean; color: stri
       stroke="currentColor"
     >
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+    </svg>
+  )
+}
+
+// Download icon component
+function DownloadIcon({ color, className }: { color: string; className?: string }) {
+  return (
+    <svg
+      className={className}
+      style={{ color }}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={1.5}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
+      />
+    </svg>
+  )
+}
+
+// Spinner icon for loading state
+function SpinnerIcon({ color, className }: { color: string; className?: string }) {
+  return (
+    <svg
+      className={`animate-spin ${className}`}
+      style={{ color }}
+      fill="none"
+      viewBox="0 0 24 24"
+    >
+      <circle
+        className="opacity-25"
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        strokeWidth="3"
+      />
+      <path
+        className="opacity-75"
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+      />
     </svg>
   )
 }
@@ -88,15 +134,16 @@ function CollapsibleSection({
 }
 
 export function ReportPanel({
-  visibilityScores,
+  statistics,
   citationLeaderboard,
-  domainMentions,
-  citationDomainCounts,
   accentColor,
   targetBrandName,
   competitorNames = [],
   isCollapsed,
   onToggleCollapse,
+  reportId,
+  onExportJson,
+  isExporting = false,
 }: ReportPanelProps) {
   // Section collapse states
   const [sectionStates, setSectionStates] = useState({
@@ -111,9 +158,14 @@ export function ReportPanel({
     setSectionStates((prev) => ({ ...prev, [section]: !prev[section] }))
   }
 
+  // Use backend statistics
+  const visibilityScores = statistics?.brand_visibility ?? []
+  const domainMentions = statistics?.domain_mentions ?? []
+  const citationDomainCounts = statistics?.citation_domains ?? []
+
   const hasVisibilityData = visibilityScores.length > 0
   const hasDomainMentions = domainMentions.length > 0 && domainMentions.some(dm => dm.total_mentions > 0)
-  const hasCitationDomains = citationDomainCounts.length > 0 && citationDomainCounts.some(cd => cd.count > 0)
+  const hasCitationDomains = citationDomainCounts.length > 0 && citationDomainCounts.some(cd => cd.citation_count > 0)
   const hasDomainData = citationLeaderboard.domains.length > 0
   const hasSubpathData = citationLeaderboard.subpaths.length > 0
   const hasCitationData = hasDomainData || hasSubpathData
@@ -124,14 +176,22 @@ export function ReportPanel({
 
   // Sort visibility scores: target brand first, then by percentage descending
   const sortedVisibilityScores = [...visibilityScores].sort((a, b) => {
-    if (a.brand_name === targetBrandName) return -1
-    if (b.brand_name === targetBrandName) return 1
+    if (a.is_target_brand) return -1
+    if (b.is_target_brand) return 1
     return b.visibility_percentage - a.visibility_percentage
   })
 
   // Calculate max values for progress bars (domain mentions and citations are relative)
   const maxDomainMentions = Math.max(...domainMentions.map((d) => d.total_mentions), 1)
-  const maxCitationDomains = Math.max(...citationDomainCounts.map((c) => c.count), 1)
+  const maxCitationDomains = Math.max(...citationDomainCounts.map((c) => c.citation_count), 1)
+
+  // Show export button only when we have a report and export handler
+  const showExportButton = reportId != null && onExportJson != null
+
+  const handleExportClick = (e: React.MouseEvent) => {
+    e.stopPropagation() // Prevent triggering the collapse
+    onExportJson?.()
+  }
 
   return (
     <div
@@ -143,39 +203,63 @@ export function ReportPanel({
       }}
     >
       {/* Main Header - always visible */}
-      <button
-        onClick={onToggleCollapse}
-        className="w-full px-4 py-3 flex items-center justify-between hover:bg-white/50 transition-colors"
-      >
-        <div className="flex items-center gap-2">
-          <svg
-            className="w-4 h-4 transition-transform duration-200"
+      <div className="flex items-center">
+        <button
+          onClick={onToggleCollapse}
+          className="flex-1 px-4 py-3 flex items-center justify-between hover:bg-white/50 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <svg
+              className="w-4 h-4 transition-transform duration-200"
+              style={{
+                color: accentColor,
+                transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)",
+              }}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+            <span
+              className="text-sm font-medium tracking-wide"
+              style={{ color: accentColor }}
+            >
+              Report summary
+            </span>
+          </div>
+          <div className="flex items-center gap-3 text-xs font-sans text-gray-400">
+            {hasVisibilityData && (
+              <span>{visibilityScores.length} brand{visibilityScores.length !== 1 ? "s" : ""}</span>
+            )}
+            {hasCitationData && (
+              <span>{citationLeaderboard.total_citations} citation{citationLeaderboard.total_citations !== 1 ? "s" : ""}</span>
+            )}
+          </div>
+        </button>
+
+        {/* Export JSON Button */}
+        {showExportButton && (
+          <button
+            onClick={handleExportClick}
+            disabled={isExporting}
+            title="Download JSON"
+            className="mr-3 p-1.5 rounded-md transition-all duration-200 hover:bg-white/60 disabled:opacity-50 disabled:cursor-not-allowed group"
             style={{
               color: accentColor,
-              transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)",
             }}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
           >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-          <span
-            className="text-sm font-medium tracking-wide"
-            style={{ color: accentColor }}
-          >
-            Report summary
-          </span>
-        </div>
-        <div className="flex items-center gap-3 text-xs font-sans text-gray-400">
-          {hasVisibilityData && (
-            <span>{visibilityScores.length} brand{visibilityScores.length !== 1 ? "s" : ""}</span>
-          )}
-          {hasCitationData && (
-            <span>{citationLeaderboard.total_citations} citation{citationLeaderboard.total_citations !== 1 ? "s" : ""}</span>
-          )}
-        </div>
-      </button>
+            {isExporting ? (
+              <SpinnerIcon color={accentColor} className="w-4 h-4" />
+            ) : (
+              <DownloadIcon
+                color={accentColor}
+                className="w-4 h-4 group-hover:scale-110 transition-transform duration-150"
+              />
+            )}
+          </button>
+        )}
+      </div>
 
       {/* Content - collapsible */}
       <div
@@ -195,7 +279,7 @@ export function ReportPanel({
             <div className="space-y-1.5">
               {sortedVisibilityScores.map((score) => {
                 const brandColor = getBrandColor(score.brand_name, targetBrandName, competitorNames, accentColor)
-                const isTargetBrand = score.brand_name === targetBrandName
+                const isTargetBrand = score.is_target_brand
 
                 return (
                   <div
@@ -261,11 +345,11 @@ export function ReportPanel({
                     {/* Target indicator dot */}
                     <span
                       className="w-2 h-2 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: dm.is_brand ? accentColor : `${brandColor.text}40` }}
+                      style={{ backgroundColor: dm.is_target_brand ? accentColor : `${brandColor.text}40` }}
                     />
                     {/* Domain */}
                     <span
-                      className={`text-sm flex-shrink-0 w-32 truncate font-mono text-[12px] ${dm.is_brand ? "font-semibold" : ""}`}
+                      className={`text-sm flex-shrink-0 w-32 truncate font-mono text-[12px] ${dm.is_target_brand ? "font-semibold" : ""}`}
                       style={{ color: brandColor.text }}
                       title={dm.domain}
                     >
@@ -302,12 +386,12 @@ export function ReportPanel({
             isCollapsed={sectionStates.citationDomains}
             onToggle={() => toggleSection("citationDomains")}
             accentColor={accentColor}
-            badge={`${citationDomainCounts.reduce((sum, c) => sum + c.count, 0)} citations`}
+            badge={`${citationDomainCounts.reduce((sum, c) => sum + c.citation_count, 0)} citations`}
           >
             <div className="space-y-1.5">
-              {citationDomainCounts.filter(cd => cd.count > 0).map((cd) => {
+              {citationDomainCounts.filter(cd => cd.citation_count > 0).map((cd) => {
                 const brandColor = getBrandColor(cd.name, targetBrandName, competitorNames, accentColor)
-                const barWidth = (cd.count / maxCitationDomains) * 100
+                const barWidth = (cd.citation_count / maxCitationDomains) * 100
 
                 return (
                   <div
@@ -317,11 +401,11 @@ export function ReportPanel({
                     {/* Target indicator dot */}
                     <span
                       className="w-2 h-2 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: cd.is_brand ? accentColor : `${brandColor.text}40` }}
+                      style={{ backgroundColor: cd.is_target_brand ? accentColor : `${brandColor.text}40` }}
                     />
                     {/* Domain */}
                     <span
-                      className={`text-sm flex-shrink-0 w-32 truncate font-mono text-[12px] ${cd.is_brand ? "font-semibold" : ""}`}
+                      className={`text-sm flex-shrink-0 w-32 truncate font-mono text-[12px] ${cd.is_target_brand ? "font-semibold" : ""}`}
                       style={{ color: brandColor.text }}
                       title={cd.domain}
                     >
@@ -342,7 +426,7 @@ export function ReportPanel({
                       className="text-xs font-sans font-medium tabular-nums w-16 text-right"
                       style={{ color: brandColor.text }}
                     >
-                      {cd.count} {cd.count === 1 ? "citation" : "citations"}
+                      {cd.citation_count} {cd.citation_count === 1 ? "citation" : "citations"}
                     </span>
                   </div>
                 )

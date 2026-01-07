@@ -33,6 +33,37 @@ export interface ReportPreview {
   needs_top_up: boolean
 }
 
+// ===== Report Statistics Types (from backend) =====
+
+export interface BrandVisibilityScore {
+  brand_name: string
+  is_target_brand: boolean
+  prompts_with_mentions: number
+  total_prompts: number
+  visibility_percentage: number
+}
+
+export interface DomainMentionStat {
+  name: string
+  domain: string
+  is_target_brand: boolean
+  total_mentions: number
+  prompts_with_mentions: number
+}
+
+export interface CitationDomainStat {
+  name: string
+  domain: string
+  is_target_brand: boolean
+  citation_count: number
+}
+
+export interface ReportStatistics {
+  brand_visibility: BrandVisibilityScore[]
+  domain_mentions: DomainMentionStat[]
+  citation_domains: CitationDomainStat[]
+}
+
 // ===== Report Generation Types =====
 
 export interface GenerateReportRequest {
@@ -92,6 +123,7 @@ export interface GenerateReportResponse {
     }>
     total_citations: number
   }
+  statistics: ReportStatistics | null
   generated_at: string
 }
 
@@ -278,4 +310,8 @@ export interface FullReportResponse {
     }>
     total_citations: number
   } | null
+  statistics: ReportStatistics | null
+  // Brand/competitor snapshots from when report was generated
+  brand_snapshot: Record<string, unknown> | null
+  competitors_snapshot: Array<Record<string, unknown>> | null
 }

@@ -307,15 +307,11 @@ export function ReportPreviewModal({
     }
   }, [comparison, selections])
 
-  // Determine if we can generate
+  // Determine if we can generate - only fresh data enables generation
+  // Brand changes don't require new reports since stats are recalculated on-the-fly
   const canGenerate = useMemo(() => {
     if (!comparison) return false
-    // Can generate if: has fresh selections OR brand/competitors changed
-    return (
-      freshCount > 0 ||
-      comparison.brand_changes.brand_changed ||
-      comparison.brand_changes.competitors_changed
-    )
+    return freshCount > 0
   }, [comparison, freshCount])
 
   // Build final selections array
@@ -415,32 +411,27 @@ export function ReportPreviewModal({
         {/* Content */}
         {comparison && !isLoading && (
           <>
-            {/* Brand changes warning */}
+            {/* Brand changes confirmation (green) */}
             {hasBrandChanges && (
-              <div className="mx-5 mt-4 flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-100 shrink-0">
+              <div className="mx-5 mt-4 flex items-start gap-2 p-3 rounded-lg bg-emerald-50 border border-emerald-100 shrink-0">
                 <svg
-                  className="w-4 h-4 text-amber-500 mt-0.5 shrink-0"
+                  className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
                 <div className="min-w-0">
-                  <p className="text-xs font-medium text-amber-800 font-['DM_Sans']">
+                  <p className="text-xs font-medium text-emerald-800 font-['DM_Sans']">
                     {comparison.brand_changes.brand_changed && comparison.brand_changes.competitors_changed
-                      ? "Brand & competitors changed"
+                      ? "Brand & competitor settings updated"
                       : comparison.brand_changes.brand_changed
-                        ? "Brand configuration changed"
-                        : "Competitors changed"}
+                        ? "Brand settings updated"
+                        : "Competitor settings updated"}
                   </p>
-                  <p className="text-[11px] text-amber-600 mt-0.5 font-['DM_Sans']">
-                    Report will be regenerated with updated settings
+                  <p className="text-[11px] text-emerald-600 mt-0.5 font-['DM_Sans']">
+                    All existing reports now reflect your new configuration
                   </p>
                 </div>
               </div>
@@ -542,7 +533,7 @@ export function ReportPreviewModal({
               )}
 
               {/* No fresh data message */}
-              {!canGenerate && !hasBrandChanges && (
+              {!canGenerate && (
                 <div className="flex items-start gap-2 p-3 rounded-lg bg-gray-100 border border-gray-200 mb-4">
                   <svg
                     className="w-4 h-4 text-gray-400 mt-0.5 shrink-0"

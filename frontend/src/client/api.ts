@@ -699,6 +699,19 @@ export const reportsApi = {
     )
     return response.json()
   },
+
+  /**
+   * Export report as JSON file (returns blob for download)
+   */
+  async exportJson(groupId: number, reportId: number): Promise<Blob> {
+    const response = await fetchWithAuth(
+      `/reports/api/v1/groups/${groupId}/reports/${reportId}/export/json`
+    )
+    if (!response.ok) {
+      throw new Error("Export failed")
+    }
+    return response.blob()
+  },
 }
 
 // ===== Inspiration API Types =====
