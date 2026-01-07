@@ -3,7 +3,7 @@
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from src.auth.deps import CurrentUser
 from src.config.settings import settings
@@ -18,9 +18,16 @@ from src.reports.models.api_models import (
     ReportListResponse,
     ReportPreviewResponse,
     ReportResponse,
+    ReportStatistics,
     ReportSummaryResponse,
     SelectableComparisonResponse,
     SelectiveGenerateReportRequest,
+)
+from src.reports.models.export_models import (
+    ExportAnswer,
+    ExportCitation,
+    ExportPromptItem,
+    ExportReportMeta,
 )
 from src.reports.services import (
     BrandInput,
@@ -40,6 +47,12 @@ from src.reports.services import (
     get_selection_pricing,
     get_selection_validator,
 )
+from src.reports.services.export import (
+    JsonExportFormatter,
+    ReportExportService,
+    get_json_formatter,
+    get_report_export_service,
+)
 
 router = APIRouter(prefix="/reports/api/v1", tags=["reports"])
 
@@ -51,6 +64,8 @@ FreshnessAnalyzerDep = Annotated[FreshnessAnalyzerService, Depends(get_freshness
 SelectionAnalyzerDep = Annotated[SelectionAnalyzerService, Depends(get_selection_analyzer)]
 SelectionPricingDep = Annotated[SelectionPricingService, Depends(get_selection_pricing)]
 SelectionValidatorDep = Annotated[SelectionValidatorService, Depends(get_selection_validator)]
+ReportExportServiceDep = Annotated[ReportExportService, Depends(get_report_export_service)]
+JsonFormatterDep = Annotated[JsonExportFormatter, Depends(get_json_formatter)]
 
 
 @router.get(
@@ -94,6 +109,7 @@ async def generate_report(
     selection_analyzer: SelectionAnalyzerDep,
     selection_validator: SelectionValidatorDep,
     enricher: ReportEnricherDep,
+    export_service: ReportExportServiceDep,
 ):
     """Generate a report with explicit evaluation selections.
 
@@ -169,6 +185,10 @@ async def generate_report(
 
     items = []
     all_answers = []
+    brand_mentions_per_item = []
+    domain_mentions_per_item = []
+    export_items = []
+
     if result:
         full_report = result["report"]
         prompts_map = result["prompts_map"]
@@ -180,18 +200,19 @@ async def generate_report(
             response_text = answer.get("response") if answer else None
 
             # Detect brand mentions if we have brands and response text
+            # None = no answer, [] = answer but no mentions (important for visibility calc)
             brand_mentions = None
             if brands and response_text:
                 brand_mentions = enricher.detect_brand_mentions(response_text, brands)
-                if not brand_mentions:
-                    brand_mentions = None
 
             # Detect domain mentions if we have domains and response text
             domain_mentions = None
             if domains and response_text:
                 domain_mentions = enricher.detect_domain_mentions(response_text, domains)
-                if not domain_mentions:
-                    domain_mentions = None
+
+            # Collect for statistics calculation
+            brand_mentions_per_item.append(brand_mentions)
+            domain_mentions_per_item.append(domain_mentions)
 
             prompt = prompts_map.get(item.prompt_id)
             items.append(
@@ -208,8 +229,45 @@ async def generate_report(
                 )
             )
 
+            # Build export item for statistics calculation
+            export_answer = None
+            if answer:
+                citations = [
+                    ExportCitation(url=c.get("url", ""), text=c.get("text", ""))
+                    for c in answer.get("citations", [])
+                    if isinstance(c, dict)
+                ]
+                export_answer = ExportAnswer(
+                    response=answer.get("response", ""),
+                    citations=citations,
+                )
+            export_items.append(
+                ExportPromptItem(
+                    prompt_id=item.prompt_id,
+                    prompt_text=prompt.prompt_text if prompt else "",
+                    answer=export_answer,
+                    status=item.status.value,
+                )
+            )
+
     # Build citation leaderboard from all answers
     citation_leaderboard = enricher.build_citation_leaderboard(all_answers)
+
+    # Calculate statistics
+    stats_result = export_service._calculate_statistics(
+        items=export_items,
+        brand_mentions_per_item=brand_mentions_per_item,
+        domain_mentions_per_item=domain_mentions_per_item,
+        citation_leaderboard=citation_leaderboard,
+        brand_config=group.brand,
+        competitors_config=group.competitors,
+    )
+
+    statistics = ReportStatistics(
+        brand_visibility=stats_result.brand_visibility,
+        domain_mentions=stats_result.domain_mentions,
+        citation_domains=stats_result.citation_domains,
+    )
 
     return ReportResponse(
         id=report.id,
@@ -223,6 +281,9 @@ async def generate_report(
         total_cost=report.total_cost,
         items=items,
         citation_leaderboard=citation_leaderboard,
+        statistics=statistics,
+        brand_snapshot=report.brand_snapshot,
+        competitors_snapshot=report.competitors_snapshot,
     )
 
 
@@ -275,6 +336,7 @@ async def get_report(
     report_service: ReportServiceDep,
     group_service: PromptGroupServiceDep,
     enricher: ReportEnricherDep,
+    export_service: ReportExportServiceDep,
 ):
     """Get a specific report with all items, enriched with brand mentions and citations."""
     # Verify user owns the group and get group data for brands
@@ -320,6 +382,10 @@ async def get_report(
 
     items = []
     all_answers = []
+    brand_mentions_per_item = []
+    domain_mentions_per_item = []
+    export_items = []
+
     for item in report.items:
         answer = item.evaluation.answer if item.evaluation else None
         all_answers.append(answer)
@@ -328,18 +394,19 @@ async def get_report(
         response_text = answer.get("response") if answer else None
 
         # Detect brand mentions if we have brands and response text
+        # None = no answer, [] = answer but no mentions (important for visibility calc)
         brand_mentions = None
         if brands and response_text:
             brand_mentions = enricher.detect_brand_mentions(response_text, brands)
-            if not brand_mentions:
-                brand_mentions = None
 
         # Detect domain mentions if we have domains and response text
         domain_mentions = None
         if domains and response_text:
             domain_mentions = enricher.detect_domain_mentions(response_text, domains)
-            if not domain_mentions:
-                domain_mentions = None
+
+        # Collect for statistics calculation
+        brand_mentions_per_item.append(brand_mentions)
+        domain_mentions_per_item.append(domain_mentions)
 
         prompt = prompts_map.get(item.prompt_id)
         items.append(
@@ -356,8 +423,45 @@ async def get_report(
             )
         )
 
+        # Build export item for statistics calculation
+        export_answer = None
+        if answer:
+            citations = [
+                ExportCitation(url=c.get("url", ""), text=c.get("text", ""))
+                for c in answer.get("citations", [])
+                if isinstance(c, dict)
+            ]
+            export_answer = ExportAnswer(
+                response=answer.get("response", ""),
+                citations=citations,
+            )
+        export_items.append(
+            ExportPromptItem(
+                prompt_id=item.prompt_id,
+                prompt_text=prompt.prompt_text if prompt else "",
+                answer=export_answer,
+                status=item.status.value,
+            )
+        )
+
     # Build citation leaderboard from all answers
     citation_leaderboard = enricher.build_citation_leaderboard(all_answers)
+
+    # Calculate statistics
+    stats_result = export_service._calculate_statistics(
+        items=export_items,
+        brand_mentions_per_item=brand_mentions_per_item,
+        domain_mentions_per_item=domain_mentions_per_item,
+        citation_leaderboard=citation_leaderboard,
+        brand_config=group.brand,
+        competitors_config=group.competitors,
+    )
+
+    statistics = ReportStatistics(
+        brand_visibility=stats_result.brand_visibility,
+        domain_mentions=stats_result.domain_mentions,
+        citation_domains=stats_result.citation_domains,
+    )
 
     return ReportResponse(
         id=report.id,
@@ -371,6 +475,9 @@ async def get_report(
         total_cost=report.total_cost,
         items=items,
         citation_leaderboard=citation_leaderboard,
+        statistics=statistics,
+        brand_snapshot=report.brand_snapshot,
+        competitors_snapshot=report.competitors_snapshot,
     )
 
 
@@ -444,13 +551,10 @@ async def compare_with_latest_report(
     )
 
     # Determine if generation should be enabled
-    # Enable if: has fresh selections OR brand/competitors changed
-    can_generate = (
-        pricing_result.fresh_count > 0
-        or brand_changes.brand_changed
-        or brand_changes.competitors_changed
-    )
-    generation_disabled_reason = None if can_generate else "no_new_data_or_changes"
+    # Enable only if there's fresh evaluation data
+    # Brand/competitor changes don't require new reports - statistics are recalculated on-the-fly
+    can_generate = pricing_result.fresh_count > 0
+    generation_disabled_reason = None if can_generate else "no_new_data"
 
     return SelectableComparisonResponse(
         group_id=group_id,
@@ -467,4 +571,168 @@ async def compare_with_latest_report(
         price_per_evaluation=price_per,
         can_generate=can_generate,
         generation_disabled_reason=generation_disabled_reason,
+    )
+
+
+@router.get(
+    "/groups/{group_id}/reports/{report_id}/export/json",
+    response_class=Response,
+    responses={
+        200: {
+            "content": {"application/json": {}},
+            "description": "JSON export of the report with all statistics",
+        }
+    },
+)
+async def export_report_json(
+    group_id: int,
+    report_id: int,
+    current_user: CurrentUser,
+    report_service: ReportServiceDep,
+    group_service: PromptGroupServiceDep,
+    enricher: ReportEnricherDep,
+    export_service: ReportExportServiceDep,
+    json_formatter: JsonFormatterDep,
+):
+    """
+    Export a report as JSON with all statistics calculated.
+
+    Returns a downloadable JSON file containing:
+    - Report metadata
+    - Brand/competitor configuration
+    - All prompts with answers and citations
+    - Calculated statistics (visibility, mentions, citation domains)
+    - Citation leaderboards
+    """
+    # Verify user owns the group and get group data for brands
+    try:
+        group = await group_service.get_by_id_for_user(group_id, current_user.id)
+    except Exception:
+        raise to_http_exception(GroupNotFoundError(group_id))
+
+    # Get report with items
+    result = await report_service.get_report(report_id, current_user.id)
+    if not result or result["report"].group_id != group_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Report {report_id} not found",
+        )
+
+    report = result["report"]
+    prompts_map = result["prompts_map"]
+
+    # Extract brand and competitors from group for detection
+    brands = None
+    domains = []
+    if group.brand:
+        brands = [
+            BrandInput(
+                name=group.brand["name"], variations=group.brand.get("variations", [])
+            )
+        ]
+        if group.brand.get("domain"):
+            domains.append(
+                DomainInput(
+                    name=group.brand["name"],
+                    domain=group.brand["domain"],
+                    is_brand=True,
+                )
+            )
+        if group.competitors:
+            brands.extend(
+                BrandInput(name=c["name"], variations=c.get("variations", []))
+                for c in group.competitors
+            )
+            for c in group.competitors:
+                if c.get("domain"):
+                    domains.append(
+                        DomainInput(
+                            name=c["name"],
+                            domain=c["domain"],
+                            is_brand=False,
+                        )
+                    )
+
+    # Build export items and collect mentions
+    export_items = []
+    brand_mentions_per_item = []
+    domain_mentions_per_item = []
+    all_answers = []
+
+    for item in report.items:
+        answer = item.evaluation.answer if item.evaluation else None
+        all_answers.append(answer)
+        response_text = answer.get("response") if answer else None
+
+        # Build export answer
+        export_answer = None
+        if answer:
+            citations = [
+                ExportCitation(url=c.get("url", ""), text=c.get("text", ""))
+                for c in answer.get("citations", [])
+                if isinstance(c, dict)
+            ]
+            export_answer = ExportAnswer(
+                response=answer.get("response", ""),
+                citations=citations,
+            )
+
+        # Detect brand mentions
+        # None = no answer, [] = answer but no mentions (important for visibility calc)
+        brand_mentions = None
+        if brands and response_text:
+            brand_mentions = enricher.detect_brand_mentions(response_text, brands)
+        brand_mentions_per_item.append(brand_mentions)
+
+        # Detect domain mentions
+        domain_mentions = None
+        if domains and response_text:
+            domain_mentions = enricher.detect_domain_mentions(response_text, domains)
+        domain_mentions_per_item.append(domain_mentions)
+
+        prompt = prompts_map.get(item.prompt_id)
+        export_items.append(
+            ExportPromptItem(
+                prompt_id=item.prompt_id,
+                prompt_text=prompt.prompt_text if prompt else "",
+                answer=export_answer,
+                status=item.status.value,
+            )
+        )
+
+    # Build citation leaderboard from all answers
+    citation_leaderboard = enricher.build_citation_leaderboard(all_answers)
+
+    # Build report metadata
+    report_meta = ExportReportMeta(
+        id=report.id,
+        title=report.title,
+        created_at=report.created_at,
+        group_id=report.group_id,
+        total_prompts=report.total_prompts,
+        prompts_with_data=report.prompts_with_data,
+        prompts_awaiting=report.prompts_awaiting,
+        total_cost=report.total_cost,
+    )
+
+    # Build export
+    export_data = export_service.build_export(
+        report_meta=report_meta,
+        items=export_items,
+        brand_mentions_per_item=brand_mentions_per_item,
+        domain_mentions_per_item=domain_mentions_per_item,
+        citation_leaderboard=citation_leaderboard,
+        brand_config=group.brand,
+        competitors_config=group.competitors,
+    )
+
+    # Format as JSON
+    json_bytes = json_formatter.format(export_data)
+
+    # Return as downloadable file
+    filename = f"report_{report_id}_{report.created_at.strftime('%Y%m%d')}.json"
+    return Response(
+        content=json_bytes,
+        media_type=json_formatter.content_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

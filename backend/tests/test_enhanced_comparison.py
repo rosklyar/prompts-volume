@@ -120,9 +120,10 @@ def test_enhanced_comparison_fresh_data_detection(client, eval_auth_headers, cre
     # Options are only fresher evaluations, so after consuming, no fresh options
     assert compare["default_fresh_count"] == 0
 
-    # Should NOT be able to generate (no new data, no brand changes)
+    # Should NOT be able to generate (no new data)
+    # Note: Brand changes don't enable generation since stats are recalculated on-the-fly
     assert compare["can_generate"] is False
-    assert compare["generation_disabled_reason"] == "no_new_data_or_changes"
+    assert compare["generation_disabled_reason"] == "no_new_data"
 
 
 def test_enhanced_comparison_brand_change_detection(client, eval_auth_headers, create_verified_user):
@@ -222,7 +223,9 @@ def test_enhanced_comparison_brand_change_detection(client, eval_auth_headers, c
     assert compare["brand_changes"]["brand_changed"] is True
     assert compare["brand_changes"]["current_brand"]["name"] == "NewBrand"
     assert compare["brand_changes"]["previous_brand"]["name"] == "OriginalBrand"
-    assert compare["can_generate"] is True  # Brand changed, can regenerate
+    # Brand change is detected but doesn't enable generation
+    # Since stats are recalculated on-the-fly, no new report is needed for brand changes
+    assert compare["can_generate"] is False
 
     # === STEP 8: Update competitors ===
     update_response = client.patch(
@@ -248,7 +251,8 @@ def test_enhanced_comparison_brand_change_detection(client, eval_auth_headers, c
 
     assert compare["brand_changes"]["competitors_changed"] is True
     assert len(compare["brand_changes"]["current_competitors"]) == 2
-    assert compare["can_generate"] is True
+    # Competitors changed but doesn't enable generation (stats recalculated on-the-fly)
+    assert compare["can_generate"] is False
 
 
 def test_enhanced_comparison_time_estimations(client, eval_auth_headers, create_verified_user):
@@ -494,9 +498,10 @@ def test_enhanced_comparison_can_generate_logic(client, eval_auth_headers, creat
     compare = compare_response.json()
 
     assert compare["can_generate"] is False
-    assert compare["generation_disabled_reason"] == "no_new_data_or_changes"
+    assert compare["generation_disabled_reason"] == "no_new_data"
 
-    # === STEP 8: Change brand - should be able to generate again ===
+    # === STEP 8: Change brand - brand change is detected but doesn't enable generation ===
+    # Stats are recalculated on-the-fly, so no new report needed for brand changes
     update_response = client.patch(
         f"/prompt-groups/api/v1/groups/{group_id}",
         json={"brand": {"name": "NewBrand", "domain": "newbrand.com", "variations": []}},
@@ -511,5 +516,6 @@ def test_enhanced_comparison_can_generate_logic(client, eval_auth_headers, creat
     assert compare_response.status_code == 200
     compare = compare_response.json()
 
-    assert compare["can_generate"] is True
+    # Brand change is detected but doesn't enable generation (no fresh data)
+    assert compare["can_generate"] is False
     assert compare["brand_changes"]["brand_changed"] is True

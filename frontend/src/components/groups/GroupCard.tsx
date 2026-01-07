@@ -15,16 +15,8 @@ import type {
   CompetitorInfo,
   BrandMentionResult,
   DomainMentionResult,
-  BrandVisibilityScore,
-  CitationLeaderboard,
 } from "@/types/groups"
-import { useHasFreshData, useReport } from "@/hooks/useReports"
-import {
-  calculateVisibilityScores,
-  aggregateDomainMentions,
-  countBrandDomainsInCitations,
-  type BrandDomain,
-} from "@/lib/report-utils"
+import { useHasFreshData, useReport, useExportReportJson } from "@/hooks/useReports"
 import { EditableTitle } from "./EditableTitle"
 import { PromptItem } from "./PromptItem"
 import { ReportPanel } from "./ReportPanel"
@@ -49,8 +41,6 @@ interface GroupCardProps {
   isLoadingAnswers: boolean
   brand: BrandInfo
   competitors: CompetitorInfo[]
-  visibilityScores: BrandVisibilityScore[] | null
-  citationLeaderboard: CitationLeaderboard | null
   selectedReportId: number | null
   onSelectReport: (reportId: number | null) => void
   onUpdateTitle: (title: string) => void
@@ -70,8 +60,6 @@ export function GroupCard({
   isLoadingAnswers,
   brand,
   competitors,
-  visibilityScores,
-  citationLeaderboard,
   selectedReportId,
   onSelectReport,
   onUpdateTitle,
@@ -112,6 +100,9 @@ export function GroupCard({
     selectedReportId !== null
   )
 
+  // Export hook for JSON download
+  const exportMutation = useExportReportJson()
+
   // Merge answers from selected report into prompts
   const promptsWithSelectedReportAnswers = selectedReport
     ? prompts.map((p) => {
@@ -127,53 +118,7 @@ export function GroupCard({
       })
     : prompts
 
-  // Build brands array from brand + competitors for visibility calculation
-  const brandsForCalculation = brand
-    ? [
-        { name: brand.name, variations: brand.variations },
-        ...competitors.map((c) => ({ name: c.name, variations: c.variations })),
-      ]
-    : []
-
-  // Calculate visibility scores from selected report
-  const selectedReportVisibilityScores = selectedReport && brandsForCalculation.length > 0
-    ? calculateVisibilityScores(
-        selectedReport.items.map((item) => ({
-          prompt_id: item.prompt_id,
-          prompt_text: item.prompt_text,
-          evaluation_id: item.evaluation_id,
-          status: item.status,
-          answer: item.answer,
-          completed_at: null,
-          brand_mentions: item.brand_mentions,
-        })),
-        brandsForCalculation
-      )
-    : null
-
-  // Build brand domains list for citation counting
-  const brandDomains: BrandDomain[] = [
-    ...(brand?.domain ? [{ name: brand.name, domain: brand.domain, is_brand: true }] : []),
-    ...competitors.filter((c) => c.domain).map((c) => ({
-      name: c.name,
-      domain: c.domain!,
-      is_brand: false,
-    })),
-  ]
-
-  // Aggregate domain mentions from selected report
-  const aggregatedDomainMentions = selectedReport
-    ? aggregateDomainMentions(selectedReport.items)
-    : []
-
-  // Count brand domains in citations from selected report
-  const citationDomainCounts = selectedReport && brandDomains.length > 0
-    ? countBrandDomainsInCitations(selectedReport.items, brandDomains)
-    : []
-
-  // Use selected report's data or passed props
-  const displayVisibilityScores = selectedReportId ? selectedReportVisibilityScores : visibilityScores
-  const displayCitationLeaderboard = selectedReportId ? selectedReport?.citation_leaderboard : citationLeaderboard
+  // Use selected report's data (statistics come from backend)
   const displayPrompts = selectedReportId ? promptsWithSelectedReportAnswers : prompts
 
   // Report button disabled when loading or no prompts
@@ -214,7 +159,8 @@ export function GroupCard({
 
   const sortableIds = displayPrompts.map((p) => `${group.id}-${p.prompt_id}`)
 
-  const hasReportData = displayVisibilityScores !== null || displayCitationLeaderboard !== null
+  // Check if we have report data to display (from selected report)
+  const hasReportData = selectedReport !== null && selectedReport !== undefined
 
   return (
     <>
@@ -476,15 +422,16 @@ export function GroupCard({
             {hasReportData && (
               <div className="mt-3">
                 <ReportPanel
-                  visibilityScores={displayVisibilityScores || []}
-                  citationLeaderboard={displayCitationLeaderboard || { domains: [], subpaths: [], total_citations: 0 }}
-                  domainMentions={aggregatedDomainMentions}
-                  citationDomainCounts={citationDomainCounts}
+                  statistics={selectedReport?.statistics ?? null}
+                  citationLeaderboard={selectedReport?.citation_leaderboard ?? { domains: [], subpaths: [], total_citations: 0 }}
                   accentColor={colors.accent}
                   targetBrandName={brand?.name}
                   competitorNames={competitors.map((c) => c.name)}
                   isCollapsed={isReportCollapsed}
                   onToggleCollapse={() => setIsReportCollapsed(!isReportCollapsed)}
+                  reportId={selectedReportId}
+                  onExportJson={() => exportMutation.mutate({ groupId: group.id, reportId: selectedReportId! })}
+                  isExporting={exportMutation.isPending}
                 />
               </div>
             )}

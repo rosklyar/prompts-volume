@@ -3,7 +3,7 @@
  * Provides report listing, fetching, and comparison queries
  */
 
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { reportsApi } from "@/client/api"
 import { billingKeys } from "./useBilling"
 
@@ -99,7 +99,7 @@ export function useHasFreshData(groupId: number, enabled: boolean = true) {
 }
 
 /**
- * Invalidate report-related queries after generating a new report
+ * Invalidate report-related queries after generating a new report or changing brand/competitors
  */
 export function useInvalidateReportQueries() {
   const queryClient = useQueryClient()
@@ -108,6 +108,10 @@ export function useInvalidateReportQueries() {
     // Invalidate report history list
     queryClient.invalidateQueries({
       queryKey: reportKeys.history(groupId),
+    })
+    // Invalidate all report details for this group (prefix match)
+    queryClient.invalidateQueries({
+      queryKey: [...reportKeys.all, "detail", groupId],
     })
     // Invalidate comparison
     queryClient.invalidateQueries({
@@ -118,6 +122,29 @@ export function useInvalidateReportQueries() {
       queryKey: billingKeys.reportPreview(groupId),
     })
   }
+}
+
+// ===== Mutations =====
+
+/**
+ * Export report as JSON file and trigger browser download
+ */
+export function useExportReportJson() {
+  return useMutation({
+    mutationFn: ({ groupId, reportId }: { groupId: number; reportId: number }) =>
+      reportsApi.exportJson(groupId, reportId),
+    onSuccess: (blob, { reportId }) => {
+      // Create download link and trigger download
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `report_${reportId}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    },
+  })
 }
 
 // ===== Utility Functions =====
