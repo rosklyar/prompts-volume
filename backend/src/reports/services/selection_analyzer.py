@@ -93,26 +93,11 @@ class SelectionAnalyzerService:
         if last_report:
             last_report_evals = await self._get_report_evaluation_info(last_report.id)
 
-        # Build cutoff map: prompt_id -> cutoff_timestamp (or None if no previous)
-        cutoff_map: dict[int, datetime | None] = {}
-        for prompt_id in prompt_ids:
-            eval_info = last_report_evals.get(prompt_id)
-            cutoff_map[prompt_id] = eval_info[1] if eval_info else None
-
-        # Collect last report's evaluation IDs (to include them in available options)
-        last_report_eval_ids: set[int] = {
-            eval_info[0]
-            for eval_info in last_report_evals.values()
-            if eval_info[0] is not None
-        }
-
-        # Get all fresher evaluations with assistant info (+ last report's evals)
-        fresher_evals = await self._get_fresher_evaluations_with_assistants(
-            prompt_ids, cutoff_map, last_report_eval_ids
-        )
+        # Get ALL completed evaluations - any can be selected for report generation
+        all_evals = await self._get_all_evaluations_with_assistants(prompt_ids)
 
         # Get consumed evaluation IDs for this user
-        all_eval_ids = [e["id"] for evals in fresher_evals.values() for e in evals]
+        all_eval_ids = [e["id"] for evals in all_evals.values() for e in evals]
         consumed_ids = await self._get_consumed_evaluation_ids(user_id, all_eval_ids)
 
         # Get in-progress prompts
@@ -121,7 +106,7 @@ class SelectionAnalyzerService:
         # Build selection info for each prompt
         result = []
         for prompt_id in prompt_ids:
-            evals_for_prompt = fresher_evals.get(prompt_id, [])
+            evals_for_prompt = all_evals.get(prompt_id, [])
             last_eval_info = last_report_evals.get(prompt_id)
             was_awaiting = last_report is not None and last_eval_info is None
 
@@ -193,17 +178,13 @@ class SelectionAnalyzerService:
             for row in result.all()
         }
 
-    async def _get_fresher_evaluations_with_assistants(
+    async def _get_all_evaluations_with_assistants(
         self,
         prompt_ids: list[int],
-        cutoff_map: dict[int, datetime | None],
-        last_report_eval_ids: set[int],
     ) -> dict[int, list[dict]]:
-        """Get evaluations fresher than cutoff for each prompt, with assistant info.
+        """Get all completed evaluations for each prompt, with assistant info.
 
-        Includes evaluations that are either:
-        - Strictly newer than cutoff (completed_at > cutoff)
-        - OR were in the last report (id in last_report_eval_ids)
+        Returns ALL completed evaluations - any can be selected for report generation.
         """
         if not prompt_ids:
             return {}
@@ -231,24 +212,19 @@ class SelectionAnalyzerService:
         )
         result = await self._evals_session.execute(query)
 
-        # Filter by cutoff per prompt
+        # Group all evaluations by prompt - no filtering
         evaluations_by_prompt: dict[int, list[dict]] = {}
         for row in result.all():
-            cutoff = cutoff_map.get(row.prompt_id)
-            # Include if: no cutoff, OR newer than cutoff, OR was in last report
-            is_fresher = cutoff is None or (row.completed_at and row.completed_at > cutoff)
-            was_in_last_report = row.id in last_report_eval_ids
-            if is_fresher or was_in_last_report:
-                if row.prompt_id not in evaluations_by_prompt:
-                    evaluations_by_prompt[row.prompt_id] = []
-                evaluations_by_prompt[row.prompt_id].append({
-                    "id": row.id,
-                    "prompt_id": row.prompt_id,
-                    "assistant_plan_id": row.assistant_plan_id,
-                    "completed_at": row.completed_at,
-                    "plan_name": row.plan_name,
-                    "assistant_name": row.assistant_name,
-                })
+            if row.prompt_id not in evaluations_by_prompt:
+                evaluations_by_prompt[row.prompt_id] = []
+            evaluations_by_prompt[row.prompt_id].append({
+                "id": row.id,
+                "prompt_id": row.prompt_id,
+                "assistant_plan_id": row.assistant_plan_id,
+                "completed_at": row.completed_at,
+                "plan_name": row.plan_name,
+                "assistant_name": row.assistant_name,
+            })
 
         return evaluations_by_prompt
 

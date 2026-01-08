@@ -73,7 +73,7 @@ class SelectionValidatorService:
                 if selection.evaluation_id not in valid_evals:
                     errors.append(
                         f"evaluation_id {selection.evaluation_id} is not a valid "
-                        f"fresher option for prompt_id {selection.prompt_id}"
+                        f"completed evaluation for prompt_id {selection.prompt_id}"
                     )
 
         if errors:
