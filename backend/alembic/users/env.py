@@ -73,6 +73,13 @@ async def run_async_migrations() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args={
+            "server_settings": {
+                "tcp_keepalives_idle": "60",
+                "tcp_keepalives_interval": "10",
+                "tcp_keepalives_count": "3",
+            }
+        },
     )
 
     async with connectable.connect() as connection:

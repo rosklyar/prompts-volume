@@ -31,6 +31,15 @@ def get_engine() -> AsyncEngine:
             pool_pre_ping=True,
             pool_size=3,
             max_overflow=5,
+            pool_recycle=1800,  # Recycle connections every 30 minutes
+            pool_timeout=10,    # Fail fast if no connection available
+            connect_args={
+                "server_settings": {
+                    "tcp_keepalives_idle": "60",      # Start keepalive after 60s idle
+                    "tcp_keepalives_interval": "10",  # Send keepalive every 10s
+                    "tcp_keepalives_count": "3",      # Fail after 3 missed keepalives
+                }
+            },
         )
     return _engine
 
