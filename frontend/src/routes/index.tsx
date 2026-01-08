@@ -485,8 +485,7 @@ function PromptDiscovery() {
           <div className="max-w-2xl mx-auto relative mb-10">
             {/* Service name */}
             <h1 className="font-['Fraunces'] text-3xl text-[#1F2937] text-center mb-6">
-              <span className="font-light tracking-tight">LLM</span>
-              <span className="font-semibold tracking-wide">HERO</span>
+              Prompt Volume
             </h1>
 
             {/* Search input */}

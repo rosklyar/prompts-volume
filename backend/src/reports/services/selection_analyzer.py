@@ -99,9 +99,16 @@ class SelectionAnalyzerService:
             eval_info = last_report_evals.get(prompt_id)
             cutoff_map[prompt_id] = eval_info[1] if eval_info else None
 
-        # Get all fresher evaluations with assistant info
+        # Collect last report's evaluation IDs (to include them in available options)
+        last_report_eval_ids: set[int] = {
+            eval_info[0]
+            for eval_info in last_report_evals.values()
+            if eval_info[0] is not None
+        }
+
+        # Get all fresher evaluations with assistant info (+ last report's evals)
         fresher_evals = await self._get_fresher_evaluations_with_assistants(
-            prompt_ids, cutoff_map
+            prompt_ids, cutoff_map, last_report_eval_ids
         )
 
         # Get consumed evaluation IDs for this user
@@ -190,8 +197,14 @@ class SelectionAnalyzerService:
         self,
         prompt_ids: list[int],
         cutoff_map: dict[int, datetime | None],
+        last_report_eval_ids: set[int],
     ) -> dict[int, list[dict]]:
-        """Get evaluations fresher than cutoff for each prompt, with assistant info."""
+        """Get evaluations fresher than cutoff for each prompt, with assistant info.
+
+        Includes evaluations that are either:
+        - Strictly newer than cutoff (completed_at > cutoff)
+        - OR were in the last report (id in last_report_eval_ids)
+        """
         if not prompt_ids:
             return {}
 
@@ -222,8 +235,10 @@ class SelectionAnalyzerService:
         evaluations_by_prompt: dict[int, list[dict]] = {}
         for row in result.all():
             cutoff = cutoff_map.get(row.prompt_id)
-            # Include if no cutoff (no previous report) or completed after cutoff
-            if cutoff is None or (row.completed_at and row.completed_at > cutoff):
+            # Include if: no cutoff, OR newer than cutoff, OR was in last report
+            is_fresher = cutoff is None or (row.completed_at and row.completed_at > cutoff)
+            was_in_last_report = row.id in last_report_eval_ids
+            if is_fresher or was_in_last_report:
                 if row.prompt_id not in evaluations_by_prompt:
                     evaluations_by_prompt[row.prompt_id] = []
                 evaluations_by_prompt[row.prompt_id].append({
