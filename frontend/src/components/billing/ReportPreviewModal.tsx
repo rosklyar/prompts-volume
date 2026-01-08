@@ -50,7 +50,7 @@ function FreshnessBadge({ category }: { category: FreshnessCategory }) {
   )
 }
 
-// Per-prompt selection card
+// Per-prompt selection card (collapsible)
 function PromptSelectionCard({
   promptInfo,
   selection,
@@ -66,33 +66,101 @@ function PromptSelectionCard({
   accentColor: string
   globalQueueWait: string | null
 }) {
+  const [isExpanded, setIsExpanded] = useState(false)
+
   const hasEvaluations = promptInfo.evaluations.length > 0
   const isPending = promptInfo.pending_execution
   const isAskFresh = selection === "ask_fresh"
   const selectedEvalId = typeof selection === "number" ? selection : null
 
-  // Status display
-  let statusElement = <FreshnessBadge category={promptInfo.freshness_category} />
-  if (isPending) {
-    statusElement = (
-      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-['DM_Sans']">
-        Pending
-      </span>
-    )
+  // Get current selection summary for collapsed view
+  const getSelectionSummary = () => {
+    if (isPending) {
+      return { text: "Pending...", color: "text-blue-600", icon: "pending" }
+    }
+    if (isAskFresh) {
+      return { text: "Request fresh", color: "text-blue-600", icon: "fresh" }
+    }
+    if (selectedEvalId) {
+      const eval_ = promptInfo.evaluations.find((e) => e.evaluation_id === selectedEvalId)
+      if (eval_) {
+        return {
+          text: formatShortDate(eval_.completed_at),
+          color: "text-gray-700",
+          icon: eval_.is_consumed ? "free" : "paid",
+        }
+      }
+    }
+    return { text: "Don't include", color: "text-gray-400", icon: "none" }
   }
+
+  const selectionSummary = getSelectionSummary()
 
   return (
     <div className="rounded-lg border border-gray-200 bg-white transition-all duration-200 hover:border-gray-300">
-      {/* Header row */}
-      <div className="px-3 py-2.5 flex items-start justify-between gap-3">
-        <p className="text-sm font-['DM_Sans'] line-clamp-2 text-gray-700 flex-1 min-w-0">
-          {promptInfo.prompt_text}
-        </p>
+      {/* Header row - clickable to expand */}
+      <div
+        className="px-3 py-2.5 flex items-start justify-between gap-2 cursor-pointer"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          {/* Expand/collapse chevron */}
+          <svg
+            className={`w-4 h-4 text-gray-400 shrink-0 transition-transform duration-200 ${isExpanded ? "rotate-90" : ""}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+          <p className="text-sm font-['DM_Sans'] line-clamp-1 text-gray-700 min-w-0">
+            {promptInfo.prompt_text}
+          </p>
+        </div>
+
+        {/* Right side: selection summary + status + remove button */}
         <div className="flex items-center gap-2 shrink-0">
-          {statusElement}
+          {/* Collapsed selection summary */}
+          {!isExpanded && (
+            <span className={`text-xs font-['DM_Sans'] ${selectionSummary.color}`}>
+              {selectionSummary.icon === "pending" && (
+                <span className="inline-flex items-center gap-1">
+                  <span className="w-2 h-2 border border-blue-400 border-t-transparent rounded-full animate-spin" />
+                  {selectionSummary.text}
+                </span>
+              )}
+              {selectionSummary.icon === "fresh" && (
+                <span className="text-blue-600">{selectionSummary.text}</span>
+              )}
+              {selectionSummary.icon === "free" && (
+                <span className="inline-flex items-center gap-1">
+                  {selectionSummary.text}
+                  <span className="text-[9px] px-1 py-0.5 rounded bg-green-50 text-green-600">FREE</span>
+                </span>
+              )}
+              {selectionSummary.icon === "paid" && (
+                <span className="inline-flex items-center gap-1">
+                  {selectionSummary.text}
+                  <span
+                    className="text-[9px] px-1 py-0.5 rounded"
+                    style={{ backgroundColor: `${accentColor}15`, color: accentColor }}
+                  >
+                    $0.01
+                  </span>
+                </span>
+              )}
+              {selectionSummary.icon === "none" && selectionSummary.text}
+            </span>
+          )}
+
+          <FreshnessBadge category={promptInfo.freshness_category} />
+
           <button
             type="button"
-            onClick={() => onRemove(promptInfo.prompt_id)}
+            onClick={(e) => {
+              e.stopPropagation()
+              onRemove(promptInfo.prompt_id)
+            }}
             className="p-0.5 rounded hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"
             title="Remove from report"
           >
@@ -103,100 +171,103 @@ function PromptSelectionCard({
         </div>
       </div>
 
-      {/* Selection options */}
-      <div className="px-3 pb-2.5 pt-0 space-y-1.5">
-        {/* Evaluation options */}
-        {promptInfo.evaluations.map((evaluation) => (
-          <label
-            key={evaluation.evaluation_id}
-            className={`
-              flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-md cursor-pointer
-              border transition-colors text-sm font-['DM_Sans']
-              ${selectedEvalId === evaluation.evaluation_id ? "border-gray-300 bg-gray-50" : "border-gray-100 hover:border-gray-200 bg-gray-50/50"}
-            `}
-          >
-            <div className="flex items-center gap-2 min-w-0">
-              <input
-                type="radio"
-                name={`prompt-${promptInfo.prompt_id}`}
-                checked={selectedEvalId === evaluation.evaluation_id}
-                onChange={() => onSelectionChange(promptInfo.prompt_id, evaluation.evaluation_id)}
-                className="w-3.5 h-3.5 text-gray-700 focus:ring-gray-400"
-              />
-              <span className="truncate text-gray-700">{formatShortDate(evaluation.completed_at)}</span>
-            </div>
-            {evaluation.is_consumed ? (
-              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-green-50 text-green-600 shrink-0">
-                FREE
-              </span>
-            ) : (
-              <span
-                className="text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0"
-                style={{ backgroundColor: `${accentColor}15`, color: accentColor }}
+      {/* Selection options - only visible when expanded */}
+      {isExpanded && (
+        <div className="px-3 pb-2.5 pt-0 space-y-1.5 border-t border-gray-100 mt-0 pt-2">
+          {/* Evaluation options */}
+          {promptInfo.evaluations.map((evaluation) => {
+            const isSelected = selectedEvalId === evaluation.evaluation_id
+            return (
+              <div
+                key={evaluation.evaluation_id}
+                className={`
+                  flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-md cursor-pointer
+                  border transition-colors text-sm font-['DM_Sans']
+                  ${isSelected ? "border-gray-300 bg-gray-50" : "border-gray-100 hover:border-gray-200 bg-gray-50/50"}
+                `}
+                onClick={() => onSelectionChange(promptInfo.prompt_id, isSelected ? null : evaluation.evaluation_id)}
               >
-                $0.01
-              </span>
-            )}
-          </label>
-        ))}
-
-        {/* Ask for fresh option */}
-        {promptInfo.show_ask_for_fresh && !isPending && (
-          <label
-            className={`
-              flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-md cursor-pointer
-              border transition-colors text-sm font-['DM_Sans']
-              ${isAskFresh ? "border-blue-300 bg-blue-50/50" : "border-gray-100 hover:border-gray-200 bg-gray-50/50"}
-            `}
-          >
-            <div className="flex items-center gap-2 min-w-0">
-              <input
-                type="radio"
-                name={`prompt-${promptInfo.prompt_id}`}
-                checked={isAskFresh}
-                onChange={() => onSelectionChange(promptInfo.prompt_id, "ask_fresh")}
-                className="w-3.5 h-3.5 text-blue-600 focus:ring-blue-400"
-              />
-              <span className="text-blue-600">Request fresh answer</span>
-            </div>
-            {globalQueueWait && (
-              <span className="text-[10px] text-blue-500 shrink-0">~{globalQueueWait}</span>
-            )}
-          </label>
-        )}
-
-        {/* Pending execution indicator */}
-        {isPending && (
-          <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-md bg-blue-50/50 border border-blue-100">
-            <div className="flex items-center gap-2">
-              <div className="w-3.5 h-3.5 flex items-center justify-center">
-                <div
-                  className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"
-                />
+                <div className="flex items-center gap-2 min-w-0">
+                  {/* Custom radio circle */}
+                  <div className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center shrink-0
+                    ${isSelected ? "border-gray-600" : "border-gray-300"}`}
+                  >
+                    {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-gray-600" />}
+                  </div>
+                  <span className="truncate text-gray-700">{formatShortDate(evaluation.completed_at)}</span>
+                </div>
+                {evaluation.is_consumed ? (
+                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-green-50 text-green-600 shrink-0">
+                    FREE
+                  </span>
+                ) : (
+                  <span
+                    className="text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0"
+                    style={{ backgroundColor: `${accentColor}15`, color: accentColor }}
+                  >
+                    $0.01
+                  </span>
+                )}
               </div>
-              <span className="text-sm text-blue-600 font-['DM_Sans']">Execution pending...</span>
-            </div>
-            {promptInfo.estimated_wait && (
-              <span className="text-[10px] text-blue-500">~{promptInfo.estimated_wait}</span>
-            )}
-          </div>
-        )}
+            )
+          })}
 
-        {/* No data, no pending - auto ask_fresh */}
-        {!hasEvaluations && !isPending && promptInfo.auto_ask_for_fresh && (
-          <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-gray-50 border border-gray-200">
-            <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-            <span className="text-sm text-gray-500 font-['DM_Sans']">Will request fresh answer</span>
-          </div>
-        )}
-      </div>
+          {/* Ask for fresh option */}
+          {promptInfo.show_ask_for_fresh && !isPending && (
+            <div
+              className={`
+                flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-md cursor-pointer
+                border transition-colors text-sm font-['DM_Sans']
+                ${isAskFresh ? "border-blue-300 bg-blue-50/50" : "border-gray-100 hover:border-gray-200 bg-gray-50/50"}
+              `}
+              onClick={() => onSelectionChange(promptInfo.prompt_id, isAskFresh ? null : "ask_fresh")}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                {/* Custom radio circle */}
+                <div className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center shrink-0
+                  ${isAskFresh ? "border-blue-600" : "border-gray-300"}`}
+                >
+                  {isAskFresh && <div className="w-1.5 h-1.5 rounded-full bg-blue-600" />}
+                </div>
+                <span className="text-blue-600">Request fresh answer</span>
+              </div>
+              {globalQueueWait && (
+                <span className="text-[10px] text-blue-500 shrink-0">~{globalQueueWait}</span>
+              )}
+            </div>
+          )}
+
+          {/* Pending execution indicator */}
+          {isPending && (
+            <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-md bg-blue-50/50 border border-blue-100">
+              <div className="flex items-center gap-2">
+                <div className="w-3.5 h-3.5 flex items-center justify-center">
+                  <div className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                </div>
+                <span className="text-sm text-blue-600 font-['DM_Sans']">Execution pending...</span>
+              </div>
+              {promptInfo.estimated_wait && (
+                <span className="text-[10px] text-blue-500">~{promptInfo.estimated_wait}</span>
+              )}
+            </div>
+          )}
+
+          {/* No data, no pending - auto ask_fresh */}
+          {!hasEvaluations && !isPending && promptInfo.auto_ask_for_fresh && (
+            <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-gray-50 border border-gray-200">
+              <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <span className="text-sm text-gray-500 font-['DM_Sans']">Will request fresh answer</span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -291,6 +362,7 @@ export function ReportPreviewModal(props: ReportPreviewModalProps) {
         forReportFresh: 0,
         forReportConsumed: 0,
         forFresh: [] as number[],
+        notIncluded: 0,
         removed: 0,
         estimatedCost: 0,
       }
@@ -300,6 +372,7 @@ export function ReportPreviewModal(props: ReportPreviewModalProps) {
     const forFresh: number[] = []
     let forReportFresh = 0
     let forReportConsumed = 0
+    let notIncluded = 0
 
     for (const prompt of reportData.prompts) {
       // Skip removed prompts
@@ -316,6 +389,9 @@ export function ReportPreviewModal(props: ReportPreviewModalProps) {
         }
       } else if (sel === "ask_fresh") {
         forFresh.push(prompt.prompt_id)
+      } else {
+        // sel === null means "Don't include"
+        notIncluded++
       }
     }
 
@@ -324,6 +400,7 @@ export function ReportPreviewModal(props: ReportPreviewModalProps) {
       forReportFresh,
       forReportConsumed,
       forFresh,
+      notIncluded,
       removed: removedPrompts.size,
       estimatedCost: forReportFresh * 0.01, // $0.01 per fresh evaluation
     }
@@ -564,12 +641,12 @@ export function ReportPreviewModal(props: ReportPreviewModalProps) {
                       <span className="font-medium text-blue-600">{summary.forFresh.length}</span> for fresh execution
                     </span>
                   )}
-                  {summary.removed > 0 && (
+                  {(summary.notIncluded > 0 || summary.removed > 0) && (
                     <>
                       {(summary.forReport.length > 0 || summary.forFresh.length > 0) && (
                         <span className="mx-2">•</span>
                       )}
-                      <span className="text-gray-400">{summary.removed} excluded</span>
+                      <span className="text-gray-400">{summary.notIncluded + summary.removed} skipped</span>
                     </>
                   )}
                 </div>
