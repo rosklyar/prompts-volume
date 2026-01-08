@@ -45,12 +45,15 @@ class Settings(BaseSettings):
     topic_filter_min_relevant_ratio: float = 0.5
 
     # Evaluation configuration
-    min_days_since_last_evaluation: int = 1
     evaluation_timeout_hours: int = 2
     evaluation_api_tokens: str = ""  # CSV list of allowed tokens for evaluation API
 
-    # Priority prompts configuration
-    max_priority_prompts_per_request: int = 50
+    # Freshness thresholds (hours)
+    freshness_fresh_threshold_hours: int = 24  # < 24h = fresh
+    freshness_stale_threshold_hours: int = 72  # > 72h = very stale, 24-72h = stale
+
+    # Execution queue configuration
+    execution_timeout_hours: int = 2  # Hours before timed-out entries reset to PENDING
 
     # Similar prompts search configuration
     similar_prompts_max_k: int = 100

@@ -5,8 +5,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.auth.deps import CurrentUser
 from src.config.settings import settings
+from src.database.evals_session import get_evals_session
+from src.database.session import get_async_session
 from src.prompt_groups.exceptions import GroupNotFoundError, to_http_exception
 from src.prompt_groups.services import PromptGroupService, get_prompt_group_service
 from src.reports.models.api_models import (
@@ -53,6 +58,14 @@ from src.reports.services.export import (
     get_json_formatter,
     get_report_export_service,
 )
+from src.execution.models.api_models import (
+    EvaluationOption,
+    PromptReportData,
+    ReportDataResponse,
+)
+from src.execution.models.domain import FreshnessCategory
+from src.execution.services.execution_queue_service import ExecutionQueueService
+from src.execution.services.freshness_service import FreshnessService
 
 router = APIRouter(prefix="/reports/api/v1", tags=["reports"])
 
@@ -66,6 +79,222 @@ SelectionPricingDep = Annotated[SelectionPricingService, Depends(get_selection_p
 SelectionValidatorDep = Annotated[SelectionValidatorService, Depends(get_selection_validator)]
 ReportExportServiceDep = Annotated[ReportExportService, Depends(get_report_export_service)]
 JsonFormatterDep = Annotated[JsonExportFormatter, Depends(get_json_formatter)]
+
+
+def get_execution_queue_service(
+    evals_session=Depends(lambda: None),  # Will be injected in endpoint
+    prompts_session=Depends(lambda: None),
+) -> ExecutionQueueService:
+    """Dependency will be created in endpoint with proper sessions."""
+    raise NotImplementedError("Use in endpoint")
+
+
+def get_freshness_service() -> FreshnessService:
+    """Dependency injection for FreshnessService."""
+    return FreshnessService(
+        fresh_threshold_hours=settings.freshness_fresh_threshold_hours,
+        stale_threshold_hours=settings.freshness_stale_threshold_hours,
+    )
+
+
+FreshnessServiceDep = Annotated[FreshnessService, Depends(get_freshness_service)]
+
+
+@router.get("/groups/{group_id}/report-data", response_model=ReportDataResponse)
+async def get_report_data(
+    group_id: int,
+    current_user: CurrentUser,
+    group_service: PromptGroupServiceDep,
+    freshness_service: FreshnessServiceDep,
+    evals_session: AsyncSession = Depends(get_evals_session),
+    prompts_session: AsyncSession = Depends(get_async_session),
+):
+    """Get report data for the new report generation UI.
+
+    Returns all prompts in the group with:
+    - Available evaluations (answers) with timestamps
+    - Freshness category and default selection logic
+    - Queue status for pending executions
+    - Billing info (whether user already paid for each evaluation)
+    """
+    from src.database.evals_models import (
+        ConsumedEvaluation,
+        ExecutionQueue,
+        ExecutionQueueStatus,
+        PromptEvaluation,
+        EvaluationStatus,
+    )
+    from src.database.models import Prompt, PromptGroupBinding
+
+    # Verify user owns the group
+    try:
+        group = await group_service.get_by_id_for_user(group_id, current_user.id)
+    except Exception:
+        raise to_http_exception(GroupNotFoundError(group_id))
+
+    user_id = str(current_user.id)
+
+    # Get all prompt IDs in the group
+    bindings_result = await prompts_session.execute(
+        select(PromptGroupBinding.prompt_id)
+        .where(PromptGroupBinding.group_id == group_id)
+    )
+    prompt_ids = list(bindings_result.scalars().all())
+
+    if not prompt_ids:
+        queue_service = ExecutionQueueService(
+            evals_session, prompts_session, settings.evaluation_timeout_hours
+        )
+        global_queue_size = await queue_service.get_pending_count()
+        return ReportDataResponse(
+            group_id=group_id,
+            prompts=[],
+            total_prompts=0,
+            prompts_with_data=0,
+            prompts_fresh=0,
+            prompts_stale=0,
+            prompts_very_stale=0,
+            prompts_no_data=0,
+            prompts_pending_execution=0,
+            global_queue_size=global_queue_size,
+        )
+
+    # Get prompts
+    prompts_result = await prompts_session.execute(
+        select(Prompt).where(Prompt.id.in_(prompt_ids))
+    )
+    prompts_map = {p.id: p for p in prompts_result.scalars().all()}
+
+    # Get all completed evaluations for these prompts
+    evals_result = await evals_session.execute(
+        select(PromptEvaluation)
+        .where(
+            PromptEvaluation.prompt_id.in_(prompt_ids),
+            PromptEvaluation.status == EvaluationStatus.COMPLETED,
+        )
+        .order_by(PromptEvaluation.completed_at.desc())
+    )
+    all_evals = list(evals_result.scalars().all())
+
+    # Group evaluations by prompt_id
+    evals_by_prompt: dict[int, list[PromptEvaluation]] = {}
+    for e in all_evals:
+        if e.prompt_id not in evals_by_prompt:
+            evals_by_prompt[e.prompt_id] = []
+        evals_by_prompt[e.prompt_id].append(e)
+
+    # Get consumed evaluations for this user
+    consumed_result = await evals_session.execute(
+        select(ConsumedEvaluation.evaluation_id)
+        .where(ConsumedEvaluation.user_id == user_id)
+    )
+    consumed_eval_ids = set(consumed_result.scalars().all())
+
+    # Get pending/in_progress queue entries for these prompts
+    queue_result = await evals_session.execute(
+        select(ExecutionQueue.prompt_id)
+        .where(
+            ExecutionQueue.prompt_id.in_(prompt_ids),
+            ExecutionQueue.status.in_([
+                ExecutionQueueStatus.PENDING,
+                ExecutionQueueStatus.IN_PROGRESS,
+            ]),
+        )
+    )
+    pending_prompt_ids = set(queue_result.scalars().all())
+
+    # Get global queue size
+    queue_service = ExecutionQueueService(
+        evals_session, prompts_session, settings.evaluation_timeout_hours
+    )
+    global_queue_size = await queue_service.get_pending_count()
+    wait_str = freshness_service.format_wait_time(
+        freshness_service.estimate_wait_time_seconds(global_queue_size)
+    )
+
+    # Build response
+    prompts_data: list[PromptReportData] = []
+    counts = {
+        "fresh": 0,
+        "stale": 0,
+        "very_stale": 0,
+        "none": 0,
+        "with_data": 0,
+        "pending": 0,
+    }
+
+    for prompt_id in prompt_ids:
+        prompt = prompts_map.get(prompt_id)
+        if not prompt:
+            continue
+
+        prompt_evals = evals_by_prompt.get(prompt_id, [])
+        is_pending = prompt_id in pending_prompt_ids
+
+        # Build evaluation options
+        eval_options = [
+            EvaluationOption(
+                evaluation_id=e.id,
+                completed_at=e.completed_at,
+                is_consumed=e.id in consumed_eval_ids,
+            )
+            for e in prompt_evals
+        ]
+
+        # Get freshness info
+        latest_eval = prompt_evals[0] if prompt_evals else None
+        freshness_info = freshness_service.categorize(
+            latest_evaluation_at=latest_eval.completed_at if latest_eval else None,
+            latest_evaluation_id=latest_eval.id if latest_eval else None,
+        )
+
+        # Update counts
+        if freshness_info.category == FreshnessCategory.FRESH:
+            counts["fresh"] += 1
+            counts["with_data"] += 1
+        elif freshness_info.category == FreshnessCategory.STALE:
+            counts["stale"] += 1
+            counts["with_data"] += 1
+        elif freshness_info.category == FreshnessCategory.VERY_STALE:
+            counts["very_stale"] += 1
+            counts["with_data"] += 1
+        else:
+            counts["none"] += 1
+
+        if is_pending:
+            counts["pending"] += 1
+
+        # Check if latest is consumed
+        is_consumed = latest_eval.id in consumed_eval_ids if latest_eval else False
+
+        prompts_data.append(
+            PromptReportData(
+                prompt_id=prompt_id,
+                prompt_text=prompt.prompt_text,
+                evaluations=eval_options,
+                freshness_category=freshness_info.category,
+                hours_since_latest=freshness_info.hours_since_latest,
+                default_evaluation_id=freshness_info.default_evaluation_id,
+                show_ask_for_fresh=freshness_info.show_ask_for_fresh,
+                auto_ask_for_fresh=freshness_info.auto_ask_for_fresh,
+                pending_execution=is_pending,
+                estimated_wait=wait_str if is_pending else None,
+                is_consumed=is_consumed,
+            )
+        )
+
+    return ReportDataResponse(
+        group_id=group_id,
+        prompts=prompts_data,
+        total_prompts=len(prompts_data),
+        prompts_with_data=counts["with_data"],
+        prompts_fresh=counts["fresh"],
+        prompts_stale=counts["stale"],
+        prompts_very_stale=counts["very_stale"],
+        prompts_no_data=counts["none"],
+        prompts_pending_execution=counts["pending"],
+        global_queue_size=global_queue_size,
+    )
 
 
 @router.get(

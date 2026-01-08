@@ -48,7 +48,7 @@ export function Logo({ variant = "full", className }: LogoProps) {
       {/* Tagline - only shown in full variant */}
       {variant === "full" && (
         <span className="mt-3 font-['DM_Sans'] text-sm text-[#6B7280] tracking-wide">
-          Prompt Volume
+          AI Search Intelligence
         </span>
       )}
     </div>

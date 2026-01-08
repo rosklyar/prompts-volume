@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import List, Optional
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint, text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.database.evals_session import EvalsBase
@@ -16,6 +16,15 @@ class EvaluationStatus(str, enum.Enum):
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+class ExecutionQueueStatus(str, enum.Enum):
+    """Status of an execution queue item."""
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class ReportItemStatus(str, enum.Enum):
@@ -91,32 +100,79 @@ class AIAssistantPlan(EvalsBase):
         return f"<AIAssistantPlan(id={self.id}, assistant_id={self.assistant_id}, name='{self.name}')>"
 
 
-class PriorityPromptQueue(EvalsBase):
-    """Queue for priority prompts that should be evaluated first."""
+class ExecutionQueue(EvalsBase):
+    """Unified queue for prompts awaiting execution.
 
-    __tablename__ = "priority_prompt_queue"
+    Replaces PriorityPromptQueue with demand-driven execution model.
+    Prompts are only added when:
+    1. Newly added by admin/user
+    2. User explicitly requests fresh execution when generating a report
+    """
+
+    __tablename__ = "execution_queue"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     prompt_id: Mapped[int] = mapped_column(
         Integer,  # No ForeignKey - prompts table is in prompts_db
         nullable=False,
-        unique=True,  # Each prompt can only be in queue once
         index=True,
     )
-    created_at: Mapped[datetime] = mapped_column(
+    requested_by: Mapped[str] = mapped_column(
+        String(36),
+        nullable=False,
+        index=True,
+    )  # User ID or 'system' for admin-added prompts
+    request_batch_id: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        index=True,
+    )  # Groups prompts from same "Request Fresh" action
+    requested_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         server_default=text("NOW()"),
-        index=True,  # For ordering by priority (FIFO within priority)
+        index=True,  # For FIFO ordering
     )
-    request_id: Mapped[str] = mapped_column(
-        String(100),
+    status: Mapped[ExecutionQueueStatus] = mapped_column(
+        Enum(
+            ExecutionQueueStatus,
+            values_callable=lambda x: [e.value for e in x],
+            name="executionqueuestatus",
+        ),
         nullable=False,
-        index=True,  # For querying all prompts from same request
+        default=ExecutionQueueStatus.PENDING,
+        index=True,
+    )
+    claimed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    evaluation_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("prompt_evaluations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )  # Reference to resulting evaluation
+
+    # Relationships
+    evaluation: Mapped[Optional["PromptEvaluation"]] = relationship()
+
+    # GLOBAL unique constraint: prompt can only be in queue once (regardless of user)
+    # when status is pending or in_progress
+    __table_args__ = (
+        Index(
+            "uq_execution_queue_prompt_active",
+            "prompt_id",
+            unique=True,
+            postgresql_where=text("status IN ('pending', 'in_progress')"),
+        ),
     )
 
     def __repr__(self) -> str:
-        return f"<PriorityPromptQueue(id={self.id}, prompt_id={self.prompt_id}, request_id='{self.request_id}')>"
+        return f"<ExecutionQueue(id={self.id}, prompt_id={self.prompt_id}, status='{self.status.value}')>"
 
 
 class PromptEvaluation(EvalsBase):

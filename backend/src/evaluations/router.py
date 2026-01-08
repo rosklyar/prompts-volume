@@ -1,20 +1,10 @@
 """API router for evaluations endpoints."""
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.config.settings import settings
-from src.database.evals_session import get_evals_session
-from src.database.models import Topic
-from src.database.session import get_async_session
-from src.embeddings.embeddings_service import EmbeddingsService, get_embeddings_service
 from src.evaluations.models.api_models import (
-    AddPriorityPromptsRequest,
-    AddPriorityPromptsResponse,
     PollRequest,
     PollResponse,
-    PriorityPromptResult,
     ReleaseRequest,
     ReleaseResponse,
     SubmitAnswerRequest,
@@ -24,9 +14,6 @@ from src.evaluations.deps import BotSecretDep
 from src.evaluations.services.evaluation_service import (
     EvaluationService,
     get_evaluation_service,
-)
-from src.evaluations.services.priority_prompt_service import (
-    get_priority_prompt_service,
 )
 
 router = APIRouter(prefix="/evaluations/api/v1", tags=["evaluations"])
@@ -135,62 +122,6 @@ async def release_evaluation(
     )
 
 
-@router.post("/priority-prompts", response_model=AddPriorityPromptsResponse)
-async def add_priority_prompts(
-    request: AddPriorityPromptsRequest,
-    prompts_session: AsyncSession = Depends(get_async_session),
-    evals_session: AsyncSession = Depends(get_evals_session),
-    embeddings_service: EmbeddingsService = Depends(get_embeddings_service),
-) -> AddPriorityPromptsResponse:
-    """
-    Add new prompts with priority evaluation.
-
-    - Accepts list of prompt texts (up to configured max)
-    - Checks for duplicates using similarity >= 0.99
-    - Creates new prompts with embeddings
-    - Adds to priority queue (polled first)
-    - Allows null topic_id
-    """
-    # Validate batch size
-    if len(request.prompts) > settings.max_priority_prompts_per_request:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                f"Batch size {len(request.prompts)} exceeds maximum "
-                f"{settings.max_priority_prompts_per_request}"
-            )
-        )
-
-    # Validate topic_id if provided (topics are in prompts_db)
-    if request.topic_id is not None:
-        topic_query = select(Topic).where(Topic.id == request.topic_id)
-        result = await prompts_session.execute(topic_query)
-        if not result.scalar_one_or_none():
-            raise HTTPException(
-                status_code=404,
-                detail=f"Topic with id={request.topic_id} not found"
-            )
-
-    # Create service with dual sessions
-    priority_service = get_priority_prompt_service(
-        prompts_session,
-        evals_session,
-        embeddings_service,
-        settings.max_priority_prompts_per_request,
-    )
-
-    # Process prompts
-    prompt_texts = [p.prompt_text for p in request.prompts]
-    result = await priority_service.add_priority_prompts(
-        prompt_texts=prompt_texts,
-        topic_id=request.topic_id,
-    )
-
-    # Build response
-    return AddPriorityPromptsResponse(
-        created_count=result["created_count"],
-        reused_count=result["reused_count"],
-        total_count=result["total_count"],
-        prompts=[PriorityPromptResult(**p) for p in result["prompts"]],
-        request_id=result["request_id"],
-    )
+# NOTE: The /priority-prompts endpoint has been removed.
+# Use POST /execution/api/v1/request-fresh to add prompts to the execution queue.
+# New prompts created via batch upload are automatically added to the queue.
