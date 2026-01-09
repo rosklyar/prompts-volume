@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from threading import Lock
 
 from src.brightdata.models.domain import BatchInfo, BatchStatus, ParsedResult
+from src.config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -109,17 +110,18 @@ class InMemoryBatchRegistry:
             return list(self._batches.values())
 
 
-# Global singleton
+# Global singleton with thread-safe initialization
 _batch_registry: InMemoryBatchRegistry | None = None
+_registry_lock = Lock()
 
 
 def get_batch_registry() -> InMemoryBatchRegistry:
-    """Get global batch registry singleton."""
+    """Get global batch registry singleton (thread-safe)."""
     global _batch_registry
     if _batch_registry is None:
-        from src.config.settings import settings
-
-        _batch_registry = InMemoryBatchRegistry(
-            ttl_hours=settings.brightdata_batch_ttl_hours
-        )
+        with _registry_lock:
+            if _batch_registry is None:  # Double-check pattern
+                _batch_registry = InMemoryBatchRegistry(
+                    ttl_hours=settings.brightdata_batch_ttl_hours
+                )
     return _batch_registry

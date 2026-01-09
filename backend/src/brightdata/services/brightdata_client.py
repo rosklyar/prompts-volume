@@ -7,8 +7,15 @@ from urllib.parse import urlencode
 import httpx
 
 from src.brightdata.models.domain import BrightDataPromptInput, BrightDataTriggerRequest
+from src.config.settings import settings
 
 logger = logging.getLogger(__name__)
+
+# Known error messages for specific status codes
+_ERROR_MESSAGES = {
+    401: "Authentication failed",
+    429: "Rate limit exceeded",
+}
 
 
 class BrightDataAPIError(Exception):
@@ -91,17 +98,11 @@ class BrightDataHttpClient:
             ]
         }
 
-    async def trigger_batch(
-        self,
-        request: BrightDataTriggerRequest,
-    ) -> dict[str, Any]:
-        """Trigger a batch scraping job.
+    async def trigger_batch(self, request: BrightDataTriggerRequest) -> None:
+        """Trigger a batch scraping job (fire-and-forget).
 
         Args:
             request: Contains prompt inputs and webhook configuration
-
-        Returns:
-            Response from Bright Data API
 
         Raises:
             BrightDataAPIError: On API failure
@@ -123,16 +124,11 @@ class BrightDataHttpClient:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 response = await client.post(url, json=payload, headers=headers)
 
-                if response.status_code == 401:
-                    raise BrightDataAPIError(401, "Authentication failed")
-                elif response.status_code == 429:
-                    raise BrightDataAPIError(429, "Rate limit exceeded")
-                elif response.status_code >= 400:
-                    raise BrightDataAPIError(
+                if response.status_code >= 400:
+                    message = _ERROR_MESSAGES.get(
                         response.status_code, f"API error: {response.text}"
                     )
-
-                return response.json()
+                    raise BrightDataAPIError(response.status_code, message)
 
         except httpx.TimeoutException:
             raise BrightDataAPIError(504, "Request timed out")
@@ -142,8 +138,6 @@ class BrightDataHttpClient:
 
 def get_brightdata_client() -> BrightDataHttpClient | None:
     """Get Bright Data client if configured."""
-    from src.config.settings import settings
-
     if not settings.brightdata_api_token:
         return None
     return BrightDataHttpClient(

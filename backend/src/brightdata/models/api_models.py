@@ -1,9 +1,14 @@
 """Pydantic API models for Bright Data webhook."""
 
+from __future__ import annotations
+
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:
+    from src.brightdata.models.domain import ParsedCitation
 
 
 # ===== WEBHOOK PAYLOAD MODELS (from Bright Data) =====
@@ -67,6 +72,16 @@ class CitationResponse(BaseModel):
     title: str | None
     description: str | None
     domain: str
+
+    @classmethod
+    def from_parsed(cls, parsed: ParsedCitation) -> CitationResponse:
+        """Create from ParsedCitation domain model."""
+        return cls(
+            url=parsed.url,
+            title=parsed.title,
+            description=parsed.description,
+            domain=parsed.domain,
+        )
 
 
 class ResultResponse(BaseModel):

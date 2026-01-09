@@ -1,8 +1,14 @@
 """Internal domain models for Bright Data integration."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.brightdata.models.api_models import BrightDataCitation
 
 
 class BatchStatus(str, Enum):
@@ -44,6 +50,16 @@ class ParsedCitation:
     title: str | None
     description: str | None
     domain: str
+
+    @classmethod
+    def from_brightdata_citation(cls, citation: BrightDataCitation) -> ParsedCitation:
+        """Create from BrightDataCitation API model."""
+        return cls(
+            url=citation.url,
+            title=citation.title,
+            description=citation.description,
+            domain=citation.domain,
+        )
 
 
 @dataclass
