@@ -1,15 +1,21 @@
 """API router for execution queue endpoints."""
 
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.deps import CurrentUser
+from src.brightdata.models.domain import BrightDataPromptInput, BrightDataTriggerRequest
+from src.brightdata.services.batch_registry import get_batch_registry
+from src.brightdata.services.brightdata_client import get_brightdata_client
 from src.config.settings import settings
 from src.database.evals_models import ExecutionQueue, ExecutionQueueStatus
 from src.database.evals_session import get_evals_session
+from src.database.models import Prompt
 from src.database.session import get_async_session
 from src.execution.models.api_models import (
     CancelExecutionRequest,
@@ -23,6 +29,8 @@ from src.execution.models.api_models import (
 )
 from src.execution.services.execution_queue_service import ExecutionQueueService
 from src.execution.services.freshness_service import FreshnessService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/execution/api/v1", tags=["execution"])
 
@@ -47,10 +55,64 @@ def get_freshness_service() -> FreshnessService:
     )
 
 
+async def _trigger_brightdata_batch(
+    batch_id: str,
+    prompt_ids: list[int],
+    user_id: str,
+    prompts_session: AsyncSession,
+) -> None:
+    """Trigger Bright Data batch (fire-and-forget, isolated from main flow)."""
+    client = get_brightdata_client()
+    if not client:
+        return
+
+    try:
+        # Fetch prompt texts
+        result = await prompts_session.execute(
+            select(Prompt).where(Prompt.id.in_(prompt_ids))
+        )
+        prompts = {p.id: p.prompt_text for p in result.scalars().all()}
+
+        if not prompts:
+            return
+
+        # Register batch in memory
+        registry = get_batch_registry()
+        registry.register_batch(batch_id, prompts, user_id)
+
+        # Build request
+        inputs = [
+            BrightDataPromptInput(
+                url="https://chatgpt.com/",
+                prompt=text,
+                country=settings.brightdata_default_country,
+            )
+            for text in prompts.values()
+        ]
+
+        webhook_url = (
+            f"{settings.backend_webhook_base_url}/evaluations/api/v1/webhook/{batch_id}"
+        )
+
+        trigger_request = BrightDataTriggerRequest(
+            batch_id=batch_id,
+            inputs=inputs,
+            webhook_url=webhook_url,
+            webhook_auth_header=f"Basic {settings.brightdata_webhook_secret}",
+        )
+
+        await client.trigger_batch(trigger_request)
+        logger.info(f"Bright Data batch {batch_id} triggered successfully")
+
+    except Exception as e:
+        logger.exception(f"Failed to trigger Bright Data batch: {e}")
+
+
 @router.post("/request-fresh", response_model=RequestFreshExecutionResponse)
 async def request_fresh_execution(
     request: RequestFreshExecutionRequest,
     current_user: CurrentUser,
+    prompts_session: AsyncSession = Depends(get_async_session),
     queue_service: ExecutionQueueService = Depends(get_execution_queue_service),
     freshness_service: FreshnessService = Depends(get_freshness_service),
 ) -> RequestFreshExecutionResponse:
@@ -58,6 +120,7 @@ async def request_fresh_execution(
 
     Adds prompts to execution queue. Skips prompts already in queue.
     Returns estimated wait time based on queue size.
+    Also triggers Bright Data scraper (fire-and-forget, isolated).
     """
     batch_id = str(uuid.uuid4())
 
@@ -89,6 +152,14 @@ async def request_fresh_execution(
                 status="already_pending",
                 estimated_wait=None,
             ))
+
+    # Trigger Bright Data (isolated, fire-and-forget)
+    await _trigger_brightdata_batch(
+        batch_id=batch_id,
+        prompt_ids=request.prompt_ids,
+        user_id=str(current_user.id),
+        prompts_session=prompts_session,
+    )
 
     return RequestFreshExecutionResponse(
         batch_id=batch_id,
