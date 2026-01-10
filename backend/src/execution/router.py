@@ -99,13 +99,14 @@ async def request_fresh_execution(
                 estimated_wait=None,
             ))
 
+    # TODO: Re-enable after webhook testing from BrightData website
     # Trigger Bright Data (isolated, fire-and-forget)
-    prompts = await prompt_service.get_by_ids(request.prompt_ids)
-    await brightdata_service.trigger_batch(
-        batch_id=batch_id,
-        prompts=prompts,
-        user_id=str(current_user.id),
-    )
+    # prompts = await prompt_service.get_by_ids(request.prompt_ids)
+    # await brightdata_service.trigger_batch(
+    #     batch_id=batch_id,
+    #     prompts=prompts,
+    #     user_id=str(current_user.id),
+    # )
 
     return RequestFreshExecutionResponse(
         batch_id=batch_id,
