@@ -1,12 +1,15 @@
 """API router for execution queue endpoints."""
 
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.deps import CurrentUser
+from src.brightdata.services.brightdata_service import BrightDataService, get_brightdata_service
 from src.config.settings import settings
 from src.database.evals_models import ExecutionQueue, ExecutionQueueStatus
 from src.database.evals_session import get_evals_session
@@ -23,6 +26,9 @@ from src.execution.models.api_models import (
 )
 from src.execution.services.execution_queue_service import ExecutionQueueService
 from src.execution.services.freshness_service import FreshnessService
+from src.prompts.services.prompt_service import PromptService, get_prompt_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/execution/api/v1", tags=["execution"])
 
@@ -53,11 +59,14 @@ async def request_fresh_execution(
     current_user: CurrentUser,
     queue_service: ExecutionQueueService = Depends(get_execution_queue_service),
     freshness_service: FreshnessService = Depends(get_freshness_service),
+    prompt_service: PromptService = Depends(get_prompt_service),
+    brightdata_service: BrightDataService = Depends(get_brightdata_service),
 ) -> RequestFreshExecutionResponse:
     """Request fresh execution for prompts.
 
     Adds prompts to execution queue. Skips prompts already in queue.
     Returns estimated wait time based on queue size.
+    Also triggers Bright Data scraper (fire-and-forget, isolated).
     """
     batch_id = str(uuid.uuid4())
 
@@ -90,6 +99,15 @@ async def request_fresh_execution(
                 estimated_wait=None,
             ))
 
+    # TODO: Re-enable after webhook testing from BrightData website
+    # Trigger Bright Data (isolated, fire-and-forget)
+    # prompts = await prompt_service.get_by_ids(request.prompt_ids)
+    # await brightdata_service.trigger_batch(
+    #     batch_id=batch_id,
+    #     prompts=prompts,
+    #     user_id=str(current_user.id),
+    # )
+
     return RequestFreshExecutionResponse(
         batch_id=batch_id,
         queued_count=result.queued_count,
@@ -108,8 +126,6 @@ async def get_queue_status(
     evals_session: AsyncSession = Depends(get_evals_session),
 ) -> QueueStatusResponse:
     """Get current queue status for the user."""
-    from sqlalchemy import select
-
     user_id = str(current_user.id)
 
     # Get user's pending/in_progress items

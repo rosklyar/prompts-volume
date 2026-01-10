@@ -38,6 +38,20 @@ class PromptService:
         self.session = session
         self.embeddings_service = embeddings_service
 
+    async def get_by_ids(self, prompt_ids: list[int]) -> dict[int, str]:
+        """Get prompt texts by IDs.
+
+        Args:
+            prompt_ids: List of prompt IDs
+
+        Returns:
+            Dict mapping prompt_id to prompt_text
+        """
+        result = await self.session.execute(
+            select(Prompt).where(Prompt.id.in_(prompt_ids))
+        )
+        return {p.id: p.prompt_text for p in result.scalars().all()}
+
     async def get_by_topic_ids(self, topic_ids: List[int]) -> List[Prompt]:
         """
         Get all prompts for the given topic IDs.

@@ -99,6 +99,16 @@ class Settings(BaseSettings):
     comparison_in_progress_estimate: str = "~15 minutes"
     comparison_next_refresh_estimate: str = "up to 6 hours"
 
+    # Bright Data configuration
+    brightdata_api_token: str = ""
+    brightdata_dataset_id: str = "gd_m7aof0k82r803d5bjm"
+    brightdata_base_url: str = "https://api.brightdata.com/datasets/v3/trigger"
+    brightdata_timeout: float = 30.0
+    brightdata_batch_ttl_hours: int = 24
+    brightdata_webhook_secret: str = ""  # For webhook auth
+    brightdata_default_country: str = "UA"
+    backend_webhook_base_url: str = "http://localhost:8000"
+
 
 # Singleton settings instance
 settings = Settings()
