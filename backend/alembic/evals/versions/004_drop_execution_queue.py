@@ -1,7 +1,7 @@
 """Drop execution_queue table.
 
-Revision ID: 004_drop_execution_queue
-Revises: 003_add_brightdata_batch_table
+Revision ID: 004
+Revises: 003
 Create Date: 2025-01-11
 
 The old bot-polling execution system has been replaced by
@@ -12,8 +12,8 @@ from alembic import op
 
 
 # revision identifiers, used by Alembic.
-revision = "004_drop_execution_queue"
-down_revision = "003_add_brightdata_batch_table"
+revision = "004"
+down_revision = "003"
 branch_labels = None
 depends_on = None
 
