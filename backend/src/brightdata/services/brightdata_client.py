@@ -76,7 +76,7 @@ class BrightDataHttpClient:
             "auth_header": request.webhook_auth_header,
             "notify": "false",
             "format": "json",
-            "uncompressed_webhook": "true",
+            "uncompressed_webhook": "false",
             "force_deliver": "false",
             "include_errors": "true",
         }
