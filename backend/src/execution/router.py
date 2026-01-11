@@ -72,8 +72,8 @@ async def request_fresh_execution(
 
     if settings.brightdata_answers:
         # Bright Data path: trigger scraper, webhook will deliver results
-        prompts = await prompt_service.get_by_ids(request.prompt_ids)
-        prompt_dict = {p.id: p.prompt_text for p in prompts}
+        # get_by_ids returns dict[int, str] (prompt_id -> prompt_text)
+        prompt_dict = await prompt_service.get_by_ids(request.prompt_ids)
 
         brightdata_service = get_brightdata_service(evals_session)
         await brightdata_service.trigger_batch(
