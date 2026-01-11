@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -19,6 +20,12 @@ from src.prompts import router as prompts_router
 from src.prompts.batch import batch_router
 from src.reports.router import router as reports_router
 
+# Configure logging for application (Uvicorn only configures uvicorn.* loggers)
+logging.basicConfig(
+    level=getattr(logging, settings.log_level.upper()),
+    format="%(levelname)s:     %(name)s - %(message)s",
+)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -31,21 +38,23 @@ async def lifespan(app: FastAPI):
     await init_users_db()  # users_db
     await init_evals_db()  # evals_db
 
-    # Seed initial data (prompts, topics, etc.) in prompts_db
-    session_maker = get_session_maker()
-    async with session_maker() as session:
-        await seed_initial_data(session)
+    # Seed data only if enabled (for local development)
+    if settings.seed_data:
+        # Seed initial data (prompts, topics, etc.) in prompts_db
+        session_maker = get_session_maker()
+        async with session_maker() as session:
+            await seed_initial_data(session)
 
-    # Seed superuser in users_db
-    users_session_maker = get_users_session_maker()
-    async with users_session_maker() as users_session:
-        await seed_superuser(users_session)
+        # Seed superuser in users_db
+        users_session_maker = get_users_session_maker()
+        async with users_session_maker() as users_session:
+            await seed_superuser(users_session)
 
-    # Seed evals data (AI assistants, plans, evaluations) in evals_db
-    evals_session_maker = get_evals_session_maker()
-    async with session_maker() as prompts_session:
-        async with evals_session_maker() as evals_session:
-            await seed_evals_data(prompts_session, evals_session)
+        # Seed evals data (AI assistants, plans, evaluations) in evals_db
+        evals_session_maker = get_evals_session_maker()
+        async with session_maker() as prompts_session:
+            async with evals_session_maker() as evals_session:
+                await seed_evals_data(prompts_session, evals_session)
 
     yield
 

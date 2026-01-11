@@ -33,7 +33,7 @@ async def _parse_webhook_body(request: Request) -> list[Any]:
     """
     content_type = request.headers.get("content-type", "")
     logger.info(f"Webhook received - Content-Type: {content_type}")
-    logger.debug(f"Webhook headers: {dict(request.headers)}")
+    logger.info(f"Webhook headers: {dict(request.headers)}")
 
     # Try multipart form data (file upload)
     if "multipart/form-data" in content_type:
@@ -49,7 +49,7 @@ async def _parse_webhook_body(request: Request) -> list[Any]:
                 logger.info(f"Found file in field '{field_name}', filename: {getattr(file, 'filename', 'N/A')}")
                 content = await file.read()
                 logger.info(f"File content size: {len(content)} bytes")
-                logger.debug(f"File content preview: {content[:500]}...")
+                logger.info(f"File content preview: {content[:500]}...")
                 return json.loads(content)
 
         raise ValueError(f"No file found in multipart form data. Available fields: {form_keys}")

@@ -201,7 +201,8 @@ jobs:
               FRONTEND_URL="https://app.tryllmhero.com" \
               EVALUATION_API_TOKENS="${{ secrets.EVALUATION_API_TOKENS }}" \
               TOPICS_PROVIDER_SIMILARITY_THRESHOLD="0.8" \
-              BREVO_API_KEY="${{ secrets.BREVO_API_KEY }}"
+              BREVO_API_KEY="${{ secrets.BREVO_API_KEY }}" \
+              BRIGHTDATA_WEBHOOK_SECRET="${{ secrets.BRIGHTDATA_WEBHOOK_SECRET }}"
 
       - name: Health Check
         run: |
