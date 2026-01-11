@@ -8,9 +8,9 @@ from fastapi import Depends
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.brightdata.services.brightdata_service import get_brightdata_service
 from src.config.settings import settings
 from src.database import get_async_session
-from src.database.evals_models import ExecutionQueue, ExecutionQueueStatus
 from src.database.evals_session import get_evals_session
 from src.database.models import Prompt
 from src.embeddings.embeddings_service import EmbeddingsService, get_embeddings_service
@@ -134,7 +134,7 @@ class BatchPromptsService:
         )
 
         prompt_ids: list[int] = []
-        request_id = str(uuid.uuid4())
+        batch_id = str(uuid.uuid4())
 
         for text_with_embedding in text_embeddings:
             new_prompt = Prompt(
@@ -146,22 +146,25 @@ class BatchPromptsService:
             await self._prompts_session.flush()
             prompt_ids.append(new_prompt.id)
 
-            # Add to execution queue for immediate execution
-            queue_entry = ExecutionQueue(
-                prompt_id=new_prompt.id,
-                requested_by="system",  # Admin-added prompts
-                request_batch_id=request_id,
-                status=ExecutionQueueStatus.PENDING,
+        # Trigger Bright Data for all new prompts
+        if prompt_ids:
+            prompt_dict = {
+                pid: text_embeddings[i].text
+                for i, pid in enumerate(prompt_ids)
+            }
+            brightdata_service = get_brightdata_service(self._evals_session)
+            await brightdata_service.trigger_batch(
+                batch_id=batch_id,
+                prompts=prompt_dict,
+                user_id="system",  # Admin-added prompts
             )
-            self._evals_session.add(queue_entry)
-
-        await self._evals_session.flush()
+            await self._evals_session.flush()
 
         return BatchCreateResponse(
             created_count=len(prompt_ids),
             reused_count=0,
             prompt_ids=prompt_ids,
-            request_id=request_id,
+            request_id=batch_id,
         )
 
     async def _find_similar_matches(

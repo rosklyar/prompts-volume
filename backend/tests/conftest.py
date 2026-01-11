@@ -1,5 +1,7 @@
 """Pytest configuration and fixtures for testing."""
 
+import gzip
+import json
 import uuid
 from datetime import timedelta
 
@@ -24,7 +26,6 @@ from src.auth.models import UserCreate
 from src.auth.security import create_access_token
 from src.config.settings import settings
 from src.businessdomain.services import BusinessDomainService
-from src.evaluations.services.evaluation_service import EvaluationService
 from src.geography.services import CountryService, LanguageService
 from src.topics.services import TopicService
 
@@ -222,21 +223,6 @@ def topic_service(test_session):
     return TopicService(test_session)
 
 
-@pytest.fixture(scope="function")
-def evaluation_service_short_timeout(test_session):
-    """
-    Fixture that provides an EvaluationService with a very short timeout.
-    Useful for testing timeout behavior without long waits.
-    """
-    # Use 0.001 hours = 3.6 seconds for testing
-    # Pass same session for both evals and prompts since we use single test DB
-    return EvaluationService(
-        evals_session=test_session,
-        prompts_session=test_session,
-        execution_timeout_hours=0.001
-    )
-
-
 @pytest_asyncio.fixture(scope="function")
 async def test_user(test_engine):
     """
@@ -350,31 +336,6 @@ def superuser_auth_headers(superuser_auth_token):
     return {"Authorization": f"Bearer {superuser_auth_token}"}
 
 
-# Test token for evaluation API
-TEST_EVALUATION_TOKEN = "test-eval-token-12345"
-
-
-@pytest.fixture(scope="function", autouse=True)
-def setup_evaluation_token():
-    """
-    Fixture that sets up a test evaluation token for all tests.
-    This token is used by the evaluation API endpoints.
-    """
-    original_value = settings.evaluation_api_tokens
-    settings.evaluation_api_tokens = TEST_EVALUATION_TOKEN
-    yield
-    settings.evaluation_api_tokens = original_value
-
-
-@pytest.fixture(scope="function")
-def eval_auth_headers():
-    """
-    Fixture that provides bot secret headers for evaluation API.
-    Returns a dict with X-Bot-Secret header containing the test token.
-    """
-    return {"X-Bot-Secret": TEST_EVALUATION_TOKEN}
-
-
 @pytest.fixture(scope="function")
 def create_verified_user(client, test_engine):
     """
@@ -437,3 +398,46 @@ def create_verified_user(client, test_engine):
         return {"Authorization": f"Bearer {token}"}
 
     return _create_user
+
+
+@pytest.fixture(scope="function")
+def simulate_webhook(client):
+    """Factory fixture to simulate Bright Data webhook calls.
+
+    Usage:
+        def test_example(client, simulate_webhook, auth_headers):
+            # Request fresh execution to create a batch
+            resp = client.post("/execution/api/v1/request-fresh", json={"prompt_ids": [1, 2]}, headers=auth_headers)
+            batch_id = resp.json()["batch_id"]
+
+            # Simulate webhook with matching prompt texts
+            items = [
+                {"prompt": "Prompt text 1", "answer_text": "Response 1", "citations": []},
+                {"prompt": "Prompt text 2", "answer_text": "Response 2", "citations": []},
+            ]
+            webhook_resp = simulate_webhook(batch_id, items)
+            assert webhook_resp.status_code == 200
+    """
+    def _simulate(batch_id: str, items: list[dict]):
+        """Simulate Bright Data webhook.
+
+        Args:
+            batch_id: UUID batch identifier from request-fresh response
+            items: List of dicts with keys:
+                - prompt: str (must match Prompt.prompt_text exactly)
+                - answer_text: str
+                - citations: list[dict] with url, domain, cited, title keys (optional)
+        """
+        payload = json.dumps(items).encode("utf-8")
+        compressed = gzip.compress(payload)
+
+        return client.post(
+            f"/evaluations/api/v1/webhook/{batch_id}",
+            content=compressed,
+            headers={
+                "Authorization": f"Basic {settings.brightdata_webhook_secret}",
+                "Content-Type": "application/octet-stream",
+            },
+        )
+
+    return _simulate

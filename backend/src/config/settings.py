@@ -45,7 +45,6 @@ class Settings(BaseSettings):
     topic_filter_min_relevant_ratio: float = 0.5
 
     # Evaluation configuration
-    evaluation_timeout_hours: int = 2
     evaluation_api_tokens: str = ""  # CSV list of allowed tokens for evaluation API
 
     # Freshness thresholds (hours)
@@ -104,8 +103,8 @@ class Settings(BaseSettings):
     comparison_next_refresh_estimate: str = "up to 6 hours"
 
     # Bright Data configuration
-    brightdata_answers: bool = False  # Toggle: use Bright Data instead of bot polling
     brightdata_api_token: str = ""
+    brightdata_seconds_per_prompt: int = 50  # Seconds per prompt for wait time estimation
     brightdata_dataset_id: str = "gd_m7aof0k82r803d5bjm"
     brightdata_base_url: str = "https://api.brightdata.com/datasets/v3/trigger"
     brightdata_timeout: float = 30.0

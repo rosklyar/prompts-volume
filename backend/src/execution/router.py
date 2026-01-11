@@ -1,31 +1,22 @@
-"""API router for execution queue endpoints."""
+"""API router for execution endpoints."""
 
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.deps import CurrentUser
+from src.brightdata.services.batch_service import BrightDataBatchService
 from src.brightdata.services.brightdata_service import get_brightdata_service
 from src.config.settings import settings
-from src.database.evals_models import ExecutionQueue, ExecutionQueueStatus
 from src.database.evals_session import get_evals_session
-from src.database.session import get_async_session
 from src.execution.models.api_models import (
-    CancelExecutionRequest,
-    CancelExecutionResponse,
-    CompletedItemInfo,
     QueuedItemInfo,
-    QueueStatusItem,
-    QueueStatusResponse,
     RequestFreshExecutionRequest,
     RequestFreshExecutionResponse,
 )
-from src.execution.services.execution_queue_service import ExecutionQueueService
-from src.execution.services.freshness_service import FreshnessService
 from src.prompts.services.prompt_service import PromptService, get_prompt_service
 
 logger = logging.getLogger(__name__)
@@ -33,224 +24,80 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/execution/api/v1", tags=["execution"])
 
 
-def get_execution_queue_service(
-    evals_session: AsyncSession = Depends(get_evals_session),
-    prompts_session: AsyncSession = Depends(get_async_session),
-) -> ExecutionQueueService:
-    """Dependency injection for ExecutionQueueService."""
-    return ExecutionQueueService(
-        evals_session,
-        prompts_session,
-        settings.evaluation_timeout_hours,
-    )
-
-
-def get_freshness_service() -> FreshnessService:
-    """Dependency injection for FreshnessService."""
-    return FreshnessService(
-        fresh_threshold_hours=settings.freshness_fresh_threshold_hours,
-        stale_threshold_hours=settings.freshness_stale_threshold_hours,
-    )
+def _format_wait_time(seconds: int) -> str:
+    """Format seconds into human-readable wait time."""
+    minutes = seconds // 60
+    if minutes < 1:
+        return "~1 minute"
+    elif minutes < 60:
+        return f"~{minutes} minutes"
+    else:
+        hours = minutes // 60
+        return f"~{hours} hour{'s' if hours > 1 else ''}"
 
 
 @router.post("/request-fresh", response_model=RequestFreshExecutionResponse)
 async def request_fresh_execution(
     request: RequestFreshExecutionRequest,
     current_user: CurrentUser,
-    queue_service: ExecutionQueueService = Depends(get_execution_queue_service),
-    freshness_service: FreshnessService = Depends(get_freshness_service),
     prompt_service: PromptService = Depends(get_prompt_service),
     evals_session: AsyncSession = Depends(get_evals_session),
 ) -> RequestFreshExecutionResponse:
-    """Request fresh execution for prompts.
+    """Request fresh execution for prompts via Bright Data.
 
-    Behavior depends on BRIGHTDATA_ANSWERS setting:
-    - True: Triggers Bright Data scraper, results delivered via webhook
-    - False: Adds to execution queue for bot polling
+    Triggers Bright Data scraper for the specified prompts.
+    Results are delivered via webhook when scraping completes.
+
+    Prompts already in PENDING batches are skipped to avoid duplicates.
     """
-    batch_id = str(uuid.uuid4())
+    # Check for prompts already in PENDING batches
+    batch_service = BrightDataBatchService(evals_session)
+    already_pending = await batch_service.get_pending_prompt_ids(request.prompt_ids)
+    new_prompt_ids = [p for p in request.prompt_ids if p not in already_pending]
 
-    if settings.brightdata_answers:
-        # Bright Data path: trigger scraper, webhook will deliver results
-        # get_by_ids returns dict[int, str] (prompt_id -> prompt_text)
-        prompt_dict = await prompt_service.get_by_ids(request.prompt_ids)
-
-        brightdata_service = get_brightdata_service(evals_session)
-        await brightdata_service.trigger_batch(
-            batch_id=batch_id,
-            prompts=prompt_dict,
-            user_id=str(current_user.id),
-        )
-        await evals_session.commit()
-
-        # Build response items
-        items = [
-            QueuedItemInfo(
-                prompt_id=prompt_id,
-                status="queued",
-                estimated_wait="~5-10 minutes",
-            )
-            for prompt_id in request.prompt_ids
-        ]
-
+    if not new_prompt_ids:
+        # All prompts already pending - nothing to do
         return RequestFreshExecutionResponse(
-            batch_id=batch_id,
-            queued_count=len(request.prompt_ids),
-            already_pending_count=0,
-            estimated_total_wait="~5-10 minutes",
-            estimated_completion_at=datetime.now(timezone.utc) + timedelta(minutes=10),
-            items=items,
+            batch_id=None,
+            queued_count=0,
+            already_pending_count=len(request.prompt_ids),
+            estimated_total_wait=None,
+            estimated_completion_at=None,
+            items=[
+                QueuedItemInfo(prompt_id=p, status="already_pending", estimated_wait=None)
+                for p in request.prompt_ids
+            ],
         )
-
-    # Bot polling path: add to execution queue
-    result = await queue_service.add_to_queue(
-        prompt_ids=request.prompt_ids,
-        user_id=str(current_user.id),
-        batch_id=batch_id,
-    )
 
     # Calculate time estimate
-    wait_seconds = freshness_service.estimate_wait_time_seconds(result.total_queue_size)
-    wait_str = freshness_service.format_wait_time(wait_seconds)
-    completion_at = datetime.now(timezone.utc) + timedelta(seconds=wait_seconds)
+    batch_id = str(uuid.uuid4())
+    total_seconds = len(new_prompt_ids) * settings.brightdata_seconds_per_prompt
+    wait_str = _format_wait_time(total_seconds)
+    completion_at = datetime.now(timezone.utc) + timedelta(seconds=total_seconds)
 
-    # Build item list
-    queued_prompt_ids = {e.prompt_id for e in result.queued_entries}
+    # Trigger Bright Data
+    prompt_dict = await prompt_service.get_by_ids(new_prompt_ids)
+    brightdata_service = get_brightdata_service(evals_session)
+    await brightdata_service.trigger_batch(batch_id, prompt_dict, str(current_user.id))
+    await evals_session.commit()
+
+    # Build response items
     items: list[QueuedItemInfo] = []
-
     for prompt_id in request.prompt_ids:
-        if prompt_id in queued_prompt_ids:
-            items.append(QueuedItemInfo(
-                prompt_id=prompt_id,
-                status="queued",
-                estimated_wait=wait_str,
-            ))
+        if prompt_id in already_pending:
+            items.append(
+                QueuedItemInfo(prompt_id=prompt_id, status="already_pending", estimated_wait=None)
+            )
         else:
-            items.append(QueuedItemInfo(
-                prompt_id=prompt_id,
-                status="already_pending",
-                estimated_wait=None,
-            ))
+            items.append(
+                QueuedItemInfo(prompt_id=prompt_id, status="queued", estimated_wait=wait_str)
+            )
 
     return RequestFreshExecutionResponse(
         batch_id=batch_id,
-        queued_count=result.queued_count,
-        already_pending_count=result.skipped_count,
+        queued_count=len(new_prompt_ids),
+        already_pending_count=len(already_pending),
         estimated_total_wait=wait_str,
         estimated_completion_at=completion_at,
         items=items,
-    )
-
-
-@router.get("/queue/status", response_model=QueueStatusResponse)
-async def get_queue_status(
-    current_user: CurrentUser,
-    queue_service: ExecutionQueueService = Depends(get_execution_queue_service),
-    freshness_service: FreshnessService = Depends(get_freshness_service),
-    evals_session: AsyncSession = Depends(get_evals_session),
-) -> QueueStatusResponse:
-    """Get current queue status for the user."""
-    user_id = str(current_user.id)
-
-    # Get user's pending/in_progress items
-    user_items = await queue_service.get_user_pending_items(user_id)
-
-    pending_items: list[QueueStatusItem] = []
-    in_progress_items: list[QueueStatusItem] = []
-
-    global_queue_size = await queue_service.get_pending_count()
-    wait_str = freshness_service.format_wait_time(
-        freshness_service.estimate_wait_time_seconds(global_queue_size)
-    )
-
-    for item in user_items:
-        status_item = QueueStatusItem(
-            prompt_id=item.prompt_id,
-            status=item.status.value,
-            requested_at=item.requested_at,
-            estimated_wait=wait_str if item.status == ExecutionQueueStatus.PENDING else None,
-        )
-        if item.status == ExecutionQueueStatus.PENDING:
-            pending_items.append(status_item)
-        else:
-            in_progress_items.append(status_item)
-
-    # Get recently completed (last 24h)
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
-    result = await evals_session.execute(
-        select(ExecutionQueue)
-        .where(
-            ExecutionQueue.requested_by == user_id,
-            ExecutionQueue.status == ExecutionQueueStatus.COMPLETED,
-            ExecutionQueue.completed_at > cutoff,
-        )
-        .order_by(ExecutionQueue.completed_at.desc())
-        .limit(50)
-    )
-    completed_entries = result.scalars().all()
-
-    recently_completed = [
-        CompletedItemInfo(
-            prompt_id=e.prompt_id,
-            evaluation_id=e.evaluation_id,
-            completed_at=e.completed_at,
-        )
-        for e in completed_entries
-        if e.evaluation_id is not None
-    ]
-
-    return QueueStatusResponse(
-        pending_items=pending_items,
-        in_progress_items=in_progress_items,
-        recently_completed=recently_completed,
-        total_pending=len(pending_items),
-        global_queue_size=global_queue_size,
-    )
-
-
-@router.delete("/queue/{prompt_id}")
-async def cancel_execution(
-    prompt_id: int,
-    current_user: CurrentUser,
-    queue_service: ExecutionQueueService = Depends(get_execution_queue_service),
-) -> CancelExecutionResponse:
-    """Cancel a pending execution request.
-
-    Only cancels PENDING items (not IN_PROGRESS).
-    """
-    cancelled = await queue_service.cancel_pending(
-        prompt_ids=[prompt_id],
-        user_id=str(current_user.id),
-    )
-
-    if cancelled == 0:
-        raise HTTPException(
-            status_code=404,
-            detail="Pending execution not found or already in progress",
-        )
-
-    return CancelExecutionResponse(
-        cancelled_count=cancelled,
-        prompt_ids=[prompt_id],
-    )
-
-
-@router.post("/queue/cancel", response_model=CancelExecutionResponse)
-async def cancel_executions_batch(
-    request: CancelExecutionRequest,
-    current_user: CurrentUser,
-    queue_service: ExecutionQueueService = Depends(get_execution_queue_service),
-) -> CancelExecutionResponse:
-    """Cancel multiple pending execution requests.
-
-    Only cancels PENDING items (not IN_PROGRESS).
-    """
-    cancelled = await queue_service.cancel_pending(
-        prompt_ids=request.prompt_ids,
-        user_id=str(current_user.id),
-    )
-
-    return CancelExecutionResponse(
-        cancelled_count=cancelled,
-        prompt_ids=request.prompt_ids[:cancelled],  # Best effort
     )

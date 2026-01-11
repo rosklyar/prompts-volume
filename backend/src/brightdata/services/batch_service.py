@@ -85,3 +85,27 @@ class BrightDataBatchService:
         await self._session.flush()
         logger.info(f"Batch {batch_id} completed with status {status.value}")
         return batch
+
+    async def get_pending_prompt_ids(self, prompt_ids: list[int]) -> set[int]:
+        """Get subset of prompt_ids that are already in PENDING batches.
+
+        Used to prevent duplicate requests for prompts already being processed.
+
+        Args:
+            prompt_ids: List of prompt IDs to check
+
+        Returns:
+            Set of prompt IDs that are already in PENDING batches
+        """
+        result = await self._session.execute(
+            select(BrightDataBatch.prompt_ids).where(
+                BrightDataBatch.status == BrightDataBatchStatus.PENDING
+            )
+        )
+        pending_batches = result.scalars().all()
+
+        all_pending: set[int] = set()
+        for batch_prompt_ids in pending_batches:
+            all_pending.update(batch_prompt_ids)
+
+        return set(prompt_ids) & all_pending

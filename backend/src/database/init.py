@@ -20,8 +20,6 @@ from src.database.evals_models import (
     AIAssistant,
     AIAssistantPlan,
     EvaluationStatus,
-    ExecutionQueue,
-    ExecutionQueueStatus,
     PromptEvaluation,
 )
 from src.embeddings.embeddings_service import get_embeddings_service
@@ -79,9 +77,6 @@ async def seed_evals_data(
 
     # 4. Seed Laptop Evaluations (requires prompts and assistant plans)
     await _seed_laptop_evaluations(prompts_session, evals_session)
-
-    # 5. Seed ExecutionQueue with some prompts for testing
-    await _seed_execution_queue(prompts_session, evals_session)
 
     await evals_session.commit()
 
@@ -532,63 +527,6 @@ async def _seed_laptop_evaluations(
                 "(SELECT MAX(id) FROM prompt_evaluations))"
             )
         )
-
-
-async def _seed_execution_queue(
-    prompts_session: AsyncSession,
-    evals_session: AsyncSession,
-) -> None:
-    """Seed ExecutionQueue with some prompts for testing.
-
-    This ensures the poll endpoint has prompts available during testing/development.
-    Adds a fixed number of prompts to the queue (first 20 prompts) to allow
-    the poll/submit flow to work in tests.
-    """
-    # For testing/development: ensure we have PENDING entries available
-    # If there are already active entries, we're good
-    result = await evals_session.execute(
-        select(ExecutionQueue)
-        .where(ExecutionQueue.status == ExecutionQueueStatus.PENDING)
-        .limit(1)
-    )
-    if result.scalar_one_or_none() is not None:
-        return  # Already have pending entries
-
-    # Delete any stale entries (IN_PROGRESS that were left from previous runs)
-    # This enables re-seeding after tests consume the queue
-    from sqlalchemy import delete
-    await evals_session.execute(
-        delete(ExecutionQueue).where(
-            ExecutionQueue.status.in_([
-                ExecutionQueueStatus.IN_PROGRESS,
-                ExecutionQueueStatus.COMPLETED,
-                ExecutionQueueStatus.FAILED,
-                ExecutionQueueStatus.CANCELLED,
-            ])
-        )
-    )
-    await evals_session.flush()
-
-    # Get first 20 prompt IDs (ordered by ID for consistency)
-    result = await prompts_session.execute(
-        select(Prompt.id).order_by(Prompt.id.asc()).limit(20)
-    )
-    prompt_ids = [row[0] for row in result.fetchall()]
-
-    # Add prompts to the queue
-    queue_entries = []
-    for prompt_id in prompt_ids:
-        entry = ExecutionQueue(
-            prompt_id=prompt_id,
-            requested_by="system",
-            request_batch_id="seed-batch",
-            status=ExecutionQueueStatus.PENDING,
-        )
-        queue_entries.append(entry)
-
-    if queue_entries:
-        evals_session.add_all(queue_entries)
-        await evals_session.flush()
 
 
 async def seed_superuser(session: AsyncSession) -> None:

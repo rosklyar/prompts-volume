@@ -14,15 +14,9 @@ from src.execution.models.domain import FreshnessCategory
 
 
 class RequestFreshExecutionRequest(BaseModel):
-    """Request to add prompts to execution queue."""
+    """Request to trigger fresh execution via Bright Data."""
 
-    prompt_ids: list[int] = Field(..., min_length=1, description="Prompt IDs to queue")
-
-
-class CancelExecutionRequest(BaseModel):
-    """Request to cancel pending executions."""
-
-    prompt_ids: list[int] = Field(..., min_length=1, description="Prompt IDs to cancel")
+    prompt_ids: list[int] = Field(..., min_length=1, description="Prompt IDs to execute")
 
 
 # =============================================================================
@@ -39,48 +33,14 @@ class QueuedItemInfo(BaseModel):
 
 
 class RequestFreshExecutionResponse(BaseModel):
-    """Response after queuing prompts for execution."""
+    """Response after triggering fresh execution via Bright Data."""
 
-    batch_id: str
+    batch_id: str | None  # None if all prompts already pending
     queued_count: int
     already_pending_count: int
-    estimated_total_wait: str
-    estimated_completion_at: datetime
+    estimated_total_wait: str | None  # None if all prompts already pending
+    estimated_completion_at: datetime | None  # None if all prompts already pending
     items: list[QueuedItemInfo]
-
-
-class QueueStatusItem(BaseModel):
-    """Status of a single queue item."""
-
-    prompt_id: int
-    status: Literal["pending", "in_progress", "completed", "failed", "cancelled"]
-    requested_at: datetime
-    estimated_wait: str | None = None
-
-
-class CompletedItemInfo(BaseModel):
-    """Info about a completed execution."""
-
-    prompt_id: int
-    evaluation_id: int
-    completed_at: datetime
-
-
-class QueueStatusResponse(BaseModel):
-    """User's queue status."""
-
-    pending_items: list[QueueStatusItem]
-    in_progress_items: list[QueueStatusItem]
-    recently_completed: list[CompletedItemInfo]
-    total_pending: int
-    global_queue_size: int
-
-
-class CancelExecutionResponse(BaseModel):
-    """Response after cancelling executions."""
-
-    cancelled_count: int
-    prompt_ids: list[int]
 
 
 # =============================================================================
