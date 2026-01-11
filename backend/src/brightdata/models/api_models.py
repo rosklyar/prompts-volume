@@ -37,19 +37,41 @@ class BrightDataInput(BaseModel):
 
 
 class BrightDataWebhookItem(BaseModel):
-    """Single item in webhook payload."""
+    """Single item in webhook payload from Bright Data."""
 
+    # Core fields
+    url: str
     prompt: str
     answer_text: str
+    model: str | None = None
+
+    # Optional content fields
+    answer_text_markdown: str | None = None
+    additional_prompt: str | None = None
+    additional_answer_text: str | None = None
+    response_raw: str | None = None
+    answer_section_html: str | None = None
+
+    # Citations and references
     citations: list[BrightDataCitation] | None = None
     links_attached: list[dict[str, Any]] | None = None
-    shopping: list[dict[str, Any]] = Field(default_factory=list)
+    references: list[dict[str, Any]] = Field(default_factory=list)
     search_sources: list[dict[str, Any]] = Field(default_factory=list)
-    web_search_query: list[str] | None = None
-    input: BrightDataInput
-    timestamp: datetime
-    model: str
+
+    # Recommendations and shopping
     recommendations: list[dict[str, Any]] = Field(default_factory=list)
+    shopping: list[dict[str, Any]] = Field(default_factory=list)
+    shopping_visible: bool = False
+
+    # Search and map
+    web_search_triggered: bool = False
+    web_search_query: str | None = None
+    is_map: bool = False
+    map: dict[str, Any] | None = None
+
+    # Metadata
+    country: str | None = None
+    index: int | None = None
 
 
 # ===== RESPONSE MODELS =====

@@ -85,10 +85,12 @@ def _process_webhook_item(
     batch_id: str,
 ) -> ParsedResult | None:
     """Process a single webhook item. Returns None if prompt not found."""
-    prompt_id = registry.get_prompt_id_by_text(batch_id, item.input.prompt)
+    from datetime import datetime, timezone
+
+    prompt_id = registry.get_prompt_id_by_text(batch_id, item.prompt)
     if not prompt_id:
-        logger.warning(f"No prompt_id for: {item.input.prompt[:50]}...")
-        registry.add_error(batch_id, f"No matching prompt for: {item.input.prompt[:50]}")
+        logger.warning(f"No prompt_id for: {item.prompt[:50]}...")
+        registry.add_error(batch_id, f"No matching prompt for: {item.prompt[:50]}")
         return None
 
     # Filter to only include citations actually used in the answer
@@ -101,11 +103,11 @@ def _process_webhook_item(
 
     return ParsedResult(
         prompt_id=prompt_id,
-        prompt_text=item.input.prompt,
+        prompt_text=item.prompt,
         answer_text=item.answer_text,
         citations=citations,
-        model=item.model,
-        timestamp=item.timestamp,
+        model=item.model or "unknown",
+        timestamp=datetime.now(timezone.utc),
     )
 
 
