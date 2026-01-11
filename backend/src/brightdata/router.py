@@ -1,5 +1,6 @@
 """API router for Bright Data webhook endpoints."""
 
+import gzip
 import json
 import logging
 from typing import Any
@@ -27,13 +28,17 @@ router = APIRouter(prefix="/evaluations/api/v1", tags=["brightdata"])
 
 
 async def _parse_webhook_body(request: Request) -> list[Any]:
-    """Parse webhook body - try file upload first, then raw JSON.
+    """Parse webhook body - handles gzip, multipart, and raw JSON.
 
-    Bright Data may send data as multipart/form-data file or raw JSON body.
+    Bright Data may send data as:
+    - gzip-compressed JSON (content-encoding: gzip)
+    - multipart/form-data file upload
+    - raw JSON body
     """
     content_type = request.headers.get("content-type", "")
-    logger.info(f"Webhook received - Content-Type: {content_type}")
-    logger.info(f"Webhook headers: {dict(request.headers)}")
+    content_encoding = request.headers.get("content-encoding", "")
+    logger.info(f"Webhook received - Content-Type: {content_type}, Content-Encoding: {content_encoding}")
+    logger.debug(f"Webhook headers: {dict(request.headers)}")
 
     # Try multipart form data (file upload)
     if "multipart/form-data" in content_type:
@@ -49,10 +54,19 @@ async def _parse_webhook_body(request: Request) -> list[Any]:
                 logger.info(f"Found file in field '{field_name}', filename: {getattr(file, 'filename', 'N/A')}")
                 content = await file.read()
                 logger.info(f"File content size: {len(content)} bytes")
-                logger.info(f"File content preview: {content[:500]}...")
+                logger.debug(f"File content preview: {content[:500]}...")
                 return json.loads(content)
 
         raise ValueError(f"No file found in multipart form data. Available fields: {form_keys}")
+
+    # Handle gzip-compressed body
+    if content_encoding == "gzip":
+        logger.info("Decompressing gzip body")
+        raw_body = await request.body()
+        decompressed = gzip.decompress(raw_body)
+        body = json.loads(decompressed)
+        logger.info(f"Gzip body parsed, items count: {len(body) if isinstance(body, list) else 'not a list'}")
+        return body
 
     # Fall back to raw JSON body
     logger.info("Parsing as raw JSON body")
