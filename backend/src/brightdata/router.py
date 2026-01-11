@@ -26,6 +26,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/evaluations/api/v1", tags=["brightdata"])
 
+# In-memory storage for raw webhook payloads (for debugging)
+_last_webhook_payloads: list[dict] = []
+MAX_STORED_PAYLOADS = 10
+
 
 async def _parse_webhook_body(request: Request) -> list[Any]:
     """Parse webhook body - handles gzip, multipart, and raw JSON.
@@ -126,6 +130,12 @@ async def receive_brightdata_webhook(
         logger.error(f"Webhook parsing error: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
+    # Log full payload and store in memory for debugging
+    logger.info(f"Webhook full payload: {json.dumps(body, indent=2, default=str)}")
+    _last_webhook_payloads.append({"batch_id": batch_id, "payload": body})
+    if len(_last_webhook_payloads) > MAX_STORED_PAYLOADS:
+        _last_webhook_payloads.pop(0)
+
     if not isinstance(body, list):
         raise HTTPException(status_code=400, detail="Expected array of results")
 
@@ -208,3 +218,17 @@ async def get_all_brightdata_results(
         )
 
     return AllBatchesResponse(batches=batch_responses, total_batches=len(batch_responses))
+
+
+@router.get("/webhook/debug/payloads")
+async def get_debug_webhook_payloads() -> dict:
+    """
+    Get last received webhook payloads for debugging.
+
+    Returns the last 10 raw payloads received by the webhook endpoint.
+    Useful for understanding the structure of Bright Data responses.
+    """
+    return {
+        "count": len(_last_webhook_payloads),
+        "payloads": _last_webhook_payloads,
+    }
