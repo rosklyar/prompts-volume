@@ -2,10 +2,11 @@
 
 import logging
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.brightdata.models.domain import BrightDataPromptInput, BrightDataTriggerRequest
-from src.brightdata.services.batch_registry import InMemoryBatchRegistry, get_batch_registry
-from src.brightdata.services.brightdata_client import BrightDataHttpClient, get_brightdata_client
-from src.config.settings import settings
+from src.brightdata.services.batch_service import BrightDataBatchService
+from src.brightdata.services.brightdata_client import BrightDataHttpClient
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +15,7 @@ class BrightDataService:
     """Service for triggering Bright Data batch scraping.
 
     Encapsulates all Bright Data triggering logic:
-    - Registry management
+    - Batch registration in database
     - Request building
     - HTTP client calls
     """
@@ -22,13 +23,13 @@ class BrightDataService:
     def __init__(
         self,
         client: BrightDataHttpClient | None,
-        registry: InMemoryBatchRegistry,
+        batch_service: BrightDataBatchService,
         webhook_base_url: str,
         webhook_secret: str,
         default_country: str,
     ):
         self._client = client
-        self._registry = registry
+        self._batch_service = batch_service
         self._webhook_base_url = webhook_base_url
         self._webhook_secret = webhook_secret
         self._default_country = default_country
@@ -55,8 +56,9 @@ class BrightDataService:
             return
 
         try:
-            # Register batch in memory for webhook correlation
-            self._registry.register_batch(batch_id, prompts, user_id)
+            # Register batch in database for webhook correlation
+            prompt_ids = list(prompts.keys())
+            await self._batch_service.register_batch(batch_id, prompt_ids, user_id)
 
             # Build request inputs
             inputs = [
@@ -82,13 +84,21 @@ class BrightDataService:
 
         except Exception as e:
             logger.exception(f"Failed to trigger Bright Data batch: {e}")
+            raise
 
 
-def get_brightdata_service() -> BrightDataService:
-    """Dependency injection for BrightDataService."""
+def get_brightdata_service(evals_session: AsyncSession) -> BrightDataService:
+    """Create BrightDataService with database session.
+
+    Note: This is NOT a FastAPI dependency - it creates the service
+    with an existing session. Use in endpoints that already have sessions.
+    """
+    from src.brightdata.services.brightdata_client import get_brightdata_client
+    from src.config.settings import settings
+
     return BrightDataService(
         client=get_brightdata_client(),
-        registry=get_batch_registry(),
+        batch_service=BrightDataBatchService(evals_session),
         webhook_base_url=settings.backend_webhook_base_url,
         webhook_secret=settings.brightdata_webhook_secret,
         default_country=settings.brightdata_default_country,

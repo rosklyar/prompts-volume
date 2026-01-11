@@ -3,24 +3,27 @@
 import gzip
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql import func
 
 from src.brightdata.deps import WebhookAuthDep
-from src.brightdata.models.api_models import (
-    AllBatchesResponse,
-    BatchResponse,
-    BrightDataWebhookItem,
-    CitationResponse,
-    ResultResponse,
-    WebhookResponse,
+from src.brightdata.models.api_models import BrightDataWebhookItem, WebhookResponse
+from src.brightdata.services.batch_service import BrightDataBatchService
+from src.database.evals_models import (
+    AIAssistant,
+    AIAssistantPlan,
+    BrightDataBatchStatus,
+    EvaluationStatus,
+    PromptEvaluation,
 )
-from src.brightdata.models.domain import BatchStatus, ParsedCitation, ParsedResult
-from src.brightdata.services.batch_registry import (
-    InMemoryBatchRegistry,
-    get_batch_registry,
-)
+from src.database.evals_session import get_evals_session
+from src.database.models import Prompt
+from src.database.session import get_async_session
 
 logger = logging.getLogger(__name__)
 
@@ -32,83 +35,37 @@ MAX_STORED_PAYLOADS = 10
 
 
 async def _parse_webhook_body(request: Request) -> list[Any]:
-    """Parse webhook body - handles gzip, multipart, and raw JSON.
-
-    Bright Data may send data as:
-    - gzip-compressed JSON (content-encoding: gzip)
-    - multipart/form-data file upload
-    - raw JSON body
-    """
-    content_type = request.headers.get("content-type", "")
-    content_encoding = request.headers.get("content-encoding", "")
-    logger.info(f"Webhook received - Content-Type: {content_type}, Content-Encoding: {content_encoding}")
-    logger.debug(f"Webhook headers: {dict(request.headers)}")
-
-    # Try multipart form data (file upload)
-    if "multipart/form-data" in content_type:
-        logger.info("Parsing as multipart/form-data")
-        form = await request.form()
-        form_keys = list(form.keys())
-        logger.info(f"Form fields received: {form_keys}")
-
-        # Try common field names
-        for field_name in ("file", "data", "results"):
-            if field_name in form:
-                file = form[field_name]
-                logger.info(f"Found file in field '{field_name}', filename: {getattr(file, 'filename', 'N/A')}")
-                content = await file.read()
-                logger.info(f"File content size: {len(content)} bytes")
-                logger.debug(f"File content preview: {content[:500]}...")
-                return json.loads(content)
-
-        raise ValueError(f"No file found in multipart form data. Available fields: {form_keys}")
-
-    # Handle gzip-compressed body
-    if content_encoding == "gzip":
-        logger.info("Decompressing gzip body")
-        raw_body = await request.body()
-        decompressed = gzip.decompress(raw_body)
-        body = json.loads(decompressed)
-        logger.info(f"Gzip body parsed, items count: {len(body) if isinstance(body, list) else 'not a list'}")
-        return body
-
-    # Fall back to raw JSON body
-    logger.info("Parsing as raw JSON body")
-    body = await request.json()
-    logger.info(f"JSON body parsed, items count: {len(body) if isinstance(body, list) else 'not a list'}")
+    """Parse gzip-compressed webhook body from Bright Data."""
+    raw_body = await request.body()
+    decompressed = gzip.decompress(raw_body)
+    body = json.loads(decompressed)
+    logger.info(f"Webhook body parsed, items count: {len(body) if isinstance(body, list) else 'not a list'}")
     return body
 
 
-def _process_webhook_item(
-    item: BrightDataWebhookItem,
-    registry: InMemoryBatchRegistry,
-    batch_id: str,
-) -> ParsedResult | None:
-    """Process a single webhook item. Returns None if prompt not found."""
-    from datetime import datetime, timezone
-
-    prompt_id = registry.get_prompt_id_by_text(batch_id, item.prompt)
-    if not prompt_id:
-        logger.warning(f"No prompt_id for: {item.prompt[:50]}...")
-        registry.add_error(batch_id, f"No matching prompt for: {item.prompt[:50]}")
-        return None
-
-    # Filter to only include citations actually used in the answer
-    # (Bright Data returns all potential citations, cited=True means it was referenced)
-    citations = [
-        ParsedCitation.from_brightdata_citation(c)
-        for c in (item.citations or [])
-        if c.cited
-    ]
-
-    return ParsedResult(
-        prompt_id=prompt_id,
-        prompt_text=item.prompt,
-        answer_text=item.answer_text,
-        citations=citations,
-        model=item.model or "unknown",
-        timestamp=datetime.now(timezone.utc),
+async def _get_chatgpt_free_plan_id(session: AsyncSession) -> int:
+    """Get ChatGPT Free assistant plan ID."""
+    result = await session.execute(
+        select(AIAssistantPlan.id)
+        .join(AIAssistant, AIAssistantPlan.assistant_id == AIAssistant.id)
+        .where(func.upper(AIAssistant.name) == "CHATGPT")
+        .where(func.upper(AIAssistantPlan.name) == "FREE")
     )
+    plan_id = result.scalar_one_or_none()
+    if not plan_id:
+        raise HTTPException(status_code=500, detail="ChatGPT Free assistant plan not found")
+    return plan_id
+
+
+async def _get_prompts_by_ids(
+    session: AsyncSession,
+    prompt_ids: list[int],
+) -> list[Prompt]:
+    """Get prompts by IDs from prompts database."""
+    result = await session.execute(
+        select(Prompt).where(Prompt.id.in_(prompt_ids))
+    )
+    return list(result.scalars().all())
 
 
 @router.post("/webhook/{batch_id}", response_model=WebhookResponse)
@@ -116,23 +73,23 @@ async def receive_brightdata_webhook(
     batch_id: str,
     request: Request,
     _auth: WebhookAuthDep,
-    registry: InMemoryBatchRegistry = Depends(get_batch_registry),
+    evals_session: AsyncSession = Depends(get_evals_session),
+    prompts_session: AsyncSession = Depends(get_async_session),
 ) -> WebhookResponse:
     """
     Receive webhook from Bright Data with scraping results.
 
     This endpoint is called by Bright Data when scraping completes.
-    Supports both multipart/form-data (file upload) and raw JSON body.
-    Parses results, matches to prompts, stores in memory.
+    Parses gzip-compressed results, matches to prompts, creates PromptEvaluation records.
     """
-    # Parse body (file upload or raw JSON)
+    # Parse gzip body
     try:
         body = await _parse_webhook_body(request)
     except Exception as e:
         logger.error(f"Webhook parsing error: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
-    # Log full payload and store in memory for debugging
+    # Store raw payload for debugging
     logger.info(f"Webhook full payload: {json.dumps(body, indent=2, default=str)}")
     _last_webhook_payloads.append({"batch_id": batch_id, "payload": body})
     if len(_last_webhook_payloads) > MAX_STORED_PAYLOADS:
@@ -148,32 +105,73 @@ async def receive_brightdata_webhook(
         logger.error(f"Webhook payload validation error: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
-    batch_info = registry.get_batch(batch_id)
-    if not batch_info:
-        logger.warning(f"Batch {batch_id} not found in registry")
+    # Get batch from database
+    batch_service = BrightDataBatchService(evals_session)
+    batch = await batch_service.get_batch(batch_id)
+    if not batch:
+        logger.warning(f"Batch {batch_id} not found in database")
         return WebhookResponse(
-            status=BatchStatus.FAILED.value,
+            status=BrightDataBatchStatus.FAILED.value,
             batch_id=batch_id,
             processed_count=0,
             failed_count=len(items),
             message=f"Batch {batch_id} not found",
         )
 
+    # Get prompts for text matching
+    prompts = await _get_prompts_by_ids(prompts_session, batch.prompt_ids)
+    text_to_prompt_id = {p.prompt_text: p.id for p in prompts}
+
+    # Get ChatGPT Free assistant plan (hardcoded for now)
+    assistant_plan_id = await _get_chatgpt_free_plan_id(evals_session)
+
     processed = 0
     failed = 0
+    now = datetime.now(timezone.utc)
 
     for item in items:
-        result = _process_webhook_item(item, registry, batch_id)
-        if result is None:
+        # Match prompt by text
+        prompt_id = text_to_prompt_id.get(item.prompt)
+        if not prompt_id:
+            logger.warning(f"No prompt_id for: {item.prompt[:50]}...")
             failed += 1
             continue
-        registry.add_result(batch_id, result)
+
+        # Filter to only include citations actually used in the answer
+        citations = [
+            {
+                "url": c.url,
+                "text": c.title,
+                "domain": c.domain,
+            }
+            for c in (item.citations or [])
+            if c.cited
+        ]
+
+        # Create PromptEvaluation record
+        evaluation = PromptEvaluation(
+            prompt_id=prompt_id,
+            assistant_plan_id=assistant_plan_id,
+            status=EvaluationStatus.COMPLETED,
+            claimed_at=now,
+            completed_at=now,
+            answer={
+                "response": item.answer_text,
+                "citations": citations,
+                "timestamp": now.isoformat(),
+            },
+        )
+        evals_session.add(evaluation)
         processed += 1
-        logger.info(f"Stored result for prompt {result.prompt_id}")
+        logger.info(f"Created evaluation for prompt {prompt_id}")
+
+    # Commit all evaluations
+    await evals_session.commit()
 
     # Mark batch completed
-    final_status = BatchStatus.COMPLETED if failed == 0 else BatchStatus.PARTIAL
-    registry.complete_batch(batch_id, final_status)
+    final_status = BrightDataBatchStatus.COMPLETED if failed == 0 else BrightDataBatchStatus.PARTIAL
+    await batch_service.complete_batch(batch_id, final_status)
+    await evals_session.commit()
 
     return WebhookResponse(
         status=final_status.value,
@@ -181,45 +179,6 @@ async def receive_brightdata_webhook(
         processed_count=processed,
         failed_count=failed,
     )
-
-
-@router.get("/brightdata/results", response_model=AllBatchesResponse)
-async def get_all_brightdata_results(
-    registry: InMemoryBatchRegistry = Depends(get_batch_registry),
-) -> AllBatchesResponse:
-    """
-    Get all batches with their parsed results.
-
-    Test endpoint for debugging/verification.
-    """
-    batches = registry.get_all_batches()
-
-    batch_responses: list[BatchResponse] = []
-    for batch in batches:
-        results = [
-            ResultResponse(
-                prompt_id=r.prompt_id,
-                prompt_text=r.prompt_text,
-                answer_text=r.answer_text,
-                citations=[CitationResponse.from_parsed(c) for c in r.citations],
-                model=r.model,
-                timestamp=r.timestamp,
-            )
-            for r in batch.results
-        ]
-        batch_responses.append(
-            BatchResponse(
-                batch_id=batch.batch_id,
-                user_id=batch.user_id,
-                status=batch.status.value,
-                created_at=batch.created_at,
-                total_prompts=len(batch.prompt_id_to_text),
-                results=results,
-                errors=batch.errors,
-            )
-        )
-
-    return AllBatchesResponse(batches=batch_responses, total_batches=len(batch_responses))
 
 
 @router.get("/webhook/debug/payloads")

@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.deps import CurrentUser
-from src.brightdata.services.brightdata_service import BrightDataService, get_brightdata_service
+from src.brightdata.services.brightdata_service import get_brightdata_service
 from src.config.settings import settings
 from src.database.evals_models import ExecutionQueue, ExecutionQueueStatus
 from src.database.evals_session import get_evals_session
@@ -60,16 +60,49 @@ async def request_fresh_execution(
     queue_service: ExecutionQueueService = Depends(get_execution_queue_service),
     freshness_service: FreshnessService = Depends(get_freshness_service),
     prompt_service: PromptService = Depends(get_prompt_service),
-    brightdata_service: BrightDataService = Depends(get_brightdata_service),
+    evals_session: AsyncSession = Depends(get_evals_session),
 ) -> RequestFreshExecutionResponse:
     """Request fresh execution for prompts.
 
-    Adds prompts to execution queue. Skips prompts already in queue.
-    Returns estimated wait time based on queue size.
-    Also triggers Bright Data scraper (fire-and-forget, isolated).
+    Behavior depends on BRIGHTDATA_ANSWERS setting:
+    - True: Triggers Bright Data scraper, results delivered via webhook
+    - False: Adds to execution queue for bot polling
     """
     batch_id = str(uuid.uuid4())
 
+    if settings.brightdata_answers:
+        # Bright Data path: trigger scraper, webhook will deliver results
+        prompts = await prompt_service.get_by_ids(request.prompt_ids)
+        prompt_dict = {p.id: p.prompt_text for p in prompts}
+
+        brightdata_service = get_brightdata_service(evals_session)
+        await brightdata_service.trigger_batch(
+            batch_id=batch_id,
+            prompts=prompt_dict,
+            user_id=str(current_user.id),
+        )
+        await evals_session.commit()
+
+        # Build response items
+        items = [
+            QueuedItemInfo(
+                prompt_id=prompt_id,
+                status="queued",
+                estimated_wait="~5-10 minutes",
+            )
+            for prompt_id in request.prompt_ids
+        ]
+
+        return RequestFreshExecutionResponse(
+            batch_id=batch_id,
+            queued_count=len(request.prompt_ids),
+            already_pending_count=0,
+            estimated_total_wait="~5-10 minutes",
+            estimated_completion_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+            items=items,
+        )
+
+    # Bot polling path: add to execution queue
     result = await queue_service.add_to_queue(
         prompt_ids=request.prompt_ids,
         user_id=str(current_user.id),
@@ -98,15 +131,6 @@ async def request_fresh_execution(
                 status="already_pending",
                 estimated_wait=None,
             ))
-
-    # TODO: Re-enable after webhook testing from BrightData website
-    # Trigger Bright Data (isolated, fire-and-forget)
-    # prompts = await prompt_service.get_by_ids(request.prompt_ids)
-    # await brightdata_service.trigger_batch(
-    #     batch_id=batch_id,
-    #     prompts=prompts,
-    #     user_id=str(current_user.id),
-    # )
 
     return RequestFreshExecutionResponse(
         batch_id=batch_id,

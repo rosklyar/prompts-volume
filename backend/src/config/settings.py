@@ -104,6 +104,7 @@ class Settings(BaseSettings):
     comparison_next_refresh_estimate: str = "up to 6 hours"
 
     # Bright Data configuration
+    brightdata_answers: bool = False  # Toggle: use Bright Data instead of bot polling
     brightdata_api_token: str = ""
     brightdata_dataset_id: str = "gd_m7aof0k82r803d5bjm"
     brightdata_base_url: str = "https://api.brightdata.com/datasets/v3/trigger"

@@ -202,7 +202,9 @@ jobs:
               EVALUATION_API_TOKENS="${{ secrets.EVALUATION_API_TOKENS }}" \
               TOPICS_PROVIDER_SIMILARITY_THRESHOLD="0.8" \
               BREVO_API_KEY="${{ secrets.BREVO_API_KEY }}" \
-              BRIGHTDATA_WEBHOOK_SECRET="${{ secrets.BRIGHTDATA_WEBHOOK_SECRET }}"
+              BRIGHTDATA_WEBHOOK_SECRET="${{ secrets.BRIGHTDATA_WEBHOOK_SECRET }}" \
+              BRIGHTDATA_API_TOKEN="${{ secrets.BRIGHTDATA_API_TOKEN }}" \
+              BRIGHTDATA_ANSWERS="true"
 
       - name: Health Check
         run: |

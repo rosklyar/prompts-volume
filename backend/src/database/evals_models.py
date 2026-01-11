@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import List, Optional
 
 from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint, text
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.database.evals_session import EvalsBase
@@ -376,3 +377,65 @@ class GroupReportItem(EvalsBase):
 
     def __repr__(self) -> str:
         return f"<GroupReportItem(id={self.id}, report_id={self.report_id}, prompt_id={self.prompt_id}, status='{self.status.value}')>"
+
+
+# =============================================================================
+# Bright Data Batch Models
+# =============================================================================
+
+
+class BrightDataBatchStatus(str, enum.Enum):
+    """Status of a Bright Data batch."""
+    PENDING = "pending"
+    COMPLETED = "completed"
+    PARTIAL = "partial"
+    FAILED = "failed"
+
+
+class BrightDataBatch(EvalsBase):
+    """Tracks Bright Data scraping batches for webhook correlation.
+
+    When user requests fresh execution with BRIGHTDATA_ANSWERS=true,
+    a batch is registered here. When the webhook arrives, we look up
+    the batch to find which prompt_ids were requested.
+    """
+
+    __tablename__ = "brightdata_batches"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    batch_id: Mapped[str] = mapped_column(
+        String(36),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36),
+        nullable=False,
+        index=True,
+    )
+    prompt_ids: Mapped[list[int]] = mapped_column(
+        ARRAY(Integer),
+        nullable=False,
+    )
+    status: Mapped[BrightDataBatchStatus] = mapped_column(
+        Enum(
+            BrightDataBatchStatus,
+            values_callable=lambda x: [e.value for e in x],
+            name="brightdatabatchstatus",
+        ),
+        nullable=False,
+        default=BrightDataBatchStatus.PENDING,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("NOW()"),
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    def __repr__(self) -> str:
+        return f"<BrightDataBatch(id={self.id}, batch_id='{self.batch_id}', status='{self.status.value}')>"
