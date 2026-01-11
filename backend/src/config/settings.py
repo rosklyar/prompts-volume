@@ -112,7 +112,7 @@ class Settings(BaseSettings):
     brightdata_batch_ttl_hours: int = 24
     brightdata_webhook_secret: str = "dev-webhook-secret"  # For webhook auth
     brightdata_default_country: str = "UA"
-    backend_webhook_base_url: str = "http://localhost:8000"
+    backend_webhook_base_url: str = "https://prompts-backend.jollydune-754acd02.canadacentral.azurecontainerapps.io"
 
 
 # Singleton settings instance
