@@ -16,13 +16,13 @@ from src.database.evals_session import EvalsBase
 from src.database.evals_models import (  # noqa: F401
     AIAssistant,
     AIAssistantPlan,
-    ExecutionQueue,
-    ExecutionQueueStatus,
-    PromptEvaluation,
+    BrightDataBatch,
+    BrightDataBatchStatus,
     ConsumedEvaluation,
+    EvaluationStatus,
     GroupReport,
     GroupReportItem,
-    EvaluationStatus,
+    PromptEvaluation,
     ReportItemStatus,
 )
 
