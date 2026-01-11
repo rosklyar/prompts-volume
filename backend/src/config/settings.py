@@ -77,6 +77,10 @@ class Settings(BaseSettings):
     first_superuser_email: str = "admin@example.com"
     first_superuser_password: str = "changethis"
 
+    # Startup configuration
+    seed_data: bool = False  # Enable data seeding on startup (for local dev only)
+    log_level: str = "INFO"  # DEBUG, INFO, WARNING, ERROR
+
     # CORS configuration
     frontend_url: str = "http://localhost:5173"
 
@@ -105,7 +109,7 @@ class Settings(BaseSettings):
     brightdata_base_url: str = "https://api.brightdata.com/datasets/v3/trigger"
     brightdata_timeout: float = 30.0
     brightdata_batch_ttl_hours: int = 24
-    brightdata_webhook_secret: str = ""  # For webhook auth
+    brightdata_webhook_secret: str = "dev-webhook-secret"  # For webhook auth
     brightdata_default_country: str = "UA"
     backend_webhook_base_url: str = "http://localhost:8000"
 

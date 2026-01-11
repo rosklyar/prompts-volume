@@ -119,10 +119,13 @@ def client(test_engine):
     """
     Fixture that provides a FastAPI TestClient with database dependency overridden.
     Also sets the global database engine to use the test engine for all three databases.
+    Seeds initial data for integration tests.
 
     Note: This is a sync fixture that creates its own session for TestClient's event loop.
     The test_session fixture is for async tests only.
     """
+    import asyncio
+
     # Store original engine and session maker for prompts_db
     original_engine = db_session._engine
     original_session_maker = db_session._async_session_maker
@@ -156,6 +159,14 @@ def client(test_engine):
     # Override evals_db engine and session maker (using same test engine)
     evals_db_session._evals_engine = test_engine
     evals_db_session._evals_async_session_maker = test_session_maker
+
+    # Seed initial data for integration tests
+    async def seed_data():
+        async with test_session_maker() as session:
+            await seed_initial_data(session)
+            await seed_evals_data(session, session)
+
+    asyncio.get_event_loop().run_until_complete(seed_data())
 
     # TestClient will use the overridden engine via get_async_session dependency
     # No need to override get_async_session - it will use the overridden engine
