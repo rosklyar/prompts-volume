@@ -47,18 +47,19 @@ class BrightDataService:
             prompts: Dict mapping prompt_id to prompt_text
             user_id: User who requested the batch
         """
-        if not self._client:
-            logger.debug("Bright Data client not configured, skipping trigger")
-            return
-
         if not prompts:
             logger.debug("No prompts to trigger")
             return
 
+        # Always register batch in database (for webhook correlation and pending tracking)
+        prompt_ids = list(prompts.keys())
+        await self._batch_service.register_batch(batch_id, prompt_ids, user_id)
+
+        if not self._client:
+            logger.debug("Bright Data client not configured, skipping HTTP trigger")
+            return
+
         try:
-            # Register batch in database for webhook correlation
-            prompt_ids = list(prompts.keys())
-            await self._batch_service.register_batch(batch_id, prompt_ids, user_id)
 
             # Build request inputs
             inputs = [

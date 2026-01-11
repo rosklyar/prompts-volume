@@ -10,13 +10,31 @@ Tests the complete user journey:
 7. Compare (shows fresh data with selection options)
 8. Generate another report (charges only for new)
 9. Verify balance changes correctly
+
+Uses Bright Data webhook simulation for creating evaluations.
 """
 
 import uuid
 from decimal import Decimal
 
+import pytest
+
 # Default topic input using seeded topic ID 1
 DEFAULT_TOPIC = {"existing_topic_id": 1}
+
+
+def _get_prompts_for_topic(client, auth_headers, topic_id: int = 1) -> list[dict]:
+    """Fetch prompts from database for a given topic."""
+    response = client.get(
+        f"/prompts/api/v1/prompts?topic_ids={topic_id}",
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, f"Failed to get prompts: {response.json()}"
+    prompts = []
+    for topic in response.json()["topics"]:
+        for prompt in topic["prompts"]:
+            prompts.append({"id": prompt["id"], "prompt_text": prompt["prompt_text"]})
+    return prompts
 
 
 def _build_selections_from_compare(compare_response: dict) -> list[dict]:
@@ -30,7 +48,7 @@ def _build_selections_from_compare(compare_response: dict) -> list[dict]:
     return selections
 
 
-def test_complete_report_user_flow(client, eval_auth_headers, create_verified_user):
+def test_complete_report_user_flow(client, create_verified_user, simulate_webhook):
     """Test complete user journey: signup → reports → billing.
 
     This test validates the entire reports and billing integration:
@@ -64,37 +82,14 @@ def test_complete_report_user_flow(client, eval_auth_headers, create_verified_us
     assert group_response.status_code == 201, f"Group creation failed: {group_response.json()}"
     group_id = group_response.json()["id"]
 
-    # === STEP 5: Poll and complete 2 evaluations ===
-    prompt_ids = []
+    # === STEP 5: Get 2 prompts and create evaluations via webhook ===
+    prompts = _get_prompts_for_topic(client, auth_headers)
+    assert len(prompts) >= 3, "Need at least 3 prompts for test"
+    first_two_prompts = prompts[:2]
+    prompt_ids = [p["id"] for p in first_two_prompts]
+    prompts_dict = {p["id"]: p["prompt_text"] for p in prompts}
 
-    for i in range(2):
-        poll_resp = client.post(
-            "/evaluations/api/v1/poll",
-            json={"assistant_name": "ChatGPT", "plan_name": "PLUS"},
-            headers=eval_auth_headers,
-        )
-        assert poll_resp.status_code == 200, f"Poll {i} failed: {poll_resp.json()}"
-        poll_data = poll_resp.json()
-        prompt_id = poll_data["prompt_id"]
-        eval_id = poll_data["evaluation_id"]
-        prompt_ids.append(prompt_id)
-
-        # Complete the evaluation
-        submit_resp = client.post(
-            "/evaluations/api/v1/submit",
-            json={
-                "evaluation_id": eval_id,
-                "answer": {
-                    "response": f"Test response for prompt {i}",
-                    "citations": [],
-                    "timestamp": "2024-01-01T00:00:00Z",
-                },
-            },
-            headers=eval_auth_headers,
-        )
-        assert submit_resp.status_code == 200, f"Submit {i} failed: {submit_resp.json()}"
-
-    # === STEP 6: Add prompts to the group ===
+    # Add prompts to group
     add_response = client.post(
         f"/prompt-groups/api/v1/groups/{group_id}/prompts",
         json={"prompt_ids": prompt_ids},
@@ -103,7 +98,24 @@ def test_complete_report_user_flow(client, eval_auth_headers, create_verified_us
     assert add_response.status_code == 200, f"Add prompts failed: {add_response.json()}"
     assert add_response.json()["added_count"] == 2
 
-    # === STEP 7: Compare (get selection options) ===
+    # Request fresh execution for first 2 prompts
+    request_resp = client.post(
+        "/execution/api/v1/request-fresh",
+        json={"prompt_ids": prompt_ids},
+        headers=auth_headers,
+    )
+    assert request_resp.status_code == 200, f"Request fresh failed: {request_resp.json()}"
+    batch_id = request_resp.json()["batch_id"]
+
+    # Simulate webhook for first 2 prompts
+    webhook_items = [
+        {"prompt": prompts_dict[pid], "answer_text": f"Test response for prompt {i}", "citations": []}
+        for i, pid in enumerate(prompt_ids)
+    ]
+    webhook_resp = simulate_webhook(batch_id, webhook_items)
+    assert webhook_resp.status_code == 200, f"Webhook failed: {webhook_resp.json()}"
+
+    # === STEP 6: Compare (get selection options) ===
     compare_response = client.get(
         f"/reports/api/v1/groups/{group_id}/compare",
         headers=auth_headers,
@@ -123,7 +135,7 @@ def test_complete_report_user_flow(client, eval_auth_headers, create_verified_us
     # Build selections from compare response
     selections = _build_selections_from_compare(compare)
 
-    # === STEP 8: Generate first report with selections (charges for fresh) ===
+    # === STEP 7: Generate first report with selections (charges for fresh) ===
     report_response = client.post(
         f"/reports/api/v1/groups/{group_id}/generate",
         json={"selections": selections},
@@ -142,7 +154,7 @@ def test_complete_report_user_flow(client, eval_auth_headers, create_verified_us
     assert first_report_cost == expected_cost, \
         f"Expected cost {expected_cost}, got {first_report_cost}"
 
-    # === STEP 9: Check balance after first report ===
+    # === STEP 8: Check balance after first report ===
     balance_response = client.get("/billing/api/v1/balance", headers=auth_headers)
     assert balance_response.status_code == 200
     balance_after_first = Decimal(str(balance_response.json()["available_balance"]))
@@ -150,7 +162,7 @@ def test_complete_report_user_flow(client, eval_auth_headers, create_verified_us
     assert balance_after_first == expected_after_first, \
         f"Expected {expected_after_first}, got {balance_after_first}"
 
-    # === STEP 10: Generate same report again - should be FREE ===
+    # === STEP 9: Generate same report again - should be FREE ===
     # Get fresh selections (should have no fresh options since we just consumed them)
     compare2_response = client.get(
         f"/reports/api/v1/groups/{group_id}/compare",
@@ -184,31 +196,9 @@ def test_complete_report_user_flow(client, eval_auth_headers, create_verified_us
     assert balance_after_second == balance_after_first, \
         f"Expected {balance_after_first} (unchanged), got {balance_after_second}"
 
-    # === STEP 11: Poll and complete a 3rd evaluation (new fresh data) ===
-    poll_resp = client.post(
-        "/evaluations/api/v1/poll",
-        json={"assistant_name": "ChatGPT", "plan_name": "PLUS"},
-        headers=eval_auth_headers,
-    )
-    assert poll_resp.status_code == 200, f"Poll for 3rd failed: {poll_resp.json()}"
-    poll_data = poll_resp.json()
-    new_prompt_id = poll_data["prompt_id"]
-    new_eval_id = poll_data["evaluation_id"]
-
-    # Complete it
-    submit_resp = client.post(
-        "/evaluations/api/v1/submit",
-        json={
-            "evaluation_id": new_eval_id,
-            "answer": {
-                "response": "Test response for third prompt",
-                "citations": [],
-                "timestamp": "2024-01-01T00:00:00Z",
-            },
-        },
-        headers=eval_auth_headers,
-    )
-    assert submit_resp.status_code == 200, f"Submit 3rd failed: {submit_resp.json()}"
+    # === STEP 10: Add a 3rd prompt with new evaluation ===
+    third_prompt = prompts[2]
+    new_prompt_id = third_prompt["id"]
 
     # Add the new prompt to the group
     add_response = client.post(
@@ -218,7 +208,23 @@ def test_complete_report_user_flow(client, eval_auth_headers, create_verified_us
     )
     assert add_response.status_code == 200, f"Add 3rd prompt failed: {add_response.json()}"
 
-    # === STEP 12: Compare - should show fresh evaluations for new prompt ===
+    # Request fresh execution for the new prompt
+    request_resp = client.post(
+        "/execution/api/v1/request-fresh",
+        json={"prompt_ids": [new_prompt_id]},
+        headers=auth_headers,
+    )
+    assert request_resp.status_code == 200, f"Request fresh for 3rd failed: {request_resp.json()}"
+    batch_id = request_resp.json()["batch_id"]
+
+    # Simulate webhook for 3rd prompt
+    webhook_items = [
+        {"prompt": prompts_dict[new_prompt_id], "answer_text": "Test response for third prompt", "citations": []}
+    ]
+    webhook_resp = simulate_webhook(batch_id, webhook_items)
+    assert webhook_resp.status_code == 200, f"Webhook for 3rd failed: {webhook_resp.json()}"
+
+    # === STEP 11: Compare - should show fresh evaluations for new prompt ===
     compare3_response = client.get(
         f"/reports/api/v1/groups/{group_id}/compare",
         headers=auth_headers,
@@ -233,7 +239,7 @@ def test_complete_report_user_flow(client, eval_auth_headers, create_verified_us
     # Build selections for third report
     selections3 = _build_selections_from_compare(compare3)
 
-    # === STEP 13: Generate third report (charges for fresh evaluations) ===
+    # === STEP 12: Generate third report (charges for fresh evaluations) ===
     report3_response = client.post(
         f"/reports/api/v1/groups/{group_id}/generate",
         json={"selections": selections3},
@@ -252,7 +258,7 @@ def test_complete_report_user_flow(client, eval_auth_headers, create_verified_us
     assert third_report_cost == expected_third_cost, \
         f"Expected {expected_third_cost}, got {third_report_cost}"
 
-    # === STEP 14: Check final balance ===
+    # === STEP 13: Check final balance ===
     balance_response = client.get("/billing/api/v1/balance", headers=auth_headers)
     assert balance_response.status_code == 200
     final_balance = Decimal(str(balance_response.json()["available_balance"]))
@@ -266,7 +272,7 @@ def test_complete_report_user_flow(client, eval_auth_headers, create_verified_us
     expected_spent = first_report_cost + third_report_cost
     assert total_spent == expected_spent, f"Expected to spend {expected_spent}, spent {total_spent}"
 
-    # === STEP 15: Generate one more report - should be FREE again ===
+    # === STEP 14: Generate one more report - should be FREE again ===
     # Get fresh selections (should have no fresh options)
     compare4_response = client.get(
         f"/reports/api/v1/groups/{group_id}/compare",

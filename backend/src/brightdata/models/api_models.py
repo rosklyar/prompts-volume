@@ -32,7 +32,6 @@ class BrightDataWebhookItem(BaseModel):
     citations: list[BrightDataCitation] | None = None
     links_attached: list[dict[str, Any]] | None = None
     search_sources: list[dict[str, Any]] = Field(default_factory=list)
-    web_search_query: str | None = None
     country: str | None = None
 
 

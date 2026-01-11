@@ -58,13 +58,13 @@ from src.reports.services.export import (
     get_json_formatter,
     get_report_export_service,
 )
+from src.brightdata.services.batch_service import BrightDataBatchService
 from src.execution.models.api_models import (
     EvaluationOption,
     PromptReportData,
     ReportDataResponse,
 )
 from src.execution.models.domain import FreshnessCategory
-from src.execution.services.execution_queue_service import ExecutionQueueService
 from src.execution.services.freshness_service import FreshnessService
 
 router = APIRouter(prefix="/reports/api/v1", tags=["reports"])
@@ -79,14 +79,6 @@ SelectionPricingDep = Annotated[SelectionPricingService, Depends(get_selection_p
 SelectionValidatorDep = Annotated[SelectionValidatorService, Depends(get_selection_validator)]
 ReportExportServiceDep = Annotated[ReportExportService, Depends(get_report_export_service)]
 JsonFormatterDep = Annotated[JsonExportFormatter, Depends(get_json_formatter)]
-
-
-def get_execution_queue_service(
-    evals_session=Depends(lambda: None),  # Will be injected in endpoint
-    prompts_session=Depends(lambda: None),
-) -> ExecutionQueueService:
-    """Dependency will be created in endpoint with proper sessions."""
-    raise NotImplementedError("Use in endpoint")
 
 
 def get_freshness_service() -> FreshnessService:
@@ -114,13 +106,13 @@ async def get_report_data(
     Returns all prompts in the group with:
     - Available evaluations (answers) with timestamps
     - Freshness category and default selection logic
-    - Queue status for pending executions
+    - Queue status for pending executions (via BrightData batches)
     - Billing info (whether user already paid for each evaluation)
     """
     from src.database.evals_models import (
+        BrightDataBatch,
+        BrightDataBatchStatus,
         ConsumedEvaluation,
-        ExecutionQueue,
-        ExecutionQueueStatus,
         PromptEvaluation,
         EvaluationStatus,
     )
@@ -142,10 +134,6 @@ async def get_report_data(
     prompt_ids = list(bindings_result.scalars().all())
 
     if not prompt_ids:
-        queue_service = ExecutionQueueService(
-            evals_session, prompts_session, settings.evaluation_timeout_hours
-        )
-        global_queue_size = await queue_service.get_pending_count()
         return ReportDataResponse(
             group_id=group_id,
             prompts=[],
@@ -156,7 +144,7 @@ async def get_report_data(
             prompts_very_stale=0,
             prompts_no_data=0,
             prompts_pending_execution=0,
-            global_queue_size=global_queue_size,
+            global_queue_size=0,
         )
 
     # Get prompts
@@ -190,27 +178,14 @@ async def get_report_data(
     )
     consumed_eval_ids = set(consumed_result.scalars().all())
 
-    # Get pending/in_progress queue entries for these prompts
-    queue_result = await evals_session.execute(
-        select(ExecutionQueue.prompt_id)
-        .where(
-            ExecutionQueue.prompt_id.in_(prompt_ids),
-            ExecutionQueue.status.in_([
-                ExecutionQueueStatus.PENDING,
-                ExecutionQueueStatus.IN_PROGRESS,
-            ]),
-        )
-    )
-    pending_prompt_ids = set(queue_result.scalars().all())
+    # Get pending prompt IDs from BrightData batches
+    batch_service = BrightDataBatchService(evals_session)
+    pending_prompt_ids = await batch_service.get_pending_prompt_ids(prompt_ids)
 
-    # Get global queue size
-    queue_service = ExecutionQueueService(
-        evals_session, prompts_session, settings.evaluation_timeout_hours
-    )
-    global_queue_size = await queue_service.get_pending_count()
-    wait_str = freshness_service.format_wait_time(
-        freshness_service.estimate_wait_time_seconds(global_queue_size)
-    )
+    # Calculate estimated wait time for pending prompts
+    pending_count = len(pending_prompt_ids)
+    wait_seconds = pending_count * settings.brightdata_seconds_per_prompt
+    wait_str = freshness_service.format_wait_time(wait_seconds) if pending_count > 0 else None
 
     # Build response
     prompts_data: list[PromptReportData] = []
@@ -293,7 +268,7 @@ async def get_report_data(
         prompts_very_stale=counts["very_stale"],
         prompts_no_data=counts["none"],
         prompts_pending_execution=counts["pending"],
-        global_queue_size=global_queue_size,
+        global_queue_size=pending_count,  # Now represents pending BrightData items
     )
 
 

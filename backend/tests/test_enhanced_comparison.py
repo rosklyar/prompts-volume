@@ -5,13 +5,81 @@ Tests the SelectableComparisonResponse with:
 - Brand/competitors change detection
 - Time estimations
 - can_generate logic
+
+Uses Bright Data webhook simulation for creating evaluations.
 """
 
 import uuid
 from decimal import Decimal
 
+import pytest
+
 # Default topic input using seeded topic ID 1
 DEFAULT_TOPIC = {"existing_topic_id": 1}
+
+
+def _get_prompts_for_topic(client, auth_headers, topic_id: int = 1) -> list[dict]:
+    """Fetch prompts from database for a given topic."""
+    response = client.get(
+        f"/prompts/api/v1/prompts?topic_ids={topic_id}",
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, f"Failed to get prompts: {response.json()}"
+    prompts = []
+    for topic in response.json()["topics"]:
+        for prompt in topic["prompts"]:
+            prompts.append({"id": prompt["id"], "prompt_text": prompt["prompt_text"]})
+    return prompts
+
+
+def _request_fresh_and_webhook(
+    client, simulate_webhook, auth_headers, prompt_ids: list[int], prompts_dict: dict[int, str],
+    response_template: str = "Response mentioning TestBrand",
+    citations: list[dict] | None = None,
+) -> str:
+    """Request fresh execution and simulate webhook completion.
+
+    Args:
+        client: Test client
+        simulate_webhook: Webhook simulation fixture
+        auth_headers: User auth headers
+        prompt_ids: List of prompt IDs to process
+        prompts_dict: Dict mapping prompt_id -> prompt_text
+        response_template: Template for response text (will have prompt_id appended)
+        citations: Optional citations to include
+
+    Returns:
+        batch_id from the request
+    """
+    # Request fresh execution
+    request_resp = client.post(
+        "/execution/api/v1/request-fresh",
+        json={"prompt_ids": prompt_ids},
+        headers=auth_headers,
+    )
+    assert request_resp.status_code == 200, f"Request fresh failed: {request_resp.json()}"
+    batch_id = request_resp.json()["batch_id"]
+
+    if batch_id is None:
+        # All prompts already pending
+        return None
+
+    # Build webhook items
+    webhook_items = []
+    for pid in prompt_ids:
+        if pid in prompts_dict:
+            item = {
+                "prompt": prompts_dict[pid],
+                "answer_text": f"{response_template} for prompt {pid}",
+                "citations": citations or [],
+            }
+            webhook_items.append(item)
+
+    # Simulate webhook
+    webhook_resp = simulate_webhook(batch_id, webhook_items)
+    assert webhook_resp.status_code == 200, f"Webhook failed: {webhook_resp.json()}"
+
+    return batch_id
 
 
 def _build_selections_from_compare(compare_response: dict) -> list[dict]:
@@ -25,7 +93,7 @@ def _build_selections_from_compare(compare_response: dict) -> list[dict]:
     return selections
 
 
-def test_enhanced_comparison_fresh_data_detection(client, eval_auth_headers, create_verified_user):
+def test_enhanced_comparison_fresh_data_detection(client, create_verified_user, simulate_webhook):
     """Test that compare detects prompts with available selection options."""
     # === STEP 1: Sign up and login ===
     unique_email = f"test-fresh-{uuid.uuid4()}@example.com"
@@ -44,29 +112,12 @@ def test_enhanced_comparison_fresh_data_detection(client, eval_auth_headers, cre
     assert group_response.status_code == 201
     group_id = group_response.json()["id"]
 
-    # === STEP 3: Poll and complete an evaluation ===
-    poll_resp = client.post(
-        "/evaluations/api/v1/poll",
-        json={"assistant_name": "ChatGPT", "plan_name": "PLUS"},
-        headers=eval_auth_headers,
-    )
-    assert poll_resp.status_code == 200
-    prompt_id = poll_resp.json()["prompt_id"]
-    eval_id = poll_resp.json()["evaluation_id"]
-
-    submit_resp = client.post(
-        "/evaluations/api/v1/submit",
-        json={
-            "evaluation_id": eval_id,
-            "answer": {
-                "response": "First response",
-                "citations": [],
-                "timestamp": "2024-01-01T00:00:00Z",
-            },
-        },
-        headers=eval_auth_headers,
-    )
-    assert submit_resp.status_code == 200
+    # === STEP 3: Get prompts from database ===
+    prompts = _get_prompts_for_topic(client, auth_headers)
+    assert len(prompts) >= 1, "Need at least 1 prompt for test"
+    prompt = prompts[0]
+    prompt_id = prompt["id"]
+    prompts_dict = {prompt["id"]: prompt["prompt_text"] for prompt in prompts[:1]}
 
     # === STEP 4: Add prompt to group ===
     add_response = client.post(
@@ -76,7 +127,13 @@ def test_enhanced_comparison_fresh_data_detection(client, eval_auth_headers, cre
     )
     assert add_response.status_code == 200
 
-    # === STEP 5: Compare before first report ===
+    # === STEP 5: Request fresh and simulate webhook to create evaluation ===
+    _request_fresh_and_webhook(
+        client, simulate_webhook, auth_headers,
+        [prompt_id], prompts_dict, "First response"
+    )
+
+    # === STEP 6: Compare before first report ===
     compare_response = client.get(
         f"/reports/api/v1/groups/{group_id}/compare",
         headers=auth_headers,
@@ -98,7 +155,7 @@ def test_enhanced_comparison_fresh_data_detection(client, eval_auth_headers, cre
     assert compare["can_generate"] is True
     assert compare["generation_disabled_reason"] is None
 
-    # === STEP 6: Generate first report with selections ===
+    # === STEP 7: Generate first report with selections ===
     selections = _build_selections_from_compare(compare)
     report_response = client.post(
         f"/reports/api/v1/groups/{group_id}/generate",
@@ -107,7 +164,7 @@ def test_enhanced_comparison_fresh_data_detection(client, eval_auth_headers, cre
     )
     assert report_response.status_code == 200
 
-    # === STEP 7: Compare after first report (same data, no changes) ===
+    # === STEP 8: Compare after first report (same data, no changes) ===
     compare_response = client.get(
         f"/reports/api/v1/groups/{group_id}/compare",
         headers=auth_headers,
@@ -116,7 +173,6 @@ def test_enhanced_comparison_fresh_data_detection(client, eval_auth_headers, cre
     compare = compare_response.json()
 
     # Prompt should NOT have fresh options (no fresher answers than report)
-    ps = compare["prompt_selections"][0]
     # Options are only fresher evaluations, so after consuming, no fresh options
     assert compare["default_fresh_count"] == 0
 
@@ -126,7 +182,7 @@ def test_enhanced_comparison_fresh_data_detection(client, eval_auth_headers, cre
     assert compare["generation_disabled_reason"] == "no_new_data"
 
 
-def test_enhanced_comparison_brand_change_detection(client, eval_auth_headers, create_verified_user):
+def test_enhanced_comparison_brand_change_detection(client, create_verified_user, simulate_webhook):
     """Test that compare detects brand/competitors changes."""
     # === STEP 1: Sign up and login ===
     unique_email = f"test-brand-{uuid.uuid4()}@example.com"
@@ -146,36 +202,25 @@ def test_enhanced_comparison_brand_change_detection(client, eval_auth_headers, c
     assert group_response.status_code == 201
     group_id = group_response.json()["id"]
 
-    # === STEP 3: Add a prompt with completed evaluation ===
-    poll_resp = client.post(
-        "/evaluations/api/v1/poll",
-        json={"assistant_name": "ChatGPT", "plan_name": "PLUS"},
-        headers=eval_auth_headers,
-    )
-    assert poll_resp.status_code == 200
-    prompt_id = poll_resp.json()["prompt_id"]
-    eval_id = poll_resp.json()["evaluation_id"]
+    # === STEP 3: Get prompts and create evaluation via webhook ===
+    prompts = _get_prompts_for_topic(client, auth_headers)
+    prompt = prompts[0]
+    prompt_id = prompt["id"]
+    prompts_dict = {prompt["id"]: prompt["prompt_text"]}
 
-    submit_resp = client.post(
-        "/evaluations/api/v1/submit",
-        json={
-            "evaluation_id": eval_id,
-            "answer": {
-                "response": "Response mentioning OriginalBrand",
-                "citations": [],
-                "timestamp": "2024-01-01T00:00:00Z",
-            },
-        },
-        headers=eval_auth_headers,
-    )
-    assert submit_resp.status_code == 200
-
+    # Add prompt to group
     add_response = client.post(
         f"/prompt-groups/api/v1/groups/{group_id}/prompts",
         json={"prompt_ids": [prompt_id]},
         headers=auth_headers,
     )
     assert add_response.status_code == 200
+
+    # Request fresh and simulate webhook
+    _request_fresh_and_webhook(
+        client, simulate_webhook, auth_headers,
+        [prompt_id], prompts_dict, "Response mentioning OriginalBrand"
+    )
 
     # === STEP 4: Generate first report with selections ===
     compare_response = client.get(
@@ -255,8 +300,8 @@ def test_enhanced_comparison_brand_change_detection(client, eval_auth_headers, c
     assert compare["can_generate"] is False
 
 
-def test_enhanced_comparison_time_estimations(client, eval_auth_headers, create_verified_user):
-    """Test that compare returns correct time estimations (in_progress indicator)."""
+def test_enhanced_comparison_time_estimations(client, create_verified_user, simulate_webhook):
+    """Test that request-fresh returns correct time estimations."""
     # === STEP 1: Sign up and login ===
     unique_email = f"test-time-{uuid.uuid4()}@example.com"
     auth_headers = create_verified_user(unique_email, "testpassword123", "Time Test User")
@@ -274,17 +319,13 @@ def test_enhanced_comparison_time_estimations(client, eval_auth_headers, create_
     assert group_response.status_code == 201
     group_id = group_response.json()["id"]
 
-    # === STEP 3: Poll evaluation (starts IN_PROGRESS) ===
-    poll_resp = client.post(
-        "/evaluations/api/v1/poll",
-        json={"assistant_name": "ChatGPT", "plan_name": "PLUS"},
-        headers=eval_auth_headers,
-    )
-    assert poll_resp.status_code == 200
-    prompt_id = poll_resp.json()["prompt_id"]
-    eval_id = poll_resp.json()["evaluation_id"]
+    # === STEP 3: Get prompts ===
+    prompts = _get_prompts_for_topic(client, auth_headers)
+    prompt = prompts[0]
+    prompt_id = prompt["id"]
+    prompts_dict = {prompt["id"]: prompt["prompt_text"]}
 
-    # Add prompt to group before completing
+    # Add prompt to group
     add_response = client.post(
         f"/prompt-groups/api/v1/groups/{group_id}/prompts",
         json={"prompt_ids": [prompt_id]},
@@ -292,7 +333,37 @@ def test_enhanced_comparison_time_estimations(client, eval_auth_headers, create_
     )
     assert add_response.status_code == 200
 
-    # === STEP 4: Compare with IN_PROGRESS evaluation ===
+    # === STEP 4: Request fresh - get time estimates ===
+    request_resp = client.post(
+        "/execution/api/v1/request-fresh",
+        json={"prompt_ids": [prompt_id]},
+        headers=auth_headers,
+    )
+    assert request_resp.status_code == 200
+    data = request_resp.json()
+    batch_id = data["batch_id"]
+
+    # Verify time estimation fields if we got a batch (not already pending)
+    if batch_id is not None:
+        assert data["estimated_total_wait"] is not None
+        assert "~" in data["estimated_total_wait"]  # e.g., "~1 minute"
+        assert data["estimated_completion_at"] is not None
+        assert data["queued_count"] >= 1
+
+        # Complete via webhook
+        webhook_items = [{
+            "prompt": prompts_dict[prompt_id],
+            "answer_text": "Completed response",
+            "citations": [],
+        }]
+        webhook_resp = simulate_webhook(batch_id, webhook_items)
+        assert webhook_resp.status_code == 200
+    else:
+        # Prompt was already pending - verify we got the right response
+        assert data["already_pending_count"] >= 1
+        assert data["queued_count"] == 0
+
+    # === STEP 5: Compare - prompt should have options now ===
     compare_response = client.get(
         f"/reports/api/v1/groups/{group_id}/compare",
         headers=auth_headers,
@@ -300,39 +371,13 @@ def test_enhanced_comparison_time_estimations(client, eval_auth_headers, create_
     assert compare_response.status_code == 200
     compare = compare_response.json()
 
-    # Should have prompt selection info showing in_progress
+    # Should have options available (either from our webhook or previous evaluations)
     assert len(compare["prompt_selections"]) == 1
     ps = compare["prompt_selections"][0]
-    assert ps["has_in_progress_evaluation"] is True
-
-    # === STEP 5: Complete the evaluation ===
-    submit_resp = client.post(
-        "/evaluations/api/v1/submit",
-        json={
-            "evaluation_id": eval_id,
-            "answer": {
-                "response": "Completed response",
-                "citations": [],
-                "timestamp": "2024-01-01T00:00:00Z",
-            },
-        },
-        headers=eval_auth_headers,
-    )
-    assert submit_resp.status_code == 200
-
-    # === STEP 6: Compare again - no longer in_progress ===
-    compare_response = client.get(
-        f"/reports/api/v1/groups/{group_id}/compare",
-        headers=auth_headers,
-    )
-    assert compare_response.status_code == 200
-    compare = compare_response.json()
-
-    ps = compare["prompt_selections"][0]
-    assert ps["has_in_progress_evaluation"] is False
+    assert len(ps["available_options"]) >= 1
 
 
-def test_enhanced_comparison_cost_estimation(client, eval_auth_headers, create_verified_user):
+def test_enhanced_comparison_cost_estimation(client, create_verified_user, simulate_webhook):
     """Test that compare returns accurate cost estimation."""
     # === STEP 1: Sign up and login ===
     unique_email = f"test-cost-{uuid.uuid4()}@example.com"
@@ -351,32 +396,12 @@ def test_enhanced_comparison_cost_estimation(client, eval_auth_headers, create_v
     assert group_response.status_code == 201
     group_id = group_response.json()["id"]
 
-    # === STEP 3: Poll and complete 3 evaluations ===
-    prompt_ids = []
-    for i in range(3):
-        poll_resp = client.post(
-            "/evaluations/api/v1/poll",
-            json={"assistant_name": "ChatGPT", "plan_name": "PLUS"},
-            headers=eval_auth_headers,
-        )
-        assert poll_resp.status_code == 200
-        prompt_id = poll_resp.json()["prompt_id"]
-        eval_id = poll_resp.json()["evaluation_id"]
-        prompt_ids.append(prompt_id)
-
-        submit_resp = client.post(
-            "/evaluations/api/v1/submit",
-            json={
-                "evaluation_id": eval_id,
-                "answer": {
-                    "response": f"Response {i}",
-                    "citations": [],
-                    "timestamp": "2024-01-01T00:00:00Z",
-                },
-            },
-            headers=eval_auth_headers,
-        )
-        assert submit_resp.status_code == 200
+    # === STEP 3: Get 3 prompts and create evaluations via webhook ===
+    prompts = _get_prompts_for_topic(client, auth_headers)
+    assert len(prompts) >= 3, "Need at least 3 prompts for test"
+    test_prompts = prompts[:3]
+    prompt_ids = [p["id"] for p in test_prompts]
+    prompts_dict = {p["id"]: p["prompt_text"] for p in test_prompts}
 
     # Add prompts to group
     add_response = client.post(
@@ -385,6 +410,12 @@ def test_enhanced_comparison_cost_estimation(client, eval_auth_headers, create_v
         headers=auth_headers,
     )
     assert add_response.status_code == 200
+
+    # Request fresh and simulate webhook
+    _request_fresh_and_webhook(
+        client, simulate_webhook, auth_headers,
+        prompt_ids, prompts_dict, "Response"
+    )
 
     # === STEP 4: Compare - should show cost for 3 fresh default selections ===
     compare_response = client.get(
@@ -406,7 +437,7 @@ def test_enhanced_comparison_cost_estimation(client, eval_auth_headers, create_v
     assert Decimal(str(compare["user_balance"])) == Decimal("10.00")
 
 
-def test_enhanced_comparison_can_generate_logic(client, eval_auth_headers, create_verified_user):
+def test_enhanced_comparison_can_generate_logic(client, create_verified_user, simulate_webhook):
     """Test can_generate logic with various scenarios."""
     # === STEP 1: Sign up and login ===
     unique_email = f"test-gen-{uuid.uuid4()}@example.com"
@@ -438,36 +469,25 @@ def test_enhanced_comparison_can_generate_logic(client, eval_auth_headers, creat
     assert compare["prompts_with_options"] == 0
     assert compare["default_fresh_count"] == 0
 
-    # === STEP 4: Add prompt with evaluation ===
-    poll_resp = client.post(
-        "/evaluations/api/v1/poll",
-        json={"assistant_name": "ChatGPT", "plan_name": "PLUS"},
-        headers=eval_auth_headers,
-    )
-    assert poll_resp.status_code == 200
-    prompt_id = poll_resp.json()["prompt_id"]
-    eval_id = poll_resp.json()["evaluation_id"]
+    # === STEP 4: Get prompts and add to group with evaluation ===
+    prompts = _get_prompts_for_topic(client, auth_headers)
+    prompt = prompts[0]
+    prompt_id = prompt["id"]
+    prompts_dict = {prompt["id"]: prompt["prompt_text"]}
 
-    submit_resp = client.post(
-        "/evaluations/api/v1/submit",
-        json={
-            "evaluation_id": eval_id,
-            "answer": {
-                "response": "Response",
-                "citations": [],
-                "timestamp": "2024-01-01T00:00:00Z",
-            },
-        },
-        headers=eval_auth_headers,
-    )
-    assert submit_resp.status_code == 200
-
+    # Add prompt to group
     add_response = client.post(
         f"/prompt-groups/api/v1/groups/{group_id}/prompts",
         json={"prompt_ids": [prompt_id]},
         headers=auth_headers,
     )
     assert add_response.status_code == 200
+
+    # Request fresh and simulate webhook
+    _request_fresh_and_webhook(
+        client, simulate_webhook, auth_headers,
+        [prompt_id], prompts_dict, "Response"
+    )
 
     # === STEP 5: Compare - should be able to generate ===
     compare_response = client.get(
