@@ -2,11 +2,12 @@
 
 Admin-only endpoints for:
 - Creating topics
-- Analyzing prompts for similarity
 - Uploading prompts to topics
 
 Note: GET endpoints for topics, countries, and business domains have been
 moved to the shared reference router (/api/v1/reference/*) for all authenticated users.
+Note: Prompt analysis endpoint has been moved to the shared batch router
+(/prompts/api/v1/batch/analyze) for all authenticated users.
 """
 
 from typing import Annotated
@@ -25,7 +26,6 @@ from src.admin.models.api_models import (
 from src.auth.deps import get_current_active_superuser
 from src.database import get_async_session
 from src.database.models import BusinessDomain, Country, Topic
-from src.prompts.batch.models import BatchAnalyzeRequest, BatchAnalyzeResponse
 from src.prompts.batch.service import BatchPromptsService, get_batch_prompts_service
 
 router = APIRouter(
@@ -80,25 +80,6 @@ async def create_topic(
         country_id=topic.country_id,
         country_name=country.name,
     )
-
-
-@router.post("/prompts/analyze", response_model=BatchAnalyzeResponse)
-async def analyze_prompts(
-    request: BatchAnalyzeRequest,
-    batch_service: BatchPromptsServiceDep,
-):
-    """Analyze prompts for similarity matches before uploading.
-
-    For each prompt:
-    - Returns top 3 similar prompts if similarity >= 90%
-    - Marks as duplicate if similarity >= 99.5%
-
-    Use this endpoint to preview matches before confirming upload.
-    """
-    try:
-        return await batch_service.analyze_batch(request.prompts)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/prompts/upload", response_model=AdminUploadResponse)

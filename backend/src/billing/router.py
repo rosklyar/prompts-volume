@@ -176,41 +176,6 @@ async def preview_charge(
         raise to_http_exception(e)
 
 
-@router.post("/grant-signup-credits", response_model=TopUpResponse)
-async def grant_signup_credits(
-    current_user: CurrentUser,
-    balance_service: BalanceServiceDep,
-):
-    """Grant initial signup credits to a user.
-
-    This is typically called automatically during signup.
-    Credits expire after the configured number of days.
-    """
-    try:
-        expires_at = datetime.now(timezone.utc) + timedelta(
-            days=settings.billing_signup_credits_expiry_days
-        )
-
-        transaction = await balance_service.credit(
-            user_id=current_user.id,
-            amount=Decimal(str(settings.billing_signup_credits)),
-            reason="Signup bonus credits",
-            source="signup_bonus",
-            expires_at=expires_at,
-            reference_type="signup",
-            reference_id=current_user.id,
-        )
-
-        return TopUpResponse(
-            transaction_id=transaction.id,
-            new_balance=transaction.balance_after,
-            amount_added=Decimal(str(settings.billing_signup_credits)),
-            expires_at=expires_at,
-        )
-    except BillingError as e:
-        raise to_http_exception(e)
-
-
 @router.get("/generation/price", response_model=GenerationPriceResponse)
 async def get_generation_price(
     current_user: CurrentUser,

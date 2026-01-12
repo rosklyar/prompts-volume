@@ -5,7 +5,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   groupsApi,
-  evaluationsApi,
   type GroupDetail,
 } from "@/client/api"
 import { reportKeys } from "@/hooks/useReports"
@@ -245,43 +244,6 @@ export function useMovePrompt() {
       queryClient.invalidateQueries({ queryKey: reportKeys.compare(sourceGroupId) })
       queryClient.invalidateQueries({ queryKey: reportKeys.compare(targetGroupId) })
       queryClient.invalidateQueries({ queryKey: billingKeys.reportPreview(sourceGroupId) })
-      queryClient.invalidateQueries({ queryKey: billingKeys.reportPreview(targetGroupId) })
-    },
-  })
-}
-
-// ===== Priority Prompts =====
-
-export function useAddPriorityPrompt() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: async ({
-      promptText,
-      targetGroupId,
-    }: {
-      promptText: string
-      targetGroupId: number
-    }) => {
-      // First add as priority prompt to get the prompt_id
-      const result = await evaluationsApi.addPriorityPrompts([promptText])
-      const promptId = result.prompts[0]?.prompt_id
-
-      if (promptId) {
-        // Then add to the target group
-        await groupsApi.addPromptsToGroup(targetGroupId, [promptId])
-      }
-
-      return result
-    },
-    onSuccess: (_data, variables) => {
-      const { targetGroupId } = variables
-      // Invalidate all group queries to ensure UI updates
-      queryClient.invalidateQueries({ queryKey: groupKeys.all })
-      // Explicitly invalidate group details to update prompts in group cards
-      queryClient.invalidateQueries({ queryKey: groupKeys.details() })
-      // Invalidate report comparison to detect new data for Report button
-      queryClient.invalidateQueries({ queryKey: reportKeys.compare(targetGroupId) })
       queryClient.invalidateQueries({ queryKey: billingKeys.reportPreview(targetGroupId) })
     },
   })

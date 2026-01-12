@@ -76,33 +76,3 @@ export interface RequestFreshExecutionResponse {
   estimated_completion_at: string // ISO datetime
   items: QueuedItemInfo[]
 }
-
-// === Queue Status ===
-
-export interface QueueStatusItem {
-  prompt_id: number
-  status: "pending" | "in_progress" | "completed" | "failed" | "cancelled"
-  requested_at: string // ISO datetime
-  estimated_wait: string | null
-}
-
-export interface CompletedItemInfo {
-  prompt_id: number
-  evaluation_id: number
-  completed_at: string // ISO datetime
-}
-
-export interface QueueStatusResponse {
-  pending_items: QueueStatusItem[]
-  in_progress_items: QueueStatusItem[]
-  recently_completed: CompletedItemInfo[]
-  total_pending: number
-  global_queue_size: number
-}
-
-// === Cancel Execution ===
-
-export interface CancelExecutionResponse {
-  cancelled_count: number
-  prompt_ids: number[]
-}

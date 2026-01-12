@@ -8,7 +8,7 @@ import {
   useAddPromptsToGroupFromInspiration,
 } from "@/hooks/useInspiration"
 import { useGroups, useCreateGroup } from "@/hooks/useGroups"
-import { evaluationsApi } from "@/client/api"
+import { batchApi } from "@/client/api"
 import { GroupSelector } from "@/components/groups/GroupSelector"
 import { GeneratedPromptReviewCard } from "../GeneratedPromptReviewCard"
 import { getGroupColor } from "@/components/groups/constants"
@@ -135,14 +135,12 @@ export function GeneratedReviewStep({ state, dispatch, onClose }: GeneratedRevie
         })
       }
 
-      // Create new prompts via priority prompts endpoint and add to group
+      // Create new prompts via batch API (also binds to group)
       if (newPromptTexts.length > 0) {
-        const result = await evaluationsApi.addPriorityPrompts(newPromptTexts)
-        const newPromptIds = result.prompts.map((p) => p.prompt_id)
-
-        await addPromptsToGroup.mutateAsync({
-          groupId,
-          promptIds: newPromptIds,
+        await batchApi.create({
+          prompts: newPromptTexts,
+          selected_indices: newPromptTexts.map((_, i) => i),
+          group_id: groupId,
         })
       }
 

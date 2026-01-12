@@ -31,8 +31,6 @@ import type {
 import type {
   ReportDataResponse,
   RequestFreshExecutionResponse,
-  QueueStatusResponse,
-  CancelExecutionResponse,
 } from "@/types/execution"
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000"
@@ -300,22 +298,6 @@ export interface EvaluationAnswer {
   timestamp: string
 }
 
-export interface PriorityPromptResult {
-  prompt_id: number
-  prompt_text: string
-  topic_id: number | null
-  was_duplicate: boolean
-  similarity_score: number | null
-}
-
-export interface AddPriorityPromptsResponse {
-  created_count: number
-  reused_count: number
-  total_count: number
-  prompts: PriorityPromptResult[]
-  request_id: string
-}
-
 // ===== Batch Prompts API (shared) =====
 
 export const batchApi = {
@@ -423,28 +405,6 @@ export const groupsApi = {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt_ids: promptIds }),
-      }
-    )
-    return response.json()
-  },
-}
-
-// ===== Evaluations API =====
-
-export const evaluationsApi = {
-  async addPriorityPrompts(
-    prompts: string[],
-    topicId?: number
-  ): Promise<AddPriorityPromptsResponse> {
-    const response = await fetchWithAuth(
-      "/evaluations/api/v1/priority-prompts",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompts: prompts.map((prompt_text) => ({ prompt_text })),
-          topic_id: topicId,
-        }),
       }
     )
     return response.json()
@@ -739,37 +699,6 @@ export const executionApi = {
    */
   async requestFresh(promptIds: number[]): Promise<RequestFreshExecutionResponse> {
     const response = await fetchWithAuth("/execution/api/v1/request-fresh", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt_ids: promptIds }),
-    })
-    return response.json()
-  },
-
-  /**
-   * Get current queue status for the user
-   */
-  async getQueueStatus(): Promise<QueueStatusResponse> {
-    const response = await fetchWithAuth("/execution/api/v1/queue/status")
-    return response.json()
-  },
-
-  /**
-   * Cancel a single pending execution
-   */
-  async cancelExecution(promptId: number): Promise<CancelExecutionResponse> {
-    const response = await fetchWithAuth(
-      `/execution/api/v1/queue/${promptId}`,
-      { method: "DELETE" }
-    )
-    return response.json()
-  },
-
-  /**
-   * Cancel multiple pending executions
-   */
-  async cancelExecutionsBatch(promptIds: number[]): Promise<CancelExecutionResponse> {
-    const response = await fetchWithAuth("/execution/api/v1/queue/cancel", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt_ids: promptIds }),
