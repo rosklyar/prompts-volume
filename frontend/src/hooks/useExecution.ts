@@ -21,11 +21,18 @@ export const executionKeys = {
 /**
  * Fetch report data with freshness metadata for a group
  * Returns prompts with their evaluations, freshness categories, and default selections
+ * @param groupId - The group ID
+ * @param assistantId - AI Assistant ID (default: 1 for ChatGPT)
+ * @param enabled - Whether the query is enabled
  */
-export function useReportData(groupId: number, enabled: boolean = true) {
+export function useReportData(
+  groupId: number,
+  assistantId: number = 1,
+  enabled: boolean = true
+) {
   return useQuery({
-    queryKey: executionKeys.reportData(groupId),
-    queryFn: () => reportsApi.getReportData(groupId),
+    queryKey: [...executionKeys.reportData(groupId), assistantId],
+    queryFn: () => reportsApi.getReportData(groupId, assistantId),
     enabled: enabled && groupId > 0,
     staleTime: 30 * 1000, // 30 seconds - can change as evaluations complete
   })
@@ -41,7 +48,13 @@ export function useRequestFresh() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (promptIds: number[]) => executionApi.requestFresh(promptIds),
+    mutationFn: ({
+      promptIds,
+      assistantId,
+    }: {
+      promptIds: number[]
+      assistantId: number
+    }) => executionApi.requestFresh(promptIds, assistantId),
     onSuccess: () => {
       // Invalidate all report data queries to update pending_execution status
       queryClient.invalidateQueries({

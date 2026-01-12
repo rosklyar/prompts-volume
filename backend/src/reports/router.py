@@ -21,7 +21,6 @@ from src.reports.models.api_models import (
     PromptSelection,
     ReportItemResponse,
     ReportListResponse,
-    ReportPreviewResponse,
     ReportResponse,
     ReportStatistics,
     ReportSummaryResponse,
@@ -60,12 +59,10 @@ from src.reports.services.export import (
 )
 from src.brightdata.services.batch_service import BrightDataBatchService
 from src.execution.models.api_models import (
-    EvaluationOption,
     PromptReportData,
+    PromptStatus,
     ReportDataResponse,
 )
-from src.execution.models.domain import FreshnessCategory
-from src.execution.services.freshness_service import FreshnessService
 
 router = APIRouter(prefix="/reports/api/v1", tags=["reports"])
 
@@ -80,16 +77,8 @@ SelectionValidatorDep = Annotated[SelectionValidatorService, Depends(get_selecti
 ReportExportServiceDep = Annotated[ReportExportService, Depends(get_report_export_service)]
 JsonFormatterDep = Annotated[JsonExportFormatter, Depends(get_json_formatter)]
 
-
-def get_freshness_service() -> FreshnessService:
-    """Dependency injection for FreshnessService."""
-    return FreshnessService(
-        fresh_threshold_hours=settings.freshness_fresh_threshold_hours,
-        stale_threshold_hours=settings.freshness_stale_threshold_hours,
-    )
-
-
-FreshnessServiceDep = Annotated[FreshnessService, Depends(get_freshness_service)]
+# 24-hour freshness threshold
+FRESH_THRESHOLD_HOURS = 24
 
 
 @router.get("/groups/{group_id}/report-data", response_model=ReportDataResponse)
@@ -97,22 +86,20 @@ async def get_report_data(
     group_id: int,
     current_user: CurrentUser,
     group_service: PromptGroupServiceDep,
-    freshness_service: FreshnessServiceDep,
     evals_session: AsyncSession = Depends(get_evals_session),
     prompts_session: AsyncSession = Depends(get_async_session),
+    assistant_id: int = Query(default=1, description="AI Assistant ID to filter evaluations"),
 ):
-    """Get report data for the new report generation UI.
+    """Get simplified report data for report generation UI.
 
     Returns all prompts in the group with:
-    - Available evaluations (answers) with timestamps
-    - Freshness category and default selection logic
+    - Latest evaluation (answer) only, not all historical evaluations
+    - Simple 3-state status: fresh (<=24h), stale (>24h), absent (no data)
     - Queue status for pending executions (via BrightData batches)
-    - Billing info (whether user already paid for each evaluation)
     """
+    from datetime import timezone
+
     from src.database.evals_models import (
-        BrightDataBatch,
-        BrightDataBatchStatus,
-        ConsumedEvaluation,
         PromptEvaluation,
         EvaluationStatus,
     )
@@ -120,11 +107,9 @@ async def get_report_data(
 
     # Verify user owns the group
     try:
-        group = await group_service.get_by_id_for_user(group_id, current_user.id)
+        await group_service.get_by_id_for_user(group_id, current_user.id)
     except Exception:
         raise to_http_exception(GroupNotFoundError(group_id))
-
-    user_id = str(current_user.id)
 
     # Get all prompt IDs in the group
     bindings_result = await prompts_session.execute(
@@ -138,11 +123,9 @@ async def get_report_data(
             group_id=group_id,
             prompts=[],
             total_prompts=0,
-            prompts_with_data=0,
             prompts_fresh=0,
             prompts_stale=0,
-            prompts_very_stale=0,
-            prompts_no_data=0,
+            prompts_absent=0,
             prompts_pending_execution=0,
             global_queue_size=0,
         )
@@ -153,30 +136,24 @@ async def get_report_data(
     )
     prompts_map = {p.id: p for p in prompts_result.scalars().all()}
 
-    # Get all completed evaluations for these prompts
+    # Get all completed evaluations for these prompts filtered by assistant
+    # Ordered by completed_at DESC so first in each group is the latest
     evals_result = await evals_session.execute(
         select(PromptEvaluation)
         .where(
             PromptEvaluation.prompt_id.in_(prompt_ids),
+            PromptEvaluation.assistant_id == assistant_id,
             PromptEvaluation.status == EvaluationStatus.COMPLETED,
         )
         .order_by(PromptEvaluation.completed_at.desc())
     )
     all_evals = list(evals_result.scalars().all())
 
-    # Group evaluations by prompt_id
-    evals_by_prompt: dict[int, list[PromptEvaluation]] = {}
+    # Get only the latest evaluation per prompt
+    latest_eval_by_prompt: dict[int, PromptEvaluation] = {}
     for e in all_evals:
-        if e.prompt_id not in evals_by_prompt:
-            evals_by_prompt[e.prompt_id] = []
-        evals_by_prompt[e.prompt_id].append(e)
-
-    # Get consumed evaluations for this user
-    consumed_result = await evals_session.execute(
-        select(ConsumedEvaluation.evaluation_id)
-        .where(ConsumedEvaluation.user_id == user_id)
-    )
-    consumed_eval_ids = set(consumed_result.scalars().all())
+        if e.prompt_id not in latest_eval_by_prompt:
+            latest_eval_by_prompt[e.prompt_id] = e
 
     # Get pending prompt IDs from BrightData batches
     batch_service = BrightDataBatchService(evals_session)
@@ -184,77 +161,64 @@ async def get_report_data(
 
     # Calculate estimated wait time for pending prompts
     pending_count = len(pending_prompt_ids)
-    wait_seconds = pending_count * settings.brightdata_seconds_per_prompt
-    wait_str = freshness_service.format_wait_time(wait_seconds) if pending_count > 0 else None
+    wait_str = None
+    if pending_count > 0:
+        wait_seconds = pending_count * settings.brightdata_seconds_per_prompt
+        if wait_seconds < 60:
+            wait_str = f"~{int(wait_seconds)}s"
+        elif wait_seconds < 3600:
+            wait_str = f"~{int(wait_seconds / 60)}m"
+        else:
+            wait_str = f"~{int(wait_seconds / 3600)}h"
 
-    # Build response
+    # Build response with simplified 3-state status
     prompts_data: list[PromptReportData] = []
     counts = {
         "fresh": 0,
         "stale": 0,
-        "very_stale": 0,
-        "none": 0,
-        "with_data": 0,
+        "absent": 0,
         "pending": 0,
     }
+
+    from datetime import datetime
+    now = datetime.now(timezone.utc)
 
     for prompt_id in prompt_ids:
         prompt = prompts_map.get(prompt_id)
         if not prompt:
             continue
 
-        prompt_evals = evals_by_prompt.get(prompt_id, [])
+        latest_eval = latest_eval_by_prompt.get(prompt_id)
         is_pending = prompt_id in pending_prompt_ids
 
-        # Build evaluation options
-        eval_options = [
-            EvaluationOption(
-                evaluation_id=e.id,
-                completed_at=e.completed_at,
-                is_consumed=e.id in consumed_eval_ids,
-            )
-            for e in prompt_evals
-        ]
-
-        # Get freshness info
-        latest_eval = prompt_evals[0] if prompt_evals else None
-        freshness_info = freshness_service.categorize(
-            latest_evaluation_at=latest_eval.completed_at if latest_eval else None,
-            latest_evaluation_id=latest_eval.id if latest_eval else None,
-        )
-
-        # Update counts
-        if freshness_info.category == FreshnessCategory.FRESH:
-            counts["fresh"] += 1
-            counts["with_data"] += 1
-        elif freshness_info.category == FreshnessCategory.STALE:
-            counts["stale"] += 1
-            counts["with_data"] += 1
-        elif freshness_info.category == FreshnessCategory.VERY_STALE:
-            counts["very_stale"] += 1
-            counts["with_data"] += 1
+        # Calculate simple 3-state status
+        status: PromptStatus
+        if latest_eval is None:
+            status = "absent"
+            counts["absent"] += 1
         else:
-            counts["none"] += 1
+            # Calculate age in hours
+            age = now - latest_eval.completed_at
+            hours_old = age.total_seconds() / 3600
+            if hours_old <= FRESH_THRESHOLD_HOURS:
+                status = "fresh"
+                counts["fresh"] += 1
+            else:
+                status = "stale"
+                counts["stale"] += 1
 
         if is_pending:
             counts["pending"] += 1
-
-        # Check if latest is consumed
-        is_consumed = latest_eval.id in consumed_eval_ids if latest_eval else False
 
         prompts_data.append(
             PromptReportData(
                 prompt_id=prompt_id,
                 prompt_text=prompt.prompt_text,
-                evaluations=eval_options,
-                freshness_category=freshness_info.category,
-                hours_since_latest=freshness_info.hours_since_latest,
-                default_evaluation_id=freshness_info.default_evaluation_id,
-                show_ask_for_fresh=freshness_info.show_ask_for_fresh,
-                auto_ask_for_fresh=freshness_info.auto_ask_for_fresh,
+                latest_evaluation_id=latest_eval.id if latest_eval else None,
+                latest_evaluation_at=latest_eval.completed_at if latest_eval else None,
+                status=status,
                 pending_execution=is_pending,
                 estimated_wait=wait_str if is_pending else None,
-                is_consumed=is_consumed,
             )
         )
 
@@ -262,45 +226,12 @@ async def get_report_data(
         group_id=group_id,
         prompts=prompts_data,
         total_prompts=len(prompts_data),
-        prompts_with_data=counts["with_data"],
         prompts_fresh=counts["fresh"],
         prompts_stale=counts["stale"],
-        prompts_very_stale=counts["very_stale"],
-        prompts_no_data=counts["none"],
+        prompts_absent=counts["absent"],
         prompts_pending_execution=counts["pending"],
-        global_queue_size=pending_count,  # Now represents pending BrightData items
+        global_queue_size=pending_count,
     )
-
-
-@router.get(
-    "/groups/{group_id}/preview",
-    response_model=ReportPreviewResponse,
-    deprecated=True,
-)
-async def preview_report(
-    group_id: int,
-    current_user: CurrentUser,
-    report_service: ReportServiceDep,
-    group_service: PromptGroupServiceDep,
-):
-    """Preview what generating a report would cost.
-
-    Shows how many evaluations are available, how many are fresh (chargeable),
-    and whether the user has sufficient balance.
-    """
-    # Verify user owns the group
-    try:
-        await group_service.get_by_id_for_user(group_id, current_user.id)
-    except Exception as e:
-        raise to_http_exception(GroupNotFoundError(group_id))
-
-    preview = await report_service.preview_report(
-        group_id=group_id,
-        user_id=current_user.id,
-        price_per_evaluation=Decimal(str(settings.billing_price_per_evaluation)),
-    )
-
-    return ReportPreviewResponse(**preview)
 
 
 @router.post("/groups/{group_id}/generate", response_model=ReportResponse)

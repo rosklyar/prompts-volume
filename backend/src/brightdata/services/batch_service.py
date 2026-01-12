@@ -25,6 +25,8 @@ class BrightDataBatchService:
         batch_id: str,
         prompt_ids: list[int],
         user_id: str,
+        *,
+        assistant_id: int = 1,
     ) -> BrightDataBatch:
         """Register a new batch for webhook correlation.
 
@@ -32,6 +34,7 @@ class BrightDataBatchService:
             batch_id: Unique batch identifier (UUID)
             prompt_ids: List of prompt IDs included in the batch
             user_id: User who requested the batch
+            assistant_id: AI assistant ID for this batch (default: 1 = ChatGPT)
 
         Returns:
             Created BrightDataBatch record
@@ -40,6 +43,7 @@ class BrightDataBatchService:
             batch_id=batch_id,
             user_id=user_id,
             prompt_ids=prompt_ids,
+            assistant_id=assistant_id,
             status=BrightDataBatchStatus.PENDING,
         )
         self._session.add(batch)

@@ -5,7 +5,13 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from src.execution.models.domain import FreshnessCategory
+
+# =============================================================================
+# Status Types
+# =============================================================================
+
+# Simplified 3-state status for report generation
+PromptStatus = Literal["fresh", "stale", "absent"]
 
 
 # =============================================================================
@@ -17,6 +23,10 @@ class RequestFreshExecutionRequest(BaseModel):
     """Request to trigger fresh execution via Bright Data."""
 
     prompt_ids: list[int] = Field(..., min_length=1, description="Prompt IDs to execute")
+    assistant_id: int = Field(
+        default=1,
+        description="AI Assistant ID to use for execution (default: 1 = ChatGPT)"
+    )
 
 
 # =============================================================================
@@ -44,57 +54,45 @@ class RequestFreshExecutionResponse(BaseModel):
 
 
 # =============================================================================
-# Report Data Models
+# Report Data Models (Simplified)
 # =============================================================================
 
 
-class EvaluationOption(BaseModel):
-    """An available evaluation (answer) for a prompt."""
-
-    evaluation_id: int
-    completed_at: datetime
-    is_consumed: bool  # User already paid for this
-
-
 class PromptReportData(BaseModel):
-    """Per-prompt data for report generation UI."""
+    """Simplified per-prompt data for report generation UI.
+
+    Uses 3-state status:
+    - fresh: latest answer exists and is <=24h old
+    - stale: latest answer exists but is >24h old
+    - absent: no answer exists
+    """
 
     prompt_id: int
     prompt_text: str
 
-    # Available evaluations (answers)
-    evaluations: list[EvaluationOption]
+    # Latest evaluation (only one, not a list)
+    latest_evaluation_id: int | None
+    latest_evaluation_at: datetime | None
 
-    # Freshness metadata
-    freshness_category: FreshnessCategory
-    hours_since_latest: float | None
-
-    # Default selection logic result
-    default_evaluation_id: int | None
-    show_ask_for_fresh: bool
-    auto_ask_for_fresh: bool
+    # Simple 3-state status
+    status: PromptStatus
 
     # Queue status (if already requested)
     pending_execution: bool
     estimated_wait: str | None
 
-    # Billing info
-    is_consumed: bool  # User already paid for latest evaluation
-
 
 class ReportDataResponse(BaseModel):
-    """Full report data for UI."""
+    """Simplified report data for UI."""
 
     group_id: int
     prompts: list[PromptReportData]
 
-    # Summary
+    # Summary counts
     total_prompts: int
-    prompts_with_data: int
     prompts_fresh: int
     prompts_stale: int
-    prompts_very_stale: int
-    prompts_no_data: int
+    prompts_absent: int
 
     # Queue info
     prompts_pending_execution: int

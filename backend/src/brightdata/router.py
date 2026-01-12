@@ -9,14 +9,11 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql import func
 
 from src.brightdata.deps import WebhookAuthDep
 from src.brightdata.models.api_models import BrightDataWebhookItem, WebhookResponse
 from src.brightdata.services.batch_service import BrightDataBatchService
 from src.database.evals_models import (
-    AIAssistant,
-    AIAssistantPlan,
     BrightDataBatchStatus,
     EvaluationStatus,
     PromptEvaluation,
@@ -41,20 +38,6 @@ async def _parse_webhook_body(request: Request) -> list[Any]:
     body = json.loads(decompressed)
     logger.info(f"Webhook body parsed, items count: {len(body) if isinstance(body, list) else 'not a list'}")
     return body
-
-
-async def _get_chatgpt_free_plan_id(session: AsyncSession) -> int:
-    """Get ChatGPT Free assistant plan ID."""
-    result = await session.execute(
-        select(AIAssistantPlan.id)
-        .join(AIAssistant, AIAssistantPlan.assistant_id == AIAssistant.id)
-        .where(func.upper(AIAssistant.name) == "CHATGPT")
-        .where(func.upper(AIAssistantPlan.name) == "FREE")
-    )
-    plan_id = result.scalar_one_or_none()
-    if not plan_id:
-        raise HTTPException(status_code=500, detail="ChatGPT Free assistant plan not found")
-    return plan_id
 
 
 async def _get_prompts_by_ids(
@@ -122,8 +105,8 @@ async def receive_brightdata_webhook(
     prompts = await _get_prompts_by_ids(prompts_session, batch.prompt_ids)
     text_to_prompt_id = {p.prompt_text: p.id for p in prompts}
 
-    # Get ChatGPT Free assistant plan (hardcoded for now)
-    assistant_plan_id = await _get_chatgpt_free_plan_id(evals_session)
+    # Get assistant_id from batch (set during trigger)
+    assistant_id = batch.assistant_id
 
     processed = 0
     failed = 0
@@ -151,7 +134,7 @@ async def receive_brightdata_webhook(
         # Create PromptEvaluation record
         evaluation = PromptEvaluation(
             prompt_id=prompt_id,
-            assistant_plan_id=assistant_plan_id,
+            assistant_id=assistant_id,
             status=EvaluationStatus.COMPLETED,
             claimed_at=now,
             completed_at=now,

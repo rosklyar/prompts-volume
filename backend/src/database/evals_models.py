@@ -44,58 +44,14 @@ class AIAssistant(EvalsBase):
         server_default=text("NOW()"),
     )
 
-    # Relationships
-    plans: Mapped[List["AIAssistantPlan"]] = relationship(
-        back_populates="assistant",
-        cascade="all, delete-orphan"
-    )
-
     def __repr__(self) -> str:
         return f"<AIAssistant(id={self.id}, name='{self.name}')>"
-
-
-class AIAssistantPlan(EvalsBase):
-    """AI Assistant Plan model for tracking supported plans per assistant."""
-
-    __tablename__ = "ai_assistant_plans"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(
-        String(100),
-        nullable=False,
-        index=True,
-    )
-    assistant_id: Mapped[int] = mapped_column(
-        ForeignKey("ai_assistants.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=text("NOW()"),
-    )
-
-    # Relationships
-    assistant: Mapped["AIAssistant"] = relationship(back_populates="plans")
-    evaluations: Mapped[List["PromptEvaluation"]] = relationship(
-        back_populates="assistant_plan",
-        cascade="all, delete-orphan"
-    )
-
-    # Constraints - ensure unique plan names per assistant
-    __table_args__ = (
-        UniqueConstraint("assistant_id", "name", name="uq_assistant_plan"),
-    )
-
-    def __repr__(self) -> str:
-        return f"<AIAssistantPlan(id={self.id}, assistant_id={self.assistant_id}, name='{self.name}')>"
 
 
 class PromptEvaluation(EvalsBase):
     """Track evaluations of prompts by different AI assistants.
 
-    Note: Multiple evaluations can exist for the same (prompt_id, assistant_plan_id)
+    Note: Multiple evaluations can exist for the same (prompt_id, assistant_id)
     combination to support retry scenarios when evaluations timeout or fail.
     """
 
@@ -108,9 +64,9 @@ class PromptEvaluation(EvalsBase):
         index=True
     )
 
-    # Assistant plan identifier (references ai_assistant_plans in same db)
-    assistant_plan_id: Mapped[int] = mapped_column(
-        ForeignKey("ai_assistant_plans.id", ondelete="CASCADE"),
+    # AI Assistant identifier
+    assistant_id: Mapped[int] = mapped_column(
+        ForeignKey("ai_assistants.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
@@ -148,10 +104,10 @@ class PromptEvaluation(EvalsBase):
     answer: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     # Relationships (within evals_db only)
-    assistant_plan: Mapped["AIAssistantPlan"] = relationship(back_populates="evaluations")
+    assistant: Mapped["AIAssistant"] = relationship()
 
     def __repr__(self) -> str:
-        return f"<PromptEvaluation(id={self.id}, prompt_id={self.prompt_id}, assistant_plan_id={self.assistant_plan_id}, status='{self.status.value}')>"
+        return f"<PromptEvaluation(id={self.id}, prompt_id={self.prompt_id}, assistant_id={self.assistant_id}, status='{self.status.value}')>"
 
 
 class ConsumedEvaluation(EvalsBase):
@@ -333,6 +289,12 @@ class BrightDataBatch(EvalsBase):
     prompt_ids: Mapped[list[int]] = mapped_column(
         ARRAY(Integer),
         nullable=False,
+    )
+    assistant_id: Mapped[int] = mapped_column(
+        ForeignKey("ai_assistants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+        server_default="1",  # Default to ChatGPT
     )
     status: Mapped[BrightDataBatchStatus] = mapped_column(
         Enum(

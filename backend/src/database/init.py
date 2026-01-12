@@ -18,7 +18,6 @@ from src.database.models import (
 )
 from src.database.evals_models import (
     AIAssistant,
-    AIAssistantPlan,
     EvaluationStatus,
     PromptEvaluation,
 )
@@ -64,18 +63,15 @@ async def seed_evals_data(
 
     Args:
         prompts_session: AsyncSession for prompts_db (read-only for Prompt lookup)
-        evals_session: AsyncSession for evals_db (write AI assistants, plans, evaluations)
+        evals_session: AsyncSession for evals_db (write AI assistants and evaluations)
     """
     # 1. Seed AI Assistants
     await _seed_ai_assistants(evals_session)
 
-    # 2. Seed AI Assistant Plans (requires assistants)
-    await _seed_ai_assistant_plans(evals_session)
-
-    # 3. Seed Phone Evaluations (requires prompts and assistant plans)
+    # 2. Seed Phone Evaluations (requires prompts and assistants)
     await _seed_phone_evaluations(prompts_session, evals_session)
 
-    # 4. Seed Laptop Evaluations (requires prompts and assistant plans)
+    # 3. Seed Laptop Evaluations (requires prompts and assistants)
     await _seed_laptop_evaluations(prompts_session, evals_session)
 
     await evals_session.commit()
@@ -324,29 +320,6 @@ async def _seed_ai_assistants(session: AsyncSession) -> None:
         )
 
 
-async def _seed_ai_assistant_plans(session: AsyncSession) -> None:
-    """Seed initial AI assistant plans into evals_db."""
-    # Check if plans already exist for ChatGPT (assistant_id=1)
-    result = await session.execute(
-        select(AIAssistantPlan).where(AIAssistantPlan.assistant_id == 1)
-    )
-    existing_plans = result.scalars().all()
-
-    if len(existing_plans) == 0:
-        plans = [
-            AIAssistantPlan(id=1, assistant_id=1, name="FREE"),
-            AIAssistantPlan(id=2, assistant_id=1, name="PLUS"),
-            AIAssistantPlan(id=3, assistant_id=1, name="PRO"),
-        ]
-        session.add_all(plans)
-        await session.flush()
-
-        # Reset sequence to continue from the highest ID
-        await session.execute(
-            text("SELECT setval('ai_assistant_plans_id_seq', (SELECT MAX(id) FROM ai_assistant_plans))")
-        )
-
-
 async def _seed_phone_evaluations(
     prompts_session: AsyncSession,
     evals_session: AsyncSession,
@@ -355,7 +328,7 @@ async def _seed_phone_evaluations(
     # 1. Idempotency check - check in evals_db
     result = await evals_session.execute(
         select(PromptEvaluation)
-        .where(PromptEvaluation.assistant_plan_id == 1)
+        .where(PromptEvaluation.assistant_id == 1)
         .limit(1)
     )
     if result.scalar_one_or_none() is not None:
@@ -410,7 +383,7 @@ async def _seed_phone_evaluations(
         # Create evaluation
         evaluation = PromptEvaluation(
             prompt_id=prompt.id,
-            assistant_plan_id=1,  # ChatGPT Free
+            assistant_id=1,  # ChatGPT
             status=EvaluationStatus.COMPLETED,
             answer=answer_json,
             created_at=created_at,
@@ -450,7 +423,7 @@ async def _seed_laptop_evaluations(
             select(PromptEvaluation)
             .where(
                 PromptEvaluation.prompt_id == first_laptop_prompt_id,
-                PromptEvaluation.assistant_plan_id == 1,
+                PromptEvaluation.assistant_id == 1,
             )
             .limit(1)
         )
@@ -506,7 +479,7 @@ async def _seed_laptop_evaluations(
         # Create evaluation
         evaluation = PromptEvaluation(
             prompt_id=prompt.id,
-            assistant_plan_id=1,  # ChatGPT Free
+            assistant_id=1,  # ChatGPT
             status=EvaluationStatus.COMPLETED,
             answer=answer_json,
             created_at=created_at,

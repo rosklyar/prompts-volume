@@ -15,7 +15,6 @@ from src.database.evals_session import EvalsBase
 # Import all models to ensure they are registered with EvalsBase.metadata
 from src.database.evals_models import (  # noqa: F401
     AIAssistant,
-    AIAssistantPlan,
     BrightDataBatch,
     BrightDataBatchStatus,
     ConsumedEvaluation,

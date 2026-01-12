@@ -32,6 +32,7 @@ import type {
   ReportDataResponse,
   RequestFreshExecutionResponse,
 } from "@/types/execution"
+import type { AIAssistantListResponse } from "@/types/assistants"
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000"
 
@@ -599,10 +600,18 @@ export const adminApi = {
 export const reportsApi = {
   /**
    * Get report data with freshness metadata for report generation UI
+   * @param groupId - The group ID
+   * @param assistantId - AI Assistant ID (default: 1 for ChatGPT)
    */
-  async getReportData(groupId: number): Promise<ReportDataResponse> {
+  async getReportData(
+    groupId: number,
+    assistantId: number = 1
+  ): Promise<ReportDataResponse> {
+    const params = new URLSearchParams({
+      assistant_id: assistantId.toString(),
+    })
     const response = await fetchWithAuth(
-      `/reports/api/v1/groups/${groupId}/report-data`
+      `/reports/api/v1/groups/${groupId}/report-data?${params}`
     )
     return response.json()
   },
@@ -696,13 +705,30 @@ export const reportsApi = {
 export const executionApi = {
   /**
    * Request fresh execution for prompts
+   * @param promptIds - Array of prompt IDs to request fresh evaluation for
+   * @param assistantId - AI Assistant ID (default: 1 for ChatGPT)
    */
-  async requestFresh(promptIds: number[]): Promise<RequestFreshExecutionResponse> {
+  async requestFresh(
+    promptIds: number[],
+    assistantId: number = 1
+  ): Promise<RequestFreshExecutionResponse> {
     const response = await fetchWithAuth("/execution/api/v1/request-fresh", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt_ids: promptIds }),
+      body: JSON.stringify({ prompt_ids: promptIds, assistant_id: assistantId }),
     })
+    return response.json()
+  },
+}
+
+// ===== Assistants API =====
+
+export const assistantsApi = {
+  /**
+   * Get all available AI assistants
+   */
+  async listAssistants(): Promise<AIAssistantListResponse> {
+    const response = await fetchWithAuth("/assistants/api/v1/assistants")
     return response.json()
   },
 }
