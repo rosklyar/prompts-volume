@@ -126,16 +126,31 @@ export function ReportPreviewModal(props: ReportPreviewModalProps) {
     (p) => (p.status === "stale" || p.status === "absent") && !p.pending_execution
   ) ?? []
 
-  // Handle Generate button click - show confirmation if fresh prompts exist
+  // Handle Generate button click - show confirmation only for partial reports
   const handleGenerateClick = () => {
     if (!reportData) return
 
     const freshPrompts = getFreshPrompts()
     const needsFreshPrompts = getNeedsFreshPrompts()
 
-    // If fresh prompts exist, show confirmation dialog
-    if (freshPrompts.length > 0) {
+    // If we have both fresh AND stale/absent prompts, it's a partial report - confirm
+    if (freshPrompts.length > 0 && needsFreshPrompts.length > 0) {
       setShowConfirmation(true)
+      return
+    }
+
+    // All prompts are fresh - generate full report immediately
+    if (freshPrompts.length > 0 && needsFreshPrompts.length === 0) {
+      const selections: PromptSelection[] = freshPrompts.map((p) => ({
+        prompt_id: p.prompt_id,
+        evaluation_id: p.latest_evaluation_id!,
+      }))
+      onConfirm(selections, assistantId)
+      setGenerateSuccess({
+        reportCount: freshPrompts.length,
+        freshCount: 0,
+        estimatedWait: null,
+      })
       return
     }
 
@@ -228,6 +243,7 @@ export function ReportPreviewModal(props: ReportPreviewModalProps) {
   ).length ?? 0
 
   const canGenerate = (actionableFresh > 0 || actionableStaleAbsent > 0) && !generateSuccess
+  const allFresh = actionableFresh > 0 && actionableStaleAbsent === 0
   const globalQueueWait = reportData && reportData.global_queue_size > 0
     ? `~${Math.ceil(reportData.global_queue_size * 0.5)}m`
     : null
@@ -465,8 +481,10 @@ export function ReportPreviewModal(props: ReportPreviewModalProps) {
                         <div className="w-3.5 h-3.5 border-2 border-white/50 border-t-white rounded-full animate-spin" />
                         Processing...
                       </span>
-                    ) : (
+                    ) : allFresh ? (
                       "Generate"
+                    ) : (
+                      "Request answers"
                     )}
                   </button>
                 </div>
