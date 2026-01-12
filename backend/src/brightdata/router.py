@@ -128,7 +128,6 @@ async def receive_brightdata_webhook(
                 "domain": c.domain,
             }
             for c in (item.citations or [])
-            if c.cited
         ]
 
         # Create PromptEvaluation record

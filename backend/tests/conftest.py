@@ -51,6 +51,7 @@ async def test_engine(db_url):
     """
     Function-scoped fixture that provides an async engine connected to the test database.
     Creates tables for prompts_db (Base), users_db (UsersBase), and evals_db (EvalsBase).
+    Drops all tables first to ensure test isolation.
     """
     # Create async engine
     engine = create_async_engine(db_url, echo=False, poolclass=NullPool)
@@ -59,8 +60,11 @@ async def test_engine(db_url):
     async with engine.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
 
-    # Create all tables for all three databases (using same engine for tests)
+    # Drop all tables first for test isolation, then create fresh tables
     async with engine.begin() as conn:
+        await conn.run_sync(EvalsBase.metadata.drop_all)
+        await conn.run_sync(UsersBase.metadata.drop_all)
+        await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(UsersBase.metadata.create_all)
         await conn.run_sync(EvalsBase.metadata.create_all)

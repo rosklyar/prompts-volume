@@ -1,7 +1,7 @@
 """Database-backed service for tracking Bright Data batches."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -113,3 +113,60 @@ class BrightDataBatchService:
             all_pending.update(batch_prompt_ids)
 
         return set(prompt_ids) & all_pending
+
+    async def get_stale_pending_batches(
+        self,
+        *,
+        eviction_timeout_hours: int,
+    ) -> list[BrightDataBatch]:
+        """Get PENDING batches older than the eviction timeout.
+
+        Args:
+            eviction_timeout_hours: Hours after which PENDING batches are considered stale
+
+        Returns:
+            List of stale BrightDataBatch records
+        """
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=eviction_timeout_hours)
+        result = await self._session.execute(
+            select(BrightDataBatch).where(
+                BrightDataBatch.status == BrightDataBatchStatus.PENDING,
+                BrightDataBatch.created_at < cutoff,
+            )
+        )
+        return list(result.scalars().all())
+
+    async def evict_stale_batches(
+        self,
+        *,
+        eviction_timeout_hours: int,
+    ) -> list[BrightDataBatch]:
+        """Evict (mark as FAILED) PENDING batches older than the eviction timeout.
+
+        This releases prompts that were stuck in PENDING state due to
+        webhooks that never arrived.
+
+        Args:
+            eviction_timeout_hours: Hours after which PENDING batches are considered stale
+
+        Returns:
+            List of evicted BrightDataBatch records
+        """
+        stale_batches = await self.get_stale_pending_batches(
+            eviction_timeout_hours=eviction_timeout_hours
+        )
+        if not stale_batches:
+            return []
+
+        now = datetime.now(timezone.utc)
+        for batch in stale_batches:
+            batch.status = BrightDataBatchStatus.FAILED
+            batch.completed_at = now
+            logger.info(
+                f"Evicted stale batch {batch.batch_id} "
+                f"(created_at={batch.created_at}, prompt_ids={batch.prompt_ids})"
+            )
+
+        await self._session.flush()
+        logger.info(f"Evicted {len(stale_batches)} stale PENDING batches")
+        return stale_batches
