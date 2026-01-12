@@ -26,6 +26,7 @@ import { ReportPreviewModal } from "@/components/billing"
 import type { PromptSelection, PromptSelectionInfo } from "@/types/billing"
 import { getGroupColor } from "./constants"
 import { BatchUploadModal } from "./BatchUploadModal"
+import { AssistantSelectionModal } from "./AssistantSelectionModal"
 
 interface PromptWithAnswer extends PromptInGroup {
   answer?: EvaluationAnswer | null
@@ -46,7 +47,7 @@ interface GroupCardProps {
   onUpdateTitle: (title: string) => void
   onDeleteGroup: () => void
   onDeletePrompt: (promptId: number) => void
-  onLoadReport: (selections: PromptSelection[]) => void
+  onLoadReport: (selections: PromptSelection[], assistantId: number) => void
   onBrandChange: (brand: BrandInfo) => void
   onCompetitorsChange: (competitors: CompetitorInfo[]) => void
   isExpanded: boolean
@@ -76,6 +77,8 @@ export function GroupCard({
   const [brandEditorFocus, setBrandEditorFocus] = useState<"brand" | "competitors">("brand")
   const [showBatchUpload, setShowBatchUpload] = useState(false)
   const [isReportCollapsed, setIsReportCollapsed] = useState(true)
+  const [showAssistantSelector, setShowAssistantSelector] = useState(false)
+  const [selectedAssistantId, setSelectedAssistantId] = useState<number | null>(null)
   const [showPreviewModal, setShowPreviewModal] = useState(false)
   const [showLowBalanceModal, setShowLowBalanceModal] = useState(false)
   const [lowBalanceCost, setLowBalanceCost] = useState<number>(0)
@@ -124,16 +127,24 @@ export function GroupCard({
   // Report button disabled when loading or no prompts
   const isReportDisabled = isLoadingAnswers || prompts.length === 0
 
-  // Handle report button click - always opens modal, canGenerate controls Generate button inside
+  // Handle report button click - show assistant selector first
   const handleReportClick = () => {
     if (prompts.length === 0) return
+    setShowAssistantSelector(true)
+  }
+
+  // Handle assistant selection - store assistant ID and show preview modal
+  const handleAssistantSelect = (assistantId: number) => {
+    setSelectedAssistantId(assistantId)
+    setShowAssistantSelector(false)
     setShowPreviewModal(true)
   }
 
   // Handle preview confirm - proceed with loading using selections
-  const handlePreviewConfirm = (selections: PromptSelection[]) => {
+  const handlePreviewConfirm = (selections: PromptSelection[], assistantId: number) => {
     setShowPreviewModal(false)
-    onLoadReport(selections)
+    setSelectedAssistantId(null)
+    onLoadReport(selections, assistantId)
   }
 
   // Handle low balance scenario from preview
@@ -461,13 +472,25 @@ export function GroupCard({
         onClose={() => setShowBatchUpload(false)}
       />
 
-      {/* Report Preview Modal */}
+      {/* Assistant Selection Modal - Step 1 */}
+      <AssistantSelectionModal
+        isOpen={showAssistantSelector}
+        accentColor={colors.accent}
+        onClose={() => setShowAssistantSelector(false)}
+        onSelect={handleAssistantSelect}
+      />
+
+      {/* Report Preview Modal - Step 2 */}
       <ReportPreviewModal
         groupId={group.id}
         groupTitle={group.title}
         accentColor={colors.accent}
         isOpen={showPreviewModal}
-        onClose={() => setShowPreviewModal(false)}
+        assistantId={selectedAssistantId ?? 1}
+        onClose={() => {
+          setShowPreviewModal(false)
+          setSelectedAssistantId(null)
+        }}
         onConfirm={handlePreviewConfirm}
         onNeedsTopUp={handleNeedsTopUp}
       />

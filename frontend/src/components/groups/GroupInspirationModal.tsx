@@ -25,7 +25,7 @@ import {
   useBatchSimilarPrompts,
 } from "@/hooks/useInspiration"
 import { useGenerationPrice, formatCredits } from "@/hooks/useBilling"
-import { evaluationsApi } from "@/client/api"
+import { batchApi } from "@/client/api"
 import { CountrySelector } from "@/components/inspiration/CountrySelector"
 import { TopicCard } from "@/components/inspiration/TopicCard"
 import { WizardStepIndicator } from "@/components/inspiration/WizardStepIndicator"
@@ -600,14 +600,16 @@ export function GroupInspirationModal({
         .filter((p) => p.isNew)
         .map((p) => p.text)
 
-      // Add new prompts via priority prompts API
+      // Create new prompts via batch API (also binds to group)
       if (newPromptTexts.length > 0) {
-        const result = await evaluationsApi.addPriorityPrompts(newPromptTexts)
-        const newPromptIds = result.prompts.map((p) => p.prompt_id)
-        existingPromptIds.push(...newPromptIds)
+        await batchApi.create({
+          prompts: newPromptTexts,
+          selected_indices: newPromptTexts.map((_, i) => i),
+          group_id: groupId,
+        })
       }
 
-      // Add all prompts to group
+      // Add existing prompts to group
       if (existingPromptIds.length > 0) {
         await addPromptsToGroup.mutateAsync({
           groupId,

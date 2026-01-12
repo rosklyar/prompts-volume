@@ -351,7 +351,11 @@ export function GroupsGrid() {
   }
 
   // Handle load report with selections (using billing API with charging)
-  const handleLoadReport = async (group: GroupDetail, selections: PromptSelection[]) => {
+  const handleLoadReport = async (
+    group: GroupDetail,
+    selections: PromptSelection[],
+    assistantId: number
+  ) => {
     if (group.prompts.length === 0) return
 
     // Set loading state
@@ -366,10 +370,10 @@ export function GroupsGrid() {
     }))
 
     try {
-      // Use the selection-based generate API
+      // Use the selection-based generate API with assistant_id
       const result = await generateReport.mutateAsync({
         groupId: group.id,
-        request: { selections },
+        request: { selections, assistant_id: assistantId },
       })
 
       // Merge answers and brand mentions into prompts from the response
@@ -501,7 +505,7 @@ export function GroupsGrid() {
                   onDeletePrompt={(promptId) =>
                     handleDeletePrompt(group.id, promptId)
                   }
-                  onLoadReport={(selections) => handleLoadReport(group, selections)}
+                  onLoadReport={(selections, assistantId) => handleLoadReport(group, selections, assistantId)}
                   onBrandChange={(brand) => handleBrandChange(group.id, brand)}
                   onCompetitorsChange={(competitors) => handleCompetitorsChange(group.id, competitors)}
                   isExpanded={expandedGroups.has(group.id)}

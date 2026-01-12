@@ -1,47 +1,38 @@
 /**
- * ReportPreviewModal - Fresh execution flow with per-prompt evaluation selection
- * Editorial/refined aesthetic matching the existing app design
+ * ReportPreviewModal - Simplified report generation with automatic selection
+ *
+ * Shows read-only status of each prompt:
+ * - Fresh (≤24h): will be included in report
+ * - Stale (>24h): will request fresh answer
+ * - Absent (no data): will request fresh answer
+ *
+ * Single "Generate" button handles everything automatically.
  */
 
-import { useState, useEffect, useMemo, useCallback, useRef } from "react"
+import { useState, useEffect } from "react"
 import { useReportData, useRequestFresh } from "@/hooks/useExecution"
-import { formatCredits } from "@/hooks/useBilling"
-import type { PromptReportData, FreshnessCategory } from "@/types/execution"
+import type { PromptStatus, PromptReportData } from "@/types/execution"
 import type { PromptSelection } from "@/types/billing"
-
-// Selection can be: evaluation_id (number), 'ask_fresh', or null (skip)
-type SelectionValue = number | "ask_fresh" | null
 
 interface ReportPreviewModalProps {
   groupId: number
   groupTitle: string
   accentColor: string
   isOpen: boolean
+  assistantId: number
   onClose: () => void
-  onConfirm: (selections: PromptSelection[]) => void
+  onConfirm: (selections: PromptSelection[], assistantId: number) => void
   onNeedsTopUp?: (estimatedCost: number) => void
 }
 
-// Format short datetime for compact display
-function formatShortDate(isoString: string): string {
-  const date = new Date(isoString)
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  })
-}
-
-// Freshness badge component
-function FreshnessBadge({ category }: { category: FreshnessCategory }) {
-  const config: Record<FreshnessCategory, { label: string; color: string; bg: string }> = {
+// Status badge component with 3 states
+function StatusBadge({ status }: { status: PromptStatus }) {
+  const config: Record<PromptStatus, { label: string; color: string; bg: string }> = {
     fresh: { label: "Fresh", color: "text-green-600", bg: "bg-green-50" },
     stale: { label: "Stale", color: "text-amber-600", bg: "bg-amber-50" },
-    very_stale: { label: "Old", color: "text-red-600", bg: "bg-red-50" },
-    none: { label: "No data", color: "text-gray-500", bg: "bg-gray-100" },
+    absent: { label: "Absent", color: "text-gray-500", bg: "bg-gray-100" },
   }
-  const { label, color, bg } = config[category]
+  const { label, color, bg } = config[status]
 
   return (
     <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded font-['DM_Sans'] ${color} ${bg}`}>
@@ -50,413 +41,195 @@ function FreshnessBadge({ category }: { category: FreshnessCategory }) {
   )
 }
 
-// Per-prompt selection card (collapsible)
-function PromptSelectionCard({
-  promptInfo,
-  selection,
-  onSelectionChange,
-  onRemove,
-  accentColor,
+// Simple prompt row (read-only, no selection)
+function PromptRow({
+  prompt,
   globalQueueWait,
 }: {
-  promptInfo: PromptReportData
-  selection: SelectionValue
-  onSelectionChange: (promptId: number, selection: SelectionValue) => void
-  onRemove: (promptId: number) => void
-  accentColor: string
+  prompt: PromptReportData
   globalQueueWait: string | null
 }) {
-  const [isExpanded, setIsExpanded] = useState(false)
-
-  const hasEvaluations = promptInfo.evaluations.length > 0
-  const isPending = promptInfo.pending_execution
-  const isAskFresh = selection === "ask_fresh"
-  const selectedEvalId = typeof selection === "number" ? selection : null
-
-  // Get current selection summary for collapsed view
-  const getSelectionSummary = () => {
-    if (isPending) {
-      return { text: "Pending...", color: "text-blue-600", icon: "pending" }
-    }
-    if (isAskFresh) {
-      return { text: "Request fresh", color: "text-blue-600", icon: "fresh" }
-    }
-    if (selectedEvalId) {
-      const eval_ = promptInfo.evaluations.find((e) => e.evaluation_id === selectedEvalId)
-      if (eval_) {
-        return {
-          text: formatShortDate(eval_.completed_at),
-          color: "text-gray-700",
-          icon: eval_.is_consumed ? "free" : "paid",
-        }
-      }
-    }
-    return { text: "Don't include", color: "text-gray-400", icon: "none" }
-  }
-
-  const selectionSummary = getSelectionSummary()
+  const isPending = prompt.pending_execution
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white transition-all duration-200 hover:border-gray-300">
-      {/* Header row - clickable to expand */}
-      <div
-        className="px-3 py-2.5 flex items-start justify-between gap-2 cursor-pointer"
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
-        <div className="flex items-center gap-2 min-w-0 flex-1">
-          {/* Expand/collapse chevron */}
-          <svg
-            className={`w-4 h-4 text-gray-400 shrink-0 transition-transform duration-200 ${isExpanded ? "rotate-90" : ""}`}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-          <p className="text-sm font-['DM_Sans'] line-clamp-1 text-gray-700 min-w-0">
-            {promptInfo.prompt_text}
-          </p>
-        </div>
+    <div className="px-3 py-2.5 rounded-lg border border-gray-200 bg-white flex items-center justify-between gap-2">
+      <p className="text-sm font-['DM_Sans'] line-clamp-1 text-gray-700 min-w-0 flex-1">
+        {prompt.prompt_text}
+      </p>
 
-        {/* Right side: selection summary + status + remove button */}
-        <div className="flex items-center gap-2 shrink-0">
-          {/* Collapsed selection summary */}
-          {!isExpanded && (
-            <span className={`text-xs font-['DM_Sans'] ${selectionSummary.color}`}>
-              {selectionSummary.icon === "pending" && (
-                <span className="inline-flex items-center gap-1">
-                  <span className="w-2 h-2 border border-blue-400 border-t-transparent rounded-full animate-spin" />
-                  {selectionSummary.text}
-                </span>
-              )}
-              {selectionSummary.icon === "fresh" && (
-                <span className="text-blue-600">{selectionSummary.text}</span>
-              )}
-              {selectionSummary.icon === "free" && (
-                <span className="inline-flex items-center gap-1">
-                  {selectionSummary.text}
-                  <span className="text-[9px] px-1 py-0.5 rounded bg-green-50 text-green-600">FREE</span>
-                </span>
-              )}
-              {selectionSummary.icon === "paid" && (
-                <span className="inline-flex items-center gap-1">
-                  {selectionSummary.text}
-                  <span
-                    className="text-[9px] px-1 py-0.5 rounded"
-                    style={{ backgroundColor: `${accentColor}15`, color: accentColor }}
-                  >
-                    $0.01
-                  </span>
-                </span>
-              )}
-              {selectionSummary.icon === "none" && selectionSummary.text}
-            </span>
-          )}
+      <div className="flex items-center gap-2 shrink-0">
+        {/* Status indicator */}
+        {isPending ? (
+          <span className="text-xs text-blue-600 font-['DM_Sans'] flex items-center gap-1">
+            <span className="w-2 h-2 border border-blue-400 border-t-transparent rounded-full animate-spin" />
+            Pending
+            {prompt.estimated_wait && <span className="text-blue-400">({prompt.estimated_wait})</span>}
+          </span>
+        ) : prompt.status === "fresh" ? (
+          <span className="text-xs text-green-600 font-['DM_Sans']">Ready</span>
+        ) : (
+          <span className="text-xs text-amber-600 font-['DM_Sans']">
+            Will refresh
+            {globalQueueWait && <span className="text-amber-400 ml-1">({globalQueueWait})</span>}
+          </span>
+        )}
 
-          <FreshnessBadge category={promptInfo.freshness_category} />
-
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              onRemove(promptInfo.prompt_id)
-            }}
-            className="p-0.5 rounded hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"
-            title="Remove from report"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+        <StatusBadge status={prompt.status} />
       </div>
-
-      {/* Selection options - only visible when expanded */}
-      {isExpanded && (
-        <div className="px-3 pb-2.5 pt-0 space-y-1.5 border-t border-gray-100 mt-0 pt-2">
-          {/* Evaluation options */}
-          {promptInfo.evaluations.map((evaluation) => {
-            const isSelected = selectedEvalId === evaluation.evaluation_id
-            return (
-              <div
-                key={evaluation.evaluation_id}
-                className={`
-                  flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-md cursor-pointer
-                  border transition-colors text-sm font-['DM_Sans']
-                  ${isSelected ? "border-gray-300 bg-gray-50" : "border-gray-100 hover:border-gray-200 bg-gray-50/50"}
-                `}
-                onClick={() => onSelectionChange(promptInfo.prompt_id, isSelected ? null : evaluation.evaluation_id)}
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  {/* Custom radio circle */}
-                  <div className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center shrink-0
-                    ${isSelected ? "border-gray-600" : "border-gray-300"}`}
-                  >
-                    {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-gray-600" />}
-                  </div>
-                  <span className="truncate text-gray-700">{formatShortDate(evaluation.completed_at)}</span>
-                </div>
-                {evaluation.is_consumed ? (
-                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-green-50 text-green-600 shrink-0">
-                    FREE
-                  </span>
-                ) : (
-                  <span
-                    className="text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0"
-                    style={{ backgroundColor: `${accentColor}15`, color: accentColor }}
-                  >
-                    $0.01
-                  </span>
-                )}
-              </div>
-            )
-          })}
-
-          {/* Ask for fresh option */}
-          {promptInfo.show_ask_for_fresh && !isPending && (
-            <div
-              className={`
-                flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-md cursor-pointer
-                border transition-colors text-sm font-['DM_Sans']
-                ${isAskFresh ? "border-blue-300 bg-blue-50/50" : "border-gray-100 hover:border-gray-200 bg-gray-50/50"}
-              `}
-              onClick={() => onSelectionChange(promptInfo.prompt_id, isAskFresh ? null : "ask_fresh")}
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                {/* Custom radio circle */}
-                <div className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center shrink-0
-                  ${isAskFresh ? "border-blue-600" : "border-gray-300"}`}
-                >
-                  {isAskFresh && <div className="w-1.5 h-1.5 rounded-full bg-blue-600" />}
-                </div>
-                <span className="text-blue-600">Request fresh answer</span>
-              </div>
-              {globalQueueWait && (
-                <span className="text-[10px] text-blue-500 shrink-0">~{globalQueueWait}</span>
-              )}
-            </div>
-          )}
-
-          {/* Pending execution indicator */}
-          {isPending && (
-            <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-md bg-blue-50/50 border border-blue-100">
-              <div className="flex items-center gap-2">
-                <div className="w-3.5 h-3.5 flex items-center justify-center">
-                  <div className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-                </div>
-                <span className="text-sm text-blue-600 font-['DM_Sans']">Execution pending...</span>
-              </div>
-              {promptInfo.estimated_wait && (
-                <span className="text-[10px] text-blue-500">~{promptInfo.estimated_wait}</span>
-              )}
-            </div>
-          )}
-
-          {/* No data, no pending - auto ask_fresh */}
-          {!hasEvaluations && !isPending && promptInfo.auto_ask_for_fresh && (
-            <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-gray-50 border border-gray-200">
-              <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-              <span className="text-sm text-gray-500 font-['DM_Sans']">Will request fresh answer</span>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   )
 }
 
 export function ReportPreviewModal(props: ReportPreviewModalProps) {
-  const { groupId, groupTitle, accentColor, isOpen, onClose, onConfirm } = props
-  const { data: reportData, isLoading, isError, refetch } = useReportData(groupId, isOpen)
+  const { groupId, groupTitle, accentColor, isOpen, assistantId, onClose, onConfirm } = props
+
+  // Fetch report data for the selected assistant
+  const { data: reportData, isLoading, isError, refetch } = useReportData(
+    groupId,
+    assistantId,
+    isOpen
+  )
   const requestFreshMutation = useRequestFresh()
 
-  // Track user selections: promptId -> SelectionValue (empty = use defaults)
-  const [selections, setSelections] = useState<Map<number, SelectionValue>>(new Map())
-  // Track removed prompts (excluded from report)
-  const [removedPrompts, setRemovedPrompts] = useState<Set<number>>(new Set())
-  // Success state for the combined generate action
+  // Success state for the generate action
   const [generateSuccess, setGenerateSuccess] = useState<{
     reportCount: number
     freshCount: number
     estimatedWait: string | null
   } | null>(null)
 
-  // Build default selections from report data
-  const defaultSelections = useMemo(() => {
-    if (!reportData?.prompts) return new Map<number, SelectionValue>()
-    const map = new Map<number, SelectionValue>()
-    reportData.prompts.forEach((p) => {
-      if (p.pending_execution) {
-        map.set(p.prompt_id, null)
-      } else if (p.auto_ask_for_fresh) {
-        map.set(p.prompt_id, "ask_fresh")
-      } else if (p.default_evaluation_id !== null) {
-        map.set(p.prompt_id, p.default_evaluation_id)
-      } else {
-        map.set(p.prompt_id, null)
-      }
-    })
-    return map
-  }, [reportData])
+  // Confirmation state for partial report generation
+  const [showConfirmation, setShowConfirmation] = useState(false)
 
-  // Merge user selections with defaults (user selections override defaults)
-  const effectiveSelections = useMemo(() => {
-    const merged = new Map(defaultSelections)
-    for (const [promptId, selection] of selections) {
-      merged.set(promptId, selection)
-    }
-    return merged
-  }, [selections, defaultSelections])
+  // Track previous isOpen to reset state when modal opens (React-approved pattern)
+  const [prevIsOpen, setPrevIsOpen] = useState(false)
+  if (isOpen && !prevIsOpen) {
+    setGenerateSuccess(null)
+    setShowConfirmation(false)
+  }
+  if (isOpen !== prevIsOpen) {
+    setPrevIsOpen(isOpen)
+  }
 
-  // Refetch when modal opens
+  // Refetch when modal opens or assistant changes
   useEffect(() => {
     if (isOpen) {
       refetch()
     }
-  }, [isOpen, refetch])
+  }, [isOpen, assistantId, refetch])
 
-  // Reset state when modal opens - this is the standard React pattern for resetting
-  // state when a prop changes. The lint rule is overly strict for this use case.
-  const prevIsOpenRef = useRef(false)
-  useEffect(() => {
-    if (isOpen && !prevIsOpenRef.current) {
-      // Modal just opened, reset selections to allow fresh defaults to take effect
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional reset on prop change
-      setSelections(new Map())
-      setRemovedPrompts(new Set())
-      setGenerateSuccess(null)
-    }
-    prevIsOpenRef.current = isOpen
-  }, [isOpen])
+  // Get counts for confirmation dialog
+  const getFreshPrompts = () => reportData?.prompts.filter(
+    (p) => p.status === "fresh" && !p.pending_execution
+  ) ?? []
+  const getNeedsFreshPrompts = () => reportData?.prompts.filter(
+    (p) => (p.status === "stale" || p.status === "absent") && !p.pending_execution
+  ) ?? []
 
-  // Handle selection change
-  const handleSelectionChange = useCallback((promptId: number, selection: SelectionValue) => {
-    setSelections((prev) => {
-      const next = new Map(prev)
-      next.set(promptId, selection)
-      return next
-    })
-  }, [])
+  // Handle Generate button click - show confirmation if fresh prompts exist
+  const handleGenerateClick = () => {
+    if (!reportData) return
 
-  // Handle removing a prompt from the report
-  const handleRemovePrompt = useCallback((promptId: number) => {
-    setRemovedPrompts((prev) => {
-      const next = new Set(prev)
-      next.add(promptId)
-      return next
-    })
-  }, [])
+    const freshPrompts = getFreshPrompts()
+    const needsFreshPrompts = getNeedsFreshPrompts()
 
-  // Derived state for summary (excludes removed prompts)
-  const summary = useMemo(() => {
-    if (!reportData) {
-      return {
-        forReport: [] as number[],
-        forReportFresh: 0,
-        forReportConsumed: 0,
-        forFresh: [] as number[],
-        notIncluded: 0,
-        removed: 0,
-        estimatedCost: 0,
-      }
+    // If fresh prompts exist, show confirmation dialog
+    if (freshPrompts.length > 0) {
+      setShowConfirmation(true)
+      return
     }
 
-    const forReport: number[] = []
-    const forFresh: number[] = []
-    let forReportFresh = 0
-    let forReportConsumed = 0
-    let notIncluded = 0
-
-    for (const prompt of reportData.prompts) {
-      // Skip removed prompts
-      if (removedPrompts.has(prompt.prompt_id)) continue
-
-      const sel = effectiveSelections.get(prompt.prompt_id)
-      if (typeof sel === "number") {
-        forReport.push(prompt.prompt_id)
-        const evaluation = prompt.evaluations.find((e) => e.evaluation_id === sel)
-        if (evaluation?.is_consumed) {
-          forReportConsumed++
-        } else {
-          forReportFresh++
-        }
-      } else if (sel === "ask_fresh") {
-        forFresh.push(prompt.prompt_id)
-      } else {
-        // sel === null means "Don't include"
-        notIncluded++
-      }
+    // No fresh prompts - just request fresh for stale/absent
+    if (needsFreshPrompts.length > 0) {
+      handleRequestFreshOnly()
     }
+  }
 
-    return {
-      forReport,
-      forReportFresh,
-      forReportConsumed,
-      forFresh,
-      notIncluded,
-      removed: removedPrompts.size,
-      estimatedCost: forReportFresh * 0.01, // $0.01 per fresh evaluation
+  // Request fresh only (no report generation)
+  const handleRequestFreshOnly = async () => {
+    const needsFreshPrompts = getNeedsFreshPrompts()
+    if (needsFreshPrompts.length === 0) return
+
+    try {
+      const freshResult = await requestFreshMutation.mutateAsync({
+        promptIds: needsFreshPrompts.map((p) => p.prompt_id),
+        assistantId,
+      })
+
+      setGenerateSuccess({
+        reportCount: 0,
+        freshCount: freshResult.queued_count,
+        estimatedWait: freshResult.estimated_total_wait,
+      })
+
+      refetch()
+    } catch (error) {
+      console.error("Failed to request fresh execution:", error)
     }
-  }, [reportData, effectiveSelections, removedPrompts])
+  }
 
-  // Combined generate handler: generates report AND requests fresh executions
-  const handleGenerate = async () => {
-    const hasReport = summary.forReport.length > 0
-    const hasFresh = summary.forFresh.length > 0
+  // Confirmed generation: generate report with fresh + request fresh for stale/absent
+  const handleConfirmedGenerate = async () => {
+    setShowConfirmation(false)
 
-    if (!hasReport && !hasFresh) return
+    const freshPrompts = getFreshPrompts()
+    const needsFreshPrompts = getNeedsFreshPrompts()
 
     let freshResult: { queued_count: number; estimated_total_wait: string } | null = null
 
-    // Request fresh executions first (if any)
-    if (hasFresh) {
+    // Request fresh for stale/absent prompts
+    if (needsFreshPrompts.length > 0) {
       try {
-        freshResult = await requestFreshMutation.mutateAsync(summary.forFresh)
+        freshResult = await requestFreshMutation.mutateAsync({
+          promptIds: needsFreshPrompts.map((p) => p.prompt_id),
+          assistantId,
+        })
       } catch (error) {
         console.error("Failed to request fresh execution:", error)
-        return // Don't proceed if fresh request fails
+        return
       }
     }
 
-    // Generate report (if any prompts have selected evaluations)
-    if (hasReport) {
-      const reportSelections = reportData!.prompts
-        .filter((p) => !removedPrompts.has(p.prompt_id))
-        .filter((p) => typeof effectiveSelections.get(p.prompt_id) === "number")
-        .map((p) => ({
-          prompt_id: p.prompt_id,
-          evaluation_id: effectiveSelections.get(p.prompt_id) as number,
-        }))
-
-      onConfirm(reportSelections)
+    // Generate report with fresh prompts
+    if (freshPrompts.length > 0) {
+      const selections: PromptSelection[] = freshPrompts.map((p) => ({
+        prompt_id: p.prompt_id,
+        evaluation_id: p.latest_evaluation_id!,
+      }))
+      onConfirm(selections, assistantId)
     }
 
     // Show success state
     setGenerateSuccess({
-      reportCount: hasReport ? summary.forReport.length : 0,
+      reportCount: freshPrompts.length,
       freshCount: freshResult?.queued_count ?? 0,
       estimatedWait: freshResult?.estimated_total_wait ?? null,
     })
 
-    // Refetch to update pending status if we requested fresh
-    if (hasFresh) {
+    // Refetch to update pending status
+    if (needsFreshPrompts.length > 0) {
       refetch()
     }
   }
 
   if (!isOpen) return null
 
-  const canGenerateReport = summary.forReport.length > 0
-  const canRequestFresh = summary.forFresh.length > 0
-  const globalQueueWait = reportData
-    ? `${Math.ceil(reportData.global_queue_size * 0.5)}m`
+  const freshCount = reportData?.prompts_fresh ?? 0
+  const staleCount = reportData?.prompts_stale ?? 0
+  const absentCount = reportData?.prompts_absent ?? 0
+  const pendingCount = reportData?.prompts_pending_execution ?? 0
+
+  // Count actionable (non-pending) prompts
+  const actionableFresh = reportData?.prompts.filter(
+    (p) => p.status === "fresh" && !p.pending_execution
+  ).length ?? 0
+  const actionableStaleAbsent = reportData?.prompts.filter(
+    (p) => (p.status === "stale" || p.status === "absent") && !p.pending_execution
+  ).length ?? 0
+
+  const canGenerate = (actionableFresh > 0 || actionableStaleAbsent > 0) && !generateSuccess
+  const globalQueueWait = reportData && reportData.global_queue_size > 0
+    ? `~${Math.ceil(reportData.global_queue_size * 0.5)}m`
     : null
 
   return (
@@ -486,7 +259,7 @@ export function ReportPreviewModal(props: ReportPreviewModalProps) {
               <h2 className="text-xl tracking-tight" style={{ color: accentColor }}>
                 Generate report
               </h2>
-              <p className="text-sm text-gray-400 mt-1 font-['DM_Sans'] truncate max-w-[340px]">
+              <p className="text-sm text-gray-400 font-['DM_Sans'] truncate max-w-[320px] mt-1">
                 {groupTitle}
               </p>
             </div>
@@ -511,17 +284,18 @@ export function ReportPreviewModal(props: ReportPreviewModalProps) {
                 borderTopColor: accentColor,
               }}
             />
-            <p className="text-sm text-gray-400 font-['DM_Sans']">Loading options...</p>
+            <p className="text-sm text-gray-400 font-['DM_Sans']">Loading...</p>
           </div>
         )}
 
         {/* Error state */}
         {isError && (
           <div className="py-12 text-center flex-1">
-            <p className="text-sm text-red-500 font-['DM_Sans'] mb-3">Failed to load preview</p>
+            <p className="text-sm text-red-500 font-['DM_Sans'] mb-3">Failed to load</p>
             <button
               onClick={() => refetch()}
-              className="text-sm text-[#C4553D] hover:underline font-['DM_Sans']"
+              className="text-sm hover:underline font-['DM_Sans']"
+              style={{ color: accentColor }}
             >
               Try again
             </button>
@@ -531,7 +305,7 @@ export function ReportPreviewModal(props: ReportPreviewModalProps) {
         {/* Content */}
         {reportData && !isLoading && (
           <>
-            {/* Success message after generate */}
+            {/* Success message */}
             {generateSuccess && (
               <div className="mx-5 mt-4 p-4 rounded-lg bg-green-50 border border-green-100 shrink-0">
                 <div className="flex items-start gap-3">
@@ -551,12 +325,13 @@ export function ReportPreviewModal(props: ReportPreviewModalProps) {
                     <div className="mt-1.5 space-y-1">
                       {generateSuccess.reportCount > 0 && (
                         <p className="text-xs text-green-700 font-['DM_Sans']">
-                          ✓ {generateSuccess.reportCount} prompt{generateSuccess.reportCount !== 1 ? "s" : ""} included in report
+                          ✓ {generateSuccess.reportCount} prompt{generateSuccess.reportCount !== 1 ? "s" : ""} included
                         </p>
                       )}
-                      {generateSuccess.freshCount > 0 && generateSuccess.estimatedWait && (
+                      {generateSuccess.freshCount > 0 && (
                         <p className="text-xs text-green-700 font-['DM_Sans']">
-                          ✓ {generateSuccess.freshCount} prompt{generateSuccess.freshCount !== 1 ? "s" : ""} queued — ready in ~{generateSuccess.estimatedWait}
+                          ✓ {generateSuccess.freshCount} prompt{generateSuccess.freshCount !== 1 ? "s" : ""} queued
+                          {generateSuccess.estimatedWait && ` — ready in ~${generateSuccess.estimatedWait}`}
                         </p>
                       )}
                     </div>
@@ -574,91 +349,95 @@ export function ReportPreviewModal(props: ReportPreviewModalProps) {
             {/* Summary stats */}
             <div className="px-5 py-3 flex items-center justify-between border-b border-gray-100 shrink-0">
               <div className="flex items-center gap-4">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-green-500" />
-                  <span className="text-xs text-gray-500 font-['DM_Sans']">
-                    <span className="font-medium text-gray-700">{reportData.prompts_fresh}</span> fresh
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-amber-500" />
-                  <span className="text-xs text-gray-500 font-['DM_Sans']">
-                    <span className="font-medium text-gray-700">{reportData.prompts_stale}</span> stale
-                  </span>
-                </div>
-                {reportData.prompts_no_data > 0 && (
+                {freshCount > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-green-500" />
+                    <span className="text-xs text-gray-500 font-['DM_Sans']">
+                      <span className="font-medium text-gray-700">{freshCount}</span> fresh
+                    </span>
+                  </div>
+                )}
+                {staleCount > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-amber-500" />
+                    <span className="text-xs text-gray-500 font-['DM_Sans']">
+                      <span className="font-medium text-gray-700">{staleCount}</span> stale
+                    </span>
+                  </div>
+                )}
+                {absentCount > 0 && (
                   <div className="flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-gray-300" />
                     <span className="text-xs text-gray-500 font-['DM_Sans']">
-                      <span className="font-medium text-gray-700">{reportData.prompts_no_data}</span> no data
+                      <span className="font-medium text-gray-700">{absentCount}</span> absent
                     </span>
                   </div>
                 )}
               </div>
-              {reportData.prompts_pending_execution > 0 && (
+              {pendingCount > 0 && (
                 <div className="flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
                   <span className="text-xs text-gray-500 font-['DM_Sans']">
-                    <span className="font-medium text-gray-700">{reportData.prompts_pending_execution}</span> pending
+                    <span className="font-medium text-gray-700">{pendingCount}</span> pending
                   </span>
                 </div>
               )}
             </div>
 
-            {/* Scrollable prompts list */}
+            {/* Scrollable prompts list (read-only) */}
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2 prompts-scroll">
-              {reportData.prompts
-                .filter((prompt) => !removedPrompts.has(prompt.prompt_id))
-                .map((prompt) => (
-                  <PromptSelectionCard
-                    key={prompt.prompt_id}
-                    promptInfo={prompt}
-                    selection={effectiveSelections.get(prompt.prompt_id) ?? null}
-                    onSelectionChange={handleSelectionChange}
-                    onRemove={handleRemovePrompt}
-                    accentColor={accentColor}
-                    globalQueueWait={globalQueueWait}
-                  />
-                ))}
+              {reportData.prompts.map((prompt) => (
+                <PromptRow
+                  key={prompt.prompt_id}
+                  prompt={prompt}
+                  globalQueueWait={globalQueueWait}
+                />
+              ))}
             </div>
+
+            {/* Confirmation dialog */}
+            {showConfirmation && (
+              <div className="mx-5 mb-4 p-4 rounded-lg bg-amber-50 border border-amber-200 shrink-0">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                    <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-amber-800 font-['DM_Sans']">
+                      Generate partial report?
+                    </p>
+                    <p className="mt-1 text-xs text-amber-700 font-['DM_Sans']">
+                      Only <span className="font-medium">{actionableFresh}</span> of {reportData.total_prompts} prompts have fresh answers.
+                      {actionableStaleAbsent > 0 && (
+                        <> The remaining <span className="font-medium">{actionableStaleAbsent}</span> will be queued for refresh.</>
+                      )}
+                    </p>
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        onClick={() => setShowConfirmation(false)}
+                        className="px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-100 hover:bg-amber-200 rounded transition-colors font-['DM_Sans']"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleConfirmedGenerate}
+                        disabled={requestFreshMutation.isPending}
+                        className="px-3 py-1.5 text-xs font-medium text-white bg-amber-600 hover:bg-amber-700 rounded transition-colors font-['DM_Sans'] disabled:opacity-50"
+                      >
+                        {requestFreshMutation.isPending ? "Processing..." : "Generate anyway"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Footer with actions */}
             <div className="px-5 py-4 border-t border-gray-100 bg-gray-50/50 shrink-0">
-              {/* Selection summary */}
-              <div className="flex items-center justify-between mb-4">
-                <div className="text-xs text-gray-500 font-['DM_Sans']">
-                  {summary.forReport.length > 0 && (
-                    <span>
-                      <span className="font-medium text-gray-700">{summary.forReport.length}</span> for report
-                      {summary.forReportFresh > 0 && (
-                        <span className="text-gray-400"> ({summary.forReportFresh} chargeable)</span>
-                      )}
-                    </span>
-                  )}
-                  {summary.forReport.length > 0 && summary.forFresh.length > 0 && <span className="mx-2">•</span>}
-                  {summary.forFresh.length > 0 && (
-                    <span>
-                      <span className="font-medium text-blue-600">{summary.forFresh.length}</span> for fresh execution
-                    </span>
-                  )}
-                  {(summary.notIncluded > 0 || summary.removed > 0) && (
-                    <>
-                      {(summary.forReport.length > 0 || summary.forFresh.length > 0) && (
-                        <span className="mx-2">•</span>
-                      )}
-                      <span className="text-gray-400">{summary.notIncluded + summary.removed} skipped</span>
-                    </>
-                  )}
-                </div>
-                {summary.estimatedCost > 0 && (
-                  <div className="text-sm font-medium font-['DM_Sans']" style={{ color: accentColor }}>
-                    ${formatCredits(summary.estimatedCost)}
-                  </div>
-                )}
-              </div>
-
               {/* Action buttons */}
-              {!generateSuccess && (
+              {!generateSuccess && !showConfirmation && (
                 <div className="flex gap-3">
                   <button
                     onClick={onClose}
@@ -671,10 +450,9 @@ export function ReportPreviewModal(props: ReportPreviewModalProps) {
                     Cancel
                   </button>
 
-                  {/* Single Generate button */}
                   <button
-                    onClick={handleGenerate}
-                    disabled={!canGenerateReport && !canRequestFresh || requestFreshMutation.isPending}
+                    onClick={handleGenerateClick}
+                    disabled={!canGenerate || requestFreshMutation.isPending}
                     className="
                       flex-1 py-3 px-4 rounded-lg text-sm font-medium
                       text-white transition-all font-['DM_Sans']
@@ -687,26 +465,8 @@ export function ReportPreviewModal(props: ReportPreviewModalProps) {
                         <div className="w-3.5 h-3.5 border-2 border-white/50 border-t-white rounded-full animate-spin" />
                         Processing...
                       </span>
-                    ) : !canGenerateReport && !canRequestFresh ? (
-                      "Select prompts"
                     ) : (
-                      <span>
-                        Generate
-                        {summary.forReport.length > 0 && summary.forFresh.length > 0 && (
-                          <span className="opacity-75 ml-1">
-                            ({summary.forReport.length} + {summary.forFresh.length} fresh)
-                          </span>
-                        )}
-                        {summary.forReport.length > 0 && summary.forFresh.length === 0 && (
-                          <span className="opacity-75 ml-1">({summary.forReport.length})</span>
-                        )}
-                        {summary.forReport.length === 0 && summary.forFresh.length > 0 && (
-                          <span className="opacity-75 ml-1">({summary.forFresh.length} fresh)</span>
-                        )}
-                        {summary.estimatedCost > 0 && (
-                          <span className="ml-1">— ${formatCredits(summary.estimatedCost)}</span>
-                        )}
-                      </span>
+                      "Generate"
                     )}
                   </button>
                 </div>

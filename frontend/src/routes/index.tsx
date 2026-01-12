@@ -6,9 +6,9 @@ import {
   useGroups,
   useAllGroupDetails,
   useAddPromptsToGroup,
-  useAddPriorityPrompt,
   useCreateGroup,
 } from "@/hooks/useGroups"
+import { batchApi } from "@/client/api"
 import { Button } from "@/components/ui/button"
 import { GroupsGrid, GroupSelector } from "@/components/groups"
 import { BalanceIndicator } from "@/components/billing"
@@ -61,8 +61,8 @@ function PromptDiscovery() {
   const { data: groupDetails } = useAllGroupDetails(groupIds)
 
   const addPromptsToGroup = useAddPromptsToGroup()
-  const addPriorityPrompt = useAddPriorityPrompt()
   const createGroup = useCreateGroup()
+  const [isCreatingCustomPrompt, setIsCreatingCustomPrompt] = useState(false)
 
   // Track which prompts are already in any group
   const alreadyAddedIds = useMemo(() => {
@@ -188,11 +188,14 @@ function PromptDiscovery() {
 
       try {
         if (pendingPrompts.isCustom) {
-          // Create custom prompt and add to group in one operation
-          await addPriorityPrompt.mutateAsync({
-            promptText: pendingPrompts.prompts[0].text,
-            targetGroupId: groupId,
+          // Create custom prompt and add to group via batch API
+          setIsCreatingCustomPrompt(true)
+          await batchApi.create({
+            prompts: [pendingPrompts.prompts[0].text],
+            selected_indices: [0],
+            group_id: groupId,
           })
+          setIsCreatingCustomPrompt(false)
         } else {
           // Add existing prompt(s) to group
           const promptIds = pendingPrompts.prompts.map((p) => p.id)
@@ -215,9 +218,10 @@ function PromptDiscovery() {
       } catch (error) {
         console.error("Failed to add prompt(s) to group:", error)
         setAddingToGroupId(null)
+        setIsCreatingCustomPrompt(false)
       }
     },
-    [pendingPrompts, addPriorityPrompt, addPromptsToGroup]
+    [pendingPrompts, addPromptsToGroup]
   )
 
   // Handle creating a new group (from GroupSelector)
@@ -428,7 +432,7 @@ function PromptDiscovery() {
 
   const showDropdown = isDropdownOpen && shouldShowDropdown
   const isAddingPrompt =
-    addPromptsToGroup.isPending || addPriorityPrompt.isPending
+    addPromptsToGroup.isPending || isCreatingCustomPrompt
 
   return (
     <div className="min-h-screen bg-[#FDFBF7] font-['DM_Sans']">

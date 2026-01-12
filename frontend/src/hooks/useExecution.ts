@@ -14,7 +14,6 @@ export const executionKeys = {
   all: ["execution"] as const,
   reportData: (groupId: number) =>
     [...executionKeys.all, "reportData", groupId] as const,
-  queueStatus: () => [...executionKeys.all, "queueStatus"] as const,
 }
 
 // ===== Queries =====
@@ -22,27 +21,20 @@ export const executionKeys = {
 /**
  * Fetch report data with freshness metadata for a group
  * Returns prompts with their evaluations, freshness categories, and default selections
+ * @param groupId - The group ID
+ * @param assistantId - AI Assistant ID (default: 1 for ChatGPT)
+ * @param enabled - Whether the query is enabled
  */
-export function useReportData(groupId: number, enabled: boolean = true) {
+export function useReportData(
+  groupId: number,
+  assistantId: number = 1,
+  enabled: boolean = true
+) {
   return useQuery({
-    queryKey: executionKeys.reportData(groupId),
-    queryFn: () => reportsApi.getReportData(groupId),
+    queryKey: [...executionKeys.reportData(groupId), assistantId],
+    queryFn: () => reportsApi.getReportData(groupId, assistantId),
     enabled: enabled && groupId > 0,
     staleTime: 30 * 1000, // 30 seconds - can change as evaluations complete
-  })
-}
-
-/**
- * Fetch current queue status for the user
- * Shows pending and in-progress executions, recently completed items
- */
-export function useQueueStatus(enabled: boolean = true) {
-  return useQuery({
-    queryKey: executionKeys.queueStatus(),
-    queryFn: () => executionApi.getQueueStatus(),
-    enabled,
-    staleTime: 10 * 1000, // 10 seconds - queue changes frequently
-    refetchInterval: 30 * 1000, // Poll every 30 seconds while visible
   })
 }
 
@@ -56,51 +48,15 @@ export function useRequestFresh() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (promptIds: number[]) => executionApi.requestFresh(promptIds),
+    mutationFn: ({
+      promptIds,
+      assistantId,
+    }: {
+      promptIds: number[]
+      assistantId: number
+    }) => executionApi.requestFresh(promptIds, assistantId),
     onSuccess: () => {
-      // Invalidate queue status to show new pending items
-      queryClient.invalidateQueries({
-        queryKey: executionKeys.queueStatus(),
-      })
-      // Also invalidate all report data queries to update pending_execution status
-      queryClient.invalidateQueries({
-        queryKey: executionKeys.all,
-      })
-    },
-  })
-}
-
-/**
- * Cancel a pending execution request
- */
-export function useCancelExecution() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: (promptId: number) => executionApi.cancelExecution(promptId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: executionKeys.queueStatus(),
-      })
-      queryClient.invalidateQueries({
-        queryKey: executionKeys.all,
-      })
-    },
-  })
-}
-
-/**
- * Cancel multiple pending execution requests
- */
-export function useCancelExecutionsBatch() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: (promptIds: number[]) => executionApi.cancelExecutionsBatch(promptIds),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: executionKeys.queueStatus(),
-      })
+      // Invalidate all report data queries to update pending_execution status
       queryClient.invalidateQueries({
         queryKey: executionKeys.all,
       })
@@ -117,10 +73,6 @@ export function useInvalidateExecutionQueries() {
   const queryClient = useQueryClient()
 
   return (groupId?: number) => {
-    // Invalidate queue status
-    queryClient.invalidateQueries({
-      queryKey: executionKeys.queueStatus(),
-    })
     // Invalidate report data for specific group or all
     if (groupId) {
       queryClient.invalidateQueries({

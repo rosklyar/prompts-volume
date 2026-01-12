@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.brightdata.models.domain import BrightDataPromptInput, BrightDataTriggerRequest
 from src.brightdata.services.batch_service import BrightDataBatchService
 from src.brightdata.services.brightdata_client import BrightDataHttpClient
+from src.brightdata.strategies import AssistantStrategyFactory
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,8 @@ class BrightDataService:
         batch_id: str,
         prompts: dict[int, str],
         user_id: str,
+        *,
+        assistant_id: int = 1,
     ) -> None:
         """Trigger Bright Data batch with prompts.
 
@@ -46,14 +49,22 @@ class BrightDataService:
             batch_id: Unique batch identifier
             prompts: Dict mapping prompt_id to prompt_text
             user_id: User who requested the batch
+            assistant_id: AI assistant ID to scrape (default: 1 = ChatGPT)
         """
         if not prompts:
             logger.debug("No prompts to trigger")
             return
 
+        # Get URL strategy for the selected assistant
+        strategy = AssistantStrategyFactory.get_strategy(assistant_id)
+        assistant_url = strategy.get_url()
+        logger.info(f"Using {strategy.get_assistant_name()} URL: {assistant_url}")
+
         # Always register batch in database (for webhook correlation and pending tracking)
         prompt_ids = list(prompts.keys())
-        await self._batch_service.register_batch(batch_id, prompt_ids, user_id)
+        await self._batch_service.register_batch(
+            batch_id, prompt_ids, user_id, assistant_id=assistant_id
+        )
 
         if not self._client:
             logger.debug("Bright Data client not configured, skipping HTTP trigger")
@@ -61,10 +72,10 @@ class BrightDataService:
 
         try:
 
-            # Build request inputs
+            # Build request inputs with strategy-provided URL
             inputs = [
                 BrightDataPromptInput(
-                    url="https://chatgpt.com/",
+                    url=assistant_url,
                     prompt=text,
                     country=self._default_country,
                 )

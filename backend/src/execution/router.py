@@ -75,10 +75,15 @@ async def request_fresh_execution(
     wait_str = _format_wait_time(total_seconds)
     completion_at = datetime.now(timezone.utc) + timedelta(seconds=total_seconds)
 
-    # Trigger Bright Data
+    # Trigger Bright Data with selected assistant
     prompt_dict = await prompt_service.get_by_ids(new_prompt_ids)
     brightdata_service = get_brightdata_service(evals_session)
-    await brightdata_service.trigger_batch(batch_id, prompt_dict, str(current_user.id))
+    await brightdata_service.trigger_batch(
+        batch_id,
+        prompt_dict,
+        str(current_user.id),
+        assistant_id=request.assistant_id,
+    )
     await evals_session.commit()
 
     # Build response items

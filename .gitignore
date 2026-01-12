@@ -218,3 +218,5 @@ frontend/dist/
 frontend/.env.local
 frontend/src/routeTree.gen.ts
 sessions/
+.claude/
+backend/.claude/

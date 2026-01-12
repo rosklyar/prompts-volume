@@ -10,7 +10,6 @@ from sqlalchemy.orm import selectinload
 
 from src.database.evals_models import (
     AIAssistant,
-    AIAssistantPlan,
     ConsumedEvaluation,
     EvaluationStatus,
     GroupReport,
@@ -117,8 +116,7 @@ class SelectionAnalyzerService:
                 options.append(
                     EvaluationOption(
                         evaluation_id=eval_data["id"],
-                        assistant_plan_id=eval_data["assistant_plan_id"],
-                        assistant_plan_name=eval_data["plan_name"],
+                        assistant_id=eval_data["assistant_id"],
                         assistant_name=eval_data["assistant_name"],
                         completed_at=eval_data["completed_at"],
                         is_fresh=is_fresh,
@@ -194,16 +192,11 @@ class SelectionAnalyzerService:
             select(
                 PromptEvaluation.id,
                 PromptEvaluation.prompt_id,
-                PromptEvaluation.assistant_plan_id,
+                PromptEvaluation.assistant_id,
                 PromptEvaluation.completed_at,
-                AIAssistantPlan.name.label("plan_name"),
                 AIAssistant.name.label("assistant_name"),
             )
-            .join(
-                AIAssistantPlan,
-                PromptEvaluation.assistant_plan_id == AIAssistantPlan.id,
-            )
-            .join(AIAssistant, AIAssistantPlan.assistant_id == AIAssistant.id)
+            .join(AIAssistant, PromptEvaluation.assistant_id == AIAssistant.id)
             .where(
                 PromptEvaluation.prompt_id.in_(prompt_ids),
                 PromptEvaluation.status == EvaluationStatus.COMPLETED,
@@ -220,9 +213,8 @@ class SelectionAnalyzerService:
             evaluations_by_prompt[row.prompt_id].append({
                 "id": row.id,
                 "prompt_id": row.prompt_id,
-                "assistant_plan_id": row.assistant_plan_id,
+                "assistant_id": row.assistant_id,
                 "completed_at": row.completed_at,
-                "plan_name": row.plan_name,
                 "assistant_name": row.assistant_name,
             })
 

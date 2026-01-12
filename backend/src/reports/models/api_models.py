@@ -25,8 +25,7 @@ class EvaluationOption(BaseModel):
     """A single evaluation option that can be selected for a prompt."""
 
     evaluation_id: int
-    assistant_plan_id: int
-    assistant_plan_name: str
+    assistant_id: int
     assistant_name: str
     completed_at: datetime
     is_fresh: bool  # True if user hasn't consumed this evaluation yet
@@ -59,6 +58,7 @@ class SelectiveGenerateReportRequest(BaseModel):
     title: str | None = None
     selections: List[PromptSelection]
     use_defaults_for_unspecified: bool = True
+    assistant_id: int = 1  # AI Assistant ID to filter evaluations (default: ChatGPT)
 
 
 class SelectableComparisonResponse(BaseModel):

@@ -246,6 +246,7 @@ export interface SelectiveGenerateReportRequest {
   title?: string
   selections: PromptSelection[]
   use_defaults_for_unspecified?: boolean // default: true
+  assistant_id?: number // AI Assistant ID (default: 1 for ChatGPT)
 }
 
 // ===== Enhanced Comparison Response (Legacy - now alias) =====

@@ -5,7 +5,7 @@ This file provides guidance for working with this full-stack application.
 ## Project Overview
 
 Full-stack AI-powered prompts management platform with:
-- **Backend:** FastAPI service (JWT auth, prompt generation, vector search)
+- **Backend:** FastAPI service (JWT auth, vector search for prompts, adding prompts to groups and asking for answers)
 - **Frontend:** React + TypeScript application (login, signup, dashboard)
 
 ## Architecture
@@ -24,7 +24,6 @@ Frontend (React) ←→ REST API ←→ Backend (FastAPI) ←→ PostgreSQL
 
 ```bash
 docker-compose up -d
-# Frontend: http://localhost:5173
 # Backend: http://localhost:8000/docs
 ```
 
@@ -88,7 +87,7 @@ app.add_middleware(
 ## Testing Full Integration
 
 ```bash
-# 1. Start services
+# 1. Start backend
 docker-compose up -d
 
 # 2. Test backend
@@ -99,6 +98,41 @@ curl -X POST http://localhost:8000/api/v1/login/access-token \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "username=admin@example.com&password=changethis"
 
+# 4. Run frontend
+cd frontend/ & npm run dev
+
 # 4. Access frontend
 open http://localhost:5173
 ```
+
+## Verifying Changes Locally
+
+**After completing any implementation task, ask user: "Ready to run local verification?" before proceeding.**
+
+### 1. Backend
+```bash
+cd backend
+uv run pytest  # Add 1 happy-path integration test for new features, fix until green
+```
+
+### 2. Frontend
+```bash
+cd frontend
+npm run lint && npm test  # Fix until both pass
+```
+
+### 3. Integration (E2E)
+```bash
+# Start services
+docker-compose up -d --build
+cd frontend && npm run dev &  # background
+
+# Run E2E scenarios from e2e/scenarios.md using Playwright MCP tools
+# Fix any failures before proceeding
+
+# KEEP SERVICES RUNNING - ask user: "Verification passed. Services running at localhost:5173. Type 'done' when finished manual testing."
+# Only cleanup after user confirms:
+# pkill -f "vite" && docker-compose down -v
+```
+
+See `e2e/scenarios.md` for Playwright test scenarios to execute.
