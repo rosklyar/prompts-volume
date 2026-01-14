@@ -27,6 +27,9 @@ import type {
   Topic,
   PromptUploadResponse,
   UploadPromptsRequest,
+  PendingPromptsListResponse,
+  ApprovalResultResponse,
+  BatchApprovalResponse,
 } from "@/types/admin"
 import type {
   ReportDataResponse,
@@ -344,14 +347,30 @@ export const groupsApi = {
 
   async createGroup(
     title: string,
-    topic: TopicInput,
+    topic: TopicInput | null,
     brand: BrandInfo,
     competitors?: CompetitorInfo[]
   ): Promise<GroupSummary> {
+    const body: {
+      title: string
+      brand: BrandInfo
+      topic?: TopicInput
+      competitors?: CompetitorInfo[]
+    } = { title, brand }
+
+    // Only include topic if provided
+    if (topic !== null) {
+      body.topic = topic
+    }
+
+    if (competitors && competitors.length > 0) {
+      body.competitors = competitors
+    }
+
     const response = await fetchWithAuth("/prompt-groups/api/v1/groups", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, topic, brand, competitors }),
+      body: JSON.stringify(body),
     })
     return response.json()
   },
@@ -590,6 +609,83 @@ export const adminApi = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request),
+    })
+    return response.json()
+  },
+
+  /**
+   * Get pending prompts for approval (admin only)
+   */
+  async getPendingPrompts(
+    limit: number = 20,
+    offset: number = 0
+  ): Promise<PendingPromptsListResponse> {
+    const params = new URLSearchParams({
+      limit: limit.toString(),
+      offset: offset.toString(),
+    })
+    const response = await fetchWithAuth(`/admin/api/v1/prompts/pending?${params}`)
+    return response.json()
+  },
+
+  /**
+   * Approve a single prompt (admin only)
+   */
+  async approvePrompt(
+    promptId: number,
+    topicId?: number | null
+  ): Promise<ApprovalResultResponse> {
+    const body: { topic_id?: number | null } = {}
+    if (topicId !== undefined && topicId !== null) {
+      body.topic_id = topicId
+    }
+    const response = await fetchWithAuth(`/admin/api/v1/prompts/${promptId}/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+    return response.json()
+  },
+
+  /**
+   * Reject a single prompt (admin only)
+   */
+  async rejectPrompt(promptId: number): Promise<ApprovalResultResponse> {
+    const response = await fetchWithAuth(`/admin/api/v1/prompts/${promptId}/reject`, {
+      method: "POST",
+    })
+    return response.json()
+  },
+
+  /**
+   * Batch approve prompts (admin only)
+   */
+  async batchApprovePrompts(
+    promptIds: number[],
+    topicId?: number | null
+  ): Promise<BatchApprovalResponse> {
+    const body: { prompt_ids: number[]; topic_id?: number | null } = {
+      prompt_ids: promptIds,
+    }
+    if (topicId !== undefined && topicId !== null) {
+      body.topic_id = topicId
+    }
+    const response = await fetchWithAuth("/admin/api/v1/prompts/batch/approve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+    return response.json()
+  },
+
+  /**
+   * Batch reject prompts (admin only)
+   */
+  async batchRejectPrompts(promptIds: number[]): Promise<BatchApprovalResponse> {
+    const response = await fetchWithAuth("/admin/api/v1/prompts/batch/reject", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt_ids: promptIds }),
     })
     return response.json()
   },

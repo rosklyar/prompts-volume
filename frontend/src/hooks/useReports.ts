@@ -150,24 +150,15 @@ export function useExportReportJson() {
 // ===== Utility Functions =====
 
 /**
- * Format relative time for report timestamps
+ * Format date and time for report timestamps
  */
 export function formatReportTime(timestamp: string): string {
-  const now = new Date()
   const reportDate = new Date(timestamp)
-  const diffMs = now.getTime() - reportDate.getTime()
-  const diffMins = Math.floor(diffMs / (1000 * 60))
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-
-  if (diffMins < 1) return "just now"
-  if (diffMins < 60) return `${diffMins}m ago`
-  if (diffHours < 24) return `${diffHours}h ago`
-  if (diffDays === 1) return "yesterday"
-  if (diffDays < 7) return `${diffDays}d ago`
-  if (diffDays < 30) {
-    const weeks = Math.floor(diffDays / 7)
-    return `${weeks}w ago`
-  }
-  return reportDate.toLocaleDateString()
+  return reportDate.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
 }

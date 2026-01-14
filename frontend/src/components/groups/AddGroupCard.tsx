@@ -6,13 +6,13 @@
  */
 
 import { useState, useRef, useEffect, useMemo } from "react"
-import { ChevronDown, ChevronRight, Plus, X, Globe, Sparkles, MapPin, Briefcase, Tag } from "lucide-react"
+import { ChevronDown, ChevronRight, Plus, X, Globe, Sparkles, MapPin, Briefcase, Tag, Check, AlertTriangle } from "lucide-react"
 import type { BrandInfo, CompetitorInfo, TopicInput } from "@/types/groups"
 import { useCountries, useBusinessDomains, useTopicsFiltered } from "@/hooks/useTopics"
 import { MAX_GROUPS } from "./constants"
 
 interface AddGroupCardProps {
-  onAdd: (title: string, topic: TopicInput, brand: BrandInfo, competitors?: CompetitorInfo[], topicTitle?: string) => void
+  onAdd: (title: string, topic: TopicInput | null, brand: BrandInfo, competitors?: CompetitorInfo[], topicTitle?: string | null) => void
   isLoading: boolean
 }
 
@@ -33,13 +33,11 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
   const [step, setStep] = useState<CreationStep>("topic")
   const [title, setTitle] = useState("")
 
-  // Topic selection state
+  // Topic selection state - default to "no topic" (skipTopicBinding = true)
   const [selectedCountryId, setSelectedCountryId] = useState<number | undefined>()
   const [selectedBusinessDomainId, setSelectedBusinessDomainId] = useState<number | undefined>()
   const [selectedTopicId, setSelectedTopicId] = useState<number | undefined>()
-  const [isCreatingNewTopic, setIsCreatingNewTopic] = useState(false)
-  const [newTopicTitle, setNewTopicTitle] = useState("")
-  const [newTopicDescription, setNewTopicDescription] = useState("")
+  const [skipTopicBinding, setSkipTopicBinding] = useState(true)
 
   // Brand state
   const [brandName, setBrandName] = useState("")
@@ -144,25 +142,14 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
         variations,
       }
 
-      // Build topic input
-      let topicInput: TopicInput
-      if (isCreatingNewTopic && selectedCountryId && selectedBusinessDomainId) {
-        topicInput = {
-          new_topic: {
-            title: newTopicTitle.trim(),
-            description: newTopicDescription.trim(),
-            business_domain_id: selectedBusinessDomainId,
-            country_id: selectedCountryId,
-          },
-        }
-      } else if (selectedTopicId) {
+      // Build topic input - null if skipping
+      let topicInput: TopicInput | null = null
+      if (!skipTopicBinding && selectedTopicId) {
         topicInput = { existing_topic_id: selectedTopicId }
-      } else {
-        return // Should not happen if validation is correct
       }
 
-      // Get the topic title to pass to the modal
-      const topicTitleForModal = isCreatingNewTopic ? newTopicTitle.trim() : selectedTopic?.title
+      // Get the topic title to pass to the modal (null if skipping)
+      const topicTitleForModal = skipTopicBinding ? null : selectedTopic?.title
 
       onAdd(trimmedTitle, topicInput, brand, competitors.length > 0 ? competitors : undefined, topicTitleForModal)
       resetForm()
@@ -175,9 +162,7 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
     setSelectedCountryId(undefined)
     setSelectedBusinessDomainId(undefined)
     setSelectedTopicId(undefined)
-    setIsCreatingNewTopic(false)
-    setNewTopicTitle("")
-    setNewTopicDescription("")
+    setSkipTopicBinding(false)
     setBrandName("")
     setBrandDomain("")
     setBrandVariations("")
@@ -211,8 +196,7 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
   }
 
   const canProceedToDetails =
-    (selectedTopicId !== undefined) ||
-    (isCreatingNewTopic && newTopicTitle.trim() && newTopicDescription.trim() && selectedCountryId && selectedBusinessDomainId)
+    skipTopicBinding || (selectedTopicId !== undefined)
 
   const canCreate = title.trim() && brandName.trim() && canProceedToDetails
 
@@ -262,79 +246,132 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
             <div ref={topicStepRef} className="space-y-4 animate-in fade-in duration-200">
               <div className="flex items-center gap-2 mb-3">
                 <Sparkles className="w-4 h-4 text-[#C4553D]" />
-                <span className="text-sm font-medium text-gray-700">Select or create a topic for your group</span>
+                <span className="text-sm font-medium text-gray-700">Topic binding (optional)</span>
               </div>
 
-              {/* Country selector */}
-              <div>
-                <label className="flex items-center gap-1.5 text-xs uppercase tracking-widest text-gray-400 font-sans mb-2">
-                  <MapPin className="w-3.5 h-3.5" />
-                  Country
-                </label>
-                <select
-                  value={selectedCountryId ?? ""}
-                  onChange={(e) => {
-                    setSelectedCountryId(e.target.value ? parseInt(e.target.value, 10) : undefined)
+              {/* Topic selection options */}
+              <div className="space-y-2">
+                {/* No topic option - selected by default */}
+                <div
+                  onClick={() => {
+                    setSkipTopicBinding(true)
                     setSelectedTopicId(undefined)
-                    setIsCreatingNewTopic(false)
                   }}
-                  disabled={isLoadingCountries}
-                  className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-lg
-                    focus:outline-none focus:ring-2 focus:ring-[#C4553D]/30 focus:border-[#C4553D]
-                    disabled:opacity-50 disabled:bg-gray-50"
+                  className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex items-center gap-3 ${
+                    skipTopicBinding
+                      ? "border-[#C4553D] bg-[#C4553D]/5"
+                      : "border-gray-200 hover:border-gray-300"
+                  }`}
                 >
-                  <option value="">Select a country...</option>
-                  {countriesData?.countries.map((country) => (
-                    <option key={country.id} value={country.id}>
-                      {country.name}
-                    </option>
-                  ))}
-                </select>
+                  <div
+                    className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${
+                      skipTopicBinding
+                        ? "border-[#C4553D] bg-[#C4553D]"
+                        : "border-gray-300"
+                    }`}
+                  >
+                    {skipTopicBinding && <Check className="w-2.5 h-2.5 text-white" />}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-gray-900 text-sm">No topic</p>
+                    <p className="text-xs text-gray-500">Prompts require admin approval</p>
+                  </div>
+                </div>
+
+                {/* Select topic option */}
+                <div
+                  onClick={() => setSkipTopicBinding(false)}
+                  className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex items-center gap-3 ${
+                    !skipTopicBinding
+                      ? "border-[#C4553D] bg-[#C4553D]/5"
+                      : "border-gray-200 hover:border-gray-300"
+                  }`}
+                >
+                  <div
+                    className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${
+                      !skipTopicBinding
+                        ? "border-[#C4553D] bg-[#C4553D]"
+                        : "border-gray-300"
+                    }`}
+                  >
+                    {!skipTopicBinding && <Check className="w-2.5 h-2.5 text-white" />}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-gray-900 text-sm">Select a topic</p>
+                    <p className="text-xs text-gray-500">Bind to existing topic for auto-approval</p>
+                  </div>
+                </div>
               </div>
 
-              {/* Business Domain selector */}
-              <div>
-                <label className="flex items-center gap-1.5 text-xs uppercase tracking-widest text-gray-400 font-sans mb-2">
-                  <Briefcase className="w-3.5 h-3.5" />
-                  Business Domain
-                </label>
-                <select
-                  value={selectedBusinessDomainId ?? ""}
-                  onChange={(e) => {
-                    setSelectedBusinessDomainId(e.target.value ? parseInt(e.target.value, 10) : undefined)
-                    setSelectedTopicId(undefined)
-                    setIsCreatingNewTopic(false)
-                  }}
-                  disabled={isLoadingDomains || !selectedCountryId}
-                  className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-lg
-                    focus:outline-none focus:ring-2 focus:ring-[#C4553D]/30 focus:border-[#C4553D]
-                    disabled:opacity-50 disabled:bg-gray-50"
-                >
-                  <option value="">Select a business domain...</option>
-                  {businessDomainsData?.business_domains.map((domain) => (
-                    <option key={domain.id} value={domain.id}>
-                      {domain.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {/* Topic selection dropdowns - only shown when "Select a topic" is chosen */}
+              {!skipTopicBinding && (
+                <div className="space-y-3 pt-2 animate-in slide-in-from-top-2 duration-200">
+                  {/* Country selector */}
+                  <div>
+                    <label className="flex items-center gap-1.5 text-xs uppercase tracking-widest text-gray-400 font-sans mb-2">
+                      <MapPin className="w-3.5 h-3.5" />
+                      Country
+                    </label>
+                    <select
+                      value={selectedCountryId ?? ""}
+                      onChange={(e) => {
+                        setSelectedCountryId(e.target.value ? parseInt(e.target.value, 10) : undefined)
+                        setSelectedTopicId(undefined)
+                      }}
+                      disabled={isLoadingCountries}
+                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-lg
+                        focus:outline-none focus:ring-2 focus:ring-[#C4553D]/30 focus:border-[#C4553D]
+                        disabled:opacity-50 disabled:bg-gray-50"
+                    >
+                      <option value="">Select a country...</option>
+                      {countriesData?.countries.map((country) => (
+                        <option key={country.id} value={country.id}>
+                          {country.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-              {/* Topic selector or create new */}
-              {selectedCountryId && selectedBusinessDomainId && (
-                <div className="animate-in slide-in-from-top-2 duration-200">
-                  <label className="flex items-center gap-1.5 text-xs uppercase tracking-widest text-gray-400 font-sans mb-2">
-                    <Tag className="w-3.5 h-3.5" />
-                    Topic
-                  </label>
+                  {/* Business Domain selector */}
+                  <div>
+                    <label className="flex items-center gap-1.5 text-xs uppercase tracking-widest text-gray-400 font-sans mb-2">
+                      <Briefcase className="w-3.5 h-3.5" />
+                      Business Domain
+                    </label>
+                    <select
+                      value={selectedBusinessDomainId ?? ""}
+                      onChange={(e) => {
+                        setSelectedBusinessDomainId(e.target.value ? parseInt(e.target.value, 10) : undefined)
+                        setSelectedTopicId(undefined)
+                      }}
+                      disabled={isLoadingDomains || !selectedCountryId}
+                      className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-lg
+                        focus:outline-none focus:ring-2 focus:ring-[#C4553D]/30 focus:border-[#C4553D]
+                        disabled:opacity-50 disabled:bg-gray-50"
+                    >
+                      <option value="">Select a business domain...</option>
+                      {businessDomainsData?.business_domains.map((domain) => (
+                        <option key={domain.id} value={domain.id}>
+                          {domain.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                  {isLoadingTopics ? (
-                    <div className="flex items-center gap-2 py-4 text-sm text-gray-400">
-                      <div className="w-4 h-4 border-2 border-gray-300 border-t-[#C4553D] rounded-full animate-spin" />
-                      Loading topics...
-                    </div>
-                  ) : (
-                    <>
-                      {!isCreatingNewTopic ? (
+                  {/* Topic selector - only when country and domain selected */}
+                  {selectedCountryId && selectedBusinessDomainId && (
+                    <div className="animate-in slide-in-from-top-2 duration-200">
+                      <label className="flex items-center gap-1.5 text-xs uppercase tracking-widest text-gray-400 font-sans mb-2">
+                        <Tag className="w-3.5 h-3.5" />
+                        Topic
+                      </label>
+
+                      {isLoadingTopics ? (
+                        <div className="flex items-center gap-2 py-4 text-sm text-gray-400">
+                          <div className="w-4 h-4 border-2 border-gray-300 border-t-[#C4553D] rounded-full animate-spin" />
+                          Loading topics...
+                        </div>
+                      ) : (
                         <div className="space-y-2">
                           <select
                             value={selectedTopicId ?? ""}
@@ -357,60 +394,15 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
                             </div>
                           )}
 
-                          {/* Create new topic button */}
-                          <button
-                            onClick={() => setIsCreatingNewTopic(true)}
-                            className="flex items-center gap-2 text-sm text-[#C4553D] hover:text-[#B34835] transition-colors"
-                          >
-                            <Plus className="w-4 h-4" />
-                            Create a new topic
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="space-y-3 p-4 bg-white rounded-lg border border-[#C4553D]/20">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium text-gray-700">New Topic</span>
-                            <button
-                              onClick={() => {
-                                setIsCreatingNewTopic(false)
-                                setNewTopicTitle("")
-                                setNewTopicDescription("")
-                              }}
-                              className="text-gray-400 hover:text-gray-600 transition-colors"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                          </div>
-
-                          <input
-                            type="text"
-                            value={newTopicTitle}
-                            onChange={(e) => setNewTopicTitle(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                            placeholder="Topic title"
-                            className="w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg
-                              focus:outline-none focus:ring-2 focus:ring-[#C4553D]/30 focus:border-[#C4553D]
-                              placeholder:text-gray-400"
-                          />
-
-                          <textarea
-                            value={newTopicDescription}
-                            onChange={(e) => setNewTopicDescription(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === "Escape") handleCancel() }}
-                            placeholder="Brief description of this topic..."
-                            rows={2}
-                            className="w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg
-                              focus:outline-none focus:ring-2 focus:ring-[#C4553D]/30 focus:border-[#C4553D]
-                              placeholder:text-gray-400 resize-none"
-                          />
-
-                          <div className="flex gap-2 text-xs text-gray-400">
-                            <span className="px-2 py-1 bg-gray-100 rounded">{selectedCountry?.name}</span>
-                            <span className="px-2 py-1 bg-gray-100 rounded">{selectedBusinessDomain?.name}</span>
-                          </div>
+                          {/* Note about topic creation */}
+                          {topicsData?.topics.length === 0 && (
+                            <p className="text-sm text-gray-500 italic">
+                              No topics available for this combination. Select "No topic" above or contact an administrator.
+                            </p>
+                          )}
                         </div>
                       )}
-                    </>
+                    </div>
                   )}
                 </div>
               )}
@@ -427,10 +419,9 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
                 </button>
                 <button
                   onClick={() => {
-                    // Prefill group name with topic name
-                    const topicName = isCreatingNewTopic ? newTopicTitle.trim() : selectedTopic?.title
-                    if (topicName && !title.trim()) {
-                      setTitle(topicName)
+                    // Prefill group name with topic name (don't prefill if skipping)
+                    if (!skipTopicBinding && selectedTopic?.title && !title.trim()) {
+                      setTitle(selectedTopic.title)
                     }
                     setStep("details")
                   }}
@@ -450,26 +441,46 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
           {/* Step 2: Group Details (Title, Brand, Competitors) */}
           {step === "details" && (
             <div className="space-y-5 animate-in fade-in duration-200">
-              {/* Selected topic summary */}
-              <div className="p-3 bg-white rounded-lg border border-gray-100 flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-[#C4553D]/10 flex items-center justify-center flex-shrink-0">
-                  <Tag className="w-4 h-4 text-[#C4553D]" />
+              {/* Selected topic summary OR skipped topic warning */}
+              {skipTopicBinding ? (
+                <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                    <AlertTriangle className="w-4 h-4 text-amber-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-amber-800">No topic selected</p>
+                    <p className="text-xs text-amber-600">
+                      Prompts will need admin approval
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setStep("topic")}
+                    className="text-xs text-amber-700 hover:underline flex-shrink-0"
+                  >
+                    Change
+                  </button>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-700 truncate">
-                    {isCreatingNewTopic ? newTopicTitle : selectedTopic?.title}
-                  </p>
-                  <p className="text-xs text-gray-400">
-                    {selectedCountry?.name} &middot; {selectedBusinessDomain?.name}
-                  </p>
+              ) : (
+                <div className="p-3 bg-white rounded-lg border border-gray-100 flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-[#C4553D]/10 flex items-center justify-center flex-shrink-0">
+                    <Tag className="w-4 h-4 text-[#C4553D]" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-700 truncate">
+                      {selectedTopic?.title}
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      {selectedCountry?.name} &middot; {selectedBusinessDomain?.name}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setStep("topic")}
+                    className="text-xs text-[#C4553D] hover:underline flex-shrink-0"
+                  >
+                    Change
+                  </button>
                 </div>
-                <button
-                  onClick={() => setStep("topic")}
-                  className="text-xs text-[#C4553D] hover:underline flex-shrink-0"
-                >
-                  Change
-                </button>
-              </div>
+              )}
 
               {/* Title input */}
               <div>

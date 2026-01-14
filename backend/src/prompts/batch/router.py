@@ -74,4 +74,6 @@ async def create_prompts(
         request.prompts,
         request.selected_indices,
         effective_topic_id,
+        user_id=current_user.id,
+        is_admin=current_user.is_superuser,
     )

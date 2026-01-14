@@ -29,17 +29,18 @@ class PromptGroupService:
         self,
         user_id: str,
         title: str,
-        topic_id: int,
         brand: dict,
-        competitors: Optional[List[dict]] = None
+        *,
+        topic_id: Optional[int] = None,
+        competitors: Optional[List[dict]] = None,
     ) -> PromptGroup:
-        """Create a new prompt group with topic binding.
+        """Create a new prompt group with optional topic binding.
 
         Args:
             user_id: The user ID who owns the group
             title: The group title
-            topic_id: The topic ID to bind (immutable after creation)
             brand: Brand dict with name, domain, variations
+            topic_id: The topic ID to bind (optional, immutable after creation)
             competitors: Optional list of competitor dicts
 
         Raises:
@@ -54,7 +55,7 @@ class PromptGroupService:
             title=title,
             topic_id=topic_id,
             brand=brand,
-            competitors=competitors
+            competitors=competitors,
         )
         self._session.add(group)
         await self._session.flush()

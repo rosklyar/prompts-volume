@@ -1,5 +1,7 @@
 """Service for resolving topic input to valid topic ID."""
 
+from typing import Optional
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,14 +26,14 @@ class TopicResolutionService:
     def __init__(self, session: AsyncSession):
         self._session = session
 
-    async def resolve(self, topic_input: TopicInput) -> int:
+    async def resolve(self, topic_input: TopicInput) -> Optional[int]:
         """Resolve topic input to topic ID.
 
         Args:
             topic_input: Either existing topic ID or new topic data
 
         Returns:
-            Valid topic ID
+            Valid topic ID, or None if neither existing_topic_id nor new_topic provided
 
         Raises:
             TopicNotFoundError: If existing topic doesn't exist
@@ -40,7 +42,9 @@ class TopicResolutionService:
         """
         if topic_input.existing_topic_id is not None:
             return await self._validate_existing(topic_input.existing_topic_id)
-        return await self._create_new(topic_input.new_topic)
+        if topic_input.new_topic is not None:
+            return await self._create_new(topic_input.new_topic)
+        return None
 
     async def get_topic(self, topic_id: int) -> Topic:
         """Get topic by ID.

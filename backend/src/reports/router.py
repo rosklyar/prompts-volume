@@ -368,7 +368,7 @@ async def generate_report(
             export_answer = None
             if answer:
                 citations = [
-                    ExportCitation(url=c.get("url", ""), text=c.get("text", ""))
+                    ExportCitation(url=c.get("url") or "", text=c.get("text") or "")
                     for c in answer.get("citations", [])
                     if isinstance(c, dict)
                 ]
@@ -562,7 +562,7 @@ async def get_report(
         export_answer = None
         if answer:
             citations = [
-                ExportCitation(url=c.get("url", ""), text=c.get("text", ""))
+                ExportCitation(url=c.get("url") or "", text=c.get("text") or "")
                 for c in answer.get("citations", [])
                 if isinstance(c, dict)
             ]
@@ -803,7 +803,7 @@ async def export_report_json(
         export_answer = None
         if answer:
             citations = [
-                ExportCitation(url=c.get("url", ""), text=c.get("text", ""))
+                ExportCitation(url=c.get("url") or "", text=c.get("text") or "")
                 for c in answer.get("citations", [])
                 if isinstance(c, dict)
             ]

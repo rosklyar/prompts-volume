@@ -20,23 +20,24 @@ class CreateTopicInput(BaseModel):
 class TopicInput(BaseModel):
     """Topic selection or creation input.
 
-    Provide exactly one of: existing_topic_id OR new_topic.
+    Provide at most one of: existing_topic_id OR new_topic.
+    If neither provided, group has no topic binding.
     """
 
     existing_topic_id: Optional[int] = Field(
         None, description="Select existing topic by ID"
     )
     new_topic: Optional[CreateTopicInput] = Field(
-        None, description="Create new topic inline"
+        None, description="Create new topic inline (admin only)"
     )
 
     @model_validator(mode="after")
-    def exactly_one_option(self) -> "TopicInput":
-        """Ensure exactly one of existing_topic_id or new_topic is provided."""
+    def at_most_one_option(self) -> "TopicInput":
+        """Ensure at most one of existing_topic_id or new_topic is provided."""
         has_existing = self.existing_topic_id is not None
         has_new = self.new_topic is not None
-        if has_existing == has_new:
-            raise ValueError("Provide exactly one: existing_topic_id OR new_topic")
+        if has_existing and has_new:
+            raise ValueError("Provide at most one: existing_topic_id OR new_topic")
         return self
 
 
@@ -46,8 +47,10 @@ class CreateGroupRequest(BaseModel):
     title: str = Field(
         ..., min_length=1, max_length=255, description="Group title (required)"
     )
-    topic: TopicInput = Field(
-        ..., description="Topic binding (required, immutable after creation)"
+    topic: Optional[TopicInput] = Field(
+        None,
+        description="Topic binding (optional, immutable after creation). "
+        "If omitted, prompts require admin approval.",
     )
     brand: BrandModel = Field(
         ...,
@@ -144,8 +147,8 @@ class GroupSummaryResponse(BaseModel):
     prompt_count: int
     brand_name: str
     competitor_count: int
-    topic_id: int
-    topic_title: str
+    topic_id: Optional[int]
+    topic_title: Optional[str]
     created_at: datetime
     updated_at: datetime
 
@@ -157,9 +160,9 @@ class GroupDetailResponse(BaseModel):
 
     id: int
     title: str
-    topic_id: int
-    topic_title: str
-    topic_description: str
+    topic_id: Optional[int]
+    topic_title: Optional[str]
+    topic_description: Optional[str]
     created_at: datetime
     updated_at: datetime
     brand: BrandModel

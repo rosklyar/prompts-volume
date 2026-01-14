@@ -1,7 +1,7 @@
 """Database package for PostgreSQL with pgvector support."""
 
 from src.database.init import seed_evals_data, seed_initial_data, seed_superuser
-from src.database.models import BusinessDomain, Country, CountryLanguage, Language, Prompt, PromptGroup, PromptGroupBinding, Topic
+from src.database.models import BusinessDomain, Country, CountryLanguage, Language, Prompt, PromptApprovalStatus, PromptGroup, PromptGroupBinding, Topic
 from src.database.session import (
     Base,
     close_db,
@@ -41,6 +41,7 @@ __all__ = [
     "BusinessDomain",
     "Topic",
     "Prompt",
+    "PromptApprovalStatus",
     "PromptGroup",
     "PromptGroupBinding",
     # Initialization

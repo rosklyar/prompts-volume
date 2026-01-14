@@ -519,8 +519,8 @@ function PromptDiscovery() {
                 disabled={isAddingPrompt}
                 className="w-full px-6 py-4 text-lg bg-white rounded-2xl border-0
                   shadow-[0_4px_24px_-4px_rgba(0,0,0,0.08)]
-                  focus:shadow-[0_4px_32px_-4px_rgba(196,85,61,0.15)]
-                  focus:outline-none focus:ring-2 focus:ring-[#C4553D]/20
+                  focus:shadow-[0_4px_32px_-4px_rgba(207,206,204,0.3)]
+                  focus:outline-none focus:ring-2 focus:ring-[#CFCECC]
                   placeholder:text-[#9CA3AF] text-[#1F2937]
                   transition-all duration-300
                   disabled:opacity-50"

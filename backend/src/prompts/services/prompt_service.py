@@ -1,13 +1,14 @@
 """Prompt service for database operations."""
 
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 from fastapi import Depends
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.database import Prompt, get_async_session
+from src.approval.policies import ApprovalPolicy, get_approval_policy
+from src.database import Prompt, PromptApprovalStatus, get_async_session
 from src.embeddings.embeddings_service import EmbeddingsService, get_embeddings_service
 
 
@@ -27,6 +28,7 @@ class PromptService:
         self,
         session: AsyncSession,
         embeddings_service: EmbeddingsService,
+        approval_policy: ApprovalPolicy,
     ):
         """
         Initialize PromptService with a database session and embeddings service.
@@ -34,9 +36,11 @@ class PromptService:
         Args:
             session: AsyncSession for database operations
             embeddings_service: Service for generating embeddings
+            approval_policy: Policy for determining initial approval status
         """
         self.session = session
         self.embeddings_service = embeddings_service
+        self._approval_policy = approval_policy
 
     async def get_by_ids(self, prompt_ids: list[int]) -> dict[int, str]:
         """Get prompt texts by IDs.
@@ -54,28 +58,38 @@ class PromptService:
 
     async def get_by_topic_ids(self, topic_ids: List[int]) -> List[Prompt]:
         """
-        Get all prompts for the given topic IDs.
+        Get all approved prompts for the given topic IDs.
 
         Args:
             topic_ids: List of topic IDs
 
         Returns:
-            List of Prompt objects for the specified topics
+            List of approved Prompt objects for the specified topics
         """
         result = await self.session.execute(
             select(Prompt)
             .where(Prompt.topic_id.in_(topic_ids))
+            .where(Prompt.approval_status == PromptApprovalStatus.APPROVED)
             .order_by(Prompt.topic_id, Prompt.id)
         )
         return list(result.scalars().all())
 
-    async def add_prompt(self, prompt_text: str, topic_id: int) -> Prompt:
+    async def add_prompt(
+        self,
+        prompt_text: str,
+        topic_id: Optional[int] = None,
+        *,
+        user_id: Optional[str] = None,
+        is_admin: bool = False,
+    ) -> Prompt:
         """
         Add a new prompt with automatically generated embedding.
 
         Args:
             prompt_text: The text of the prompt
-            topic_id: The ID of the topic this prompt belongs to
+            topic_id: The ID of the topic this prompt belongs to (optional)
+            user_id: ID of user creating the prompt (optional)
+            is_admin: Whether the creating user is an admin
 
         Returns:
             Created Prompt object with embedding
@@ -84,11 +98,19 @@ class PromptService:
         text_embeddings = self.embeddings_service.encode_texts([prompt_text])
         embedding = text_embeddings[0].embedding
 
+        # Determine approval status via policy
+        initial_status = self._approval_policy.determine_initial_status(
+            has_topic=topic_id is not None,
+            user_is_admin=is_admin,
+        )
+
         # Create and save prompt
         prompt = Prompt(
             prompt_text=prompt_text,
             embedding=embedding.tolist(),
             topic_id=topic_id,
+            user_id=user_id,
+            approval_status=initial_status,
         )
         self.session.add(prompt)
         await self.session.flush()
@@ -102,10 +124,10 @@ class PromptService:
         min_similarity: float,
     ) -> List[SimilarPromptResult]:
         """
-        Find similar prompts using pgvector cosine similarity.
+        Find similar approved prompts using pgvector cosine similarity.
 
         Uses the HNSW index on the embedding column for efficient
-        approximate nearest neighbor search.
+        approximate nearest neighbor search. Only returns approved prompts.
 
         Args:
             query_text: The text to find similar prompts for
@@ -124,11 +146,13 @@ class PromptService:
 
         # Query using pgvector <=> operator (cosine distance)
         # Uses HNSW index for efficient ANN search
+        # Only return approved prompts
         result = await self.session.execute(
             text("""
                 SELECT id, prompt_text, 1 - (embedding <=> :query_embedding) AS similarity
                 FROM prompts
                 WHERE (embedding <=> :query_embedding) <= :max_distance
+                  AND approval_status = 'approved'
                 ORDER BY embedding <=> :query_embedding
                 LIMIT :limit
             """),
@@ -148,6 +172,7 @@ class PromptService:
 def get_prompt_service(
     session: AsyncSession = Depends(get_async_session),
     embeddings_service: EmbeddingsService = Depends(get_embeddings_service),
+    approval_policy: ApprovalPolicy = Depends(get_approval_policy),
 ) -> PromptService:
     """
     Dependency injection function for PromptService.
@@ -157,8 +182,9 @@ def get_prompt_service(
     Args:
         session: AsyncSession injected by FastAPI (new session per request)
         embeddings_service: Singleton EmbeddingsService instance
+        approval_policy: Policy for determining initial approval status
 
     Returns:
         PromptService instance for this request
     """
-    return PromptService(session, embeddings_service)
+    return PromptService(session, embeddings_service, approval_policy)

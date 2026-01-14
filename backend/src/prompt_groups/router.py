@@ -60,7 +60,7 @@ async def get_user_groups(
                 brand_name=group.brand.get("name", "") if group.brand else "",
                 competitor_count=len(group.competitors) if group.competitors else 0,
                 topic_id=group.topic_id,
-                topic_title=group.topic.title,
+                topic_title=group.topic.title if group.topic else None,
                 created_at=group.created_at,
                 updated_at=group.updated_at,
             )
@@ -81,11 +81,18 @@ async def create_group(
     group_service: PromptGroupServiceDep,
     topic_resolver: TopicResolutionServiceDep,
 ):
-    """Create a new prompt group with topic binding, brand, and optional competitors."""
+    """Create a new prompt group with optional topic binding, brand, and optional competitors.
+
+    If topic is not provided, prompts added to this group will require admin approval.
+    """
     try:
-        # Resolve topic first (validates existing or creates new)
-        topic_id = await topic_resolver.resolve(request.topic)
-        topic = await topic_resolver.get_topic(topic_id)
+        # Resolve topic if provided (validates existing or creates new)
+        topic_id = None
+        topic_title = None
+        if request.topic is not None:
+            topic_id = await topic_resolver.resolve(request.topic)
+            topic = await topic_resolver.get_topic(topic_id)
+            topic_title = topic.title
 
         # Convert Pydantic models to dicts for storage
         brand_data = request.brand.model_dump()
@@ -96,9 +103,9 @@ async def create_group(
         group = await group_service.create_group(
             current_user.id,
             request.title,
-            topic_id=topic_id,
             brand=brand_data,
-            competitors=competitors_data
+            topic_id=topic_id,
+            competitors=competitors_data,
         )
         return GroupSummaryResponse(
             id=group.id,
@@ -107,7 +114,7 @@ async def create_group(
             brand_name=request.brand.name,
             competitor_count=len(request.competitors) if request.competitors else 0,
             topic_id=topic_id,
-            topic_title=topic.title,
+            topic_title=topic_title,
             created_at=group.created_at,
             updated_at=group.updated_at,
         )
@@ -139,8 +146,8 @@ async def get_group_details(
             id=group.id,
             title=group.title,
             topic_id=group.topic_id,
-            topic_title=group.topic.title,
-            topic_description=group.topic.description,
+            topic_title=group.topic.title if group.topic else None,
+            topic_description=group.topic.description if group.topic else None,
             created_at=group.created_at,
             updated_at=group.updated_at,
             brand=brand,
@@ -174,7 +181,7 @@ async def update_group(
             current_user.id,
             title=request.title,
             brand=brand_data,
-            competitors=competitors_data
+            competitors=competitors_data,
         )
 
         # Fetch prompt count by getting user groups
@@ -190,7 +197,7 @@ async def update_group(
             brand_name=group.brand.get("name", "") if group.brand else "",
             competitor_count=len(group.competitors) if group.competitors else 0,
             topic_id=group.topic_id,
-            topic_title=group.topic.title,
+            topic_title=group.topic.title if group.topic else None,
             created_at=group.created_at,
             updated_at=group.updated_at,
         )

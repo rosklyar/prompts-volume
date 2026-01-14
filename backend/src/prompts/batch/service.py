@@ -12,7 +12,7 @@ from src.brightdata.services.brightdata_service import get_brightdata_service
 from src.config.settings import settings
 from src.database import get_async_session
 from src.database.evals_session import get_evals_session
-from src.database.models import Prompt
+from src.database.models import Prompt, PromptApprovalStatus
 from src.embeddings.embeddings_service import EmbeddingsService, get_embeddings_service
 from src.prompts.batch.models import (
     BatchAnalyzeResponse,
@@ -107,6 +107,9 @@ class BatchPromptsService:
         prompts: list[str],
         selected_indices: list[int],
         topic_id: int | None = None,
+        *,
+        user_id: str | None = None,
+        is_admin: bool = False,
     ) -> BatchCreateResponse:
         """Create new prompts (already filtered by analyze step).
 
@@ -117,6 +120,8 @@ class BatchPromptsService:
             prompts: All original prompt texts
             selected_indices: Indices of prompts to create (non-duplicates)
             topic_id: Optional topic ID to assign to new prompts
+            user_id: ID of the user creating the prompts
+            is_admin: Whether the user is an admin (auto-approves prompts)
 
         Returns:
             BatchCreateResponse with created count and prompt IDs
@@ -136,11 +141,22 @@ class BatchPromptsService:
         prompt_ids: list[int] = []
         batch_id = str(uuid.uuid4())
 
+        # Determine approval status based on user role and topic
+        # Admin-created prompts or prompts with topic are auto-approved
+        # Regular user prompts without topic need approval
+        approval_status = (
+            PromptApprovalStatus.APPROVED
+            if is_admin or topic_id is not None
+            else PromptApprovalStatus.PENDING
+        )
+
         for text_with_embedding in text_embeddings:
             new_prompt = Prompt(
                 prompt_text=text_with_embedding.text,
                 embedding=text_with_embedding.embedding.tolist(),
                 topic_id=topic_id,
+                user_id=user_id,
+                approval_status=approval_status,
             )
             self._prompts_session.add(new_prompt)
             await self._prompts_session.flush()
