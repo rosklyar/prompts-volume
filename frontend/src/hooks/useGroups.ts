@@ -63,7 +63,7 @@ export function useCreateGroup() {
       competitors,
     }: {
       title: string
-      topic: TopicInput
+      topic: TopicInput | null
       brand: BrandInfo
       competitors?: CompetitorInfo[]
     }) => groupsApi.createGroup(title, topic, brand, competitors),

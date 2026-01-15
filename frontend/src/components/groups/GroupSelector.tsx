@@ -16,13 +16,13 @@ interface GroupSelectorProps {
   groups: GroupSummary[]
   isLoadingGroups: boolean
   onSelectGroup: (groupId: number) => void
-  onCreateGroup: (title: string, topic: TopicInput, brand: BrandInfo, competitors?: CompetitorInfo[]) => Promise<void>
+  onCreateGroup: (title: string, topic: TopicInput | null, brand: BrandInfo, competitors?: CompetitorInfo[]) => Promise<void>
   onCancel: () => void
   isAddingPrompt: boolean
   isCreatingGroup: boolean
   addingToGroupId?: number | null
   maxGroups?: number
-  /** Default topic ID to use when creating a group (from inspiration flow) */
+  /** Default topic ID to use when creating a group */
   defaultTopicId?: number
 }
 
@@ -218,7 +218,7 @@ export function GroupSelector({
     if (!trimmed || !trimmedBrandName) return
 
     // Build topic input - either from defaultTopicId or from user selection
-    let topicInput: TopicInput
+    let topicInput: TopicInput | null = null
     if (defaultTopicId !== undefined) {
       topicInput = { existing_topic_id: defaultTopicId }
     } else if (isCreatingNewTopic && selectedCountryId && selectedBusinessDomainId) {
@@ -232,10 +232,8 @@ export function GroupSelector({
       }
     } else if (selectedTopicId) {
       topicInput = { existing_topic_id: selectedTopicId }
-    } else {
-      console.error("Cannot create group without a topic")
-      return
     }
+    // If no topic is selected, topicInput remains null - prompts will need admin approval
 
     const variations = brandVariations
       .split(",")

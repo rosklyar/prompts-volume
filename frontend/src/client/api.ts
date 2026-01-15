@@ -835,66 +835,6 @@ export const assistantsApi = {
   },
 }
 
-// ===== Inspiration API Types =====
-
-import type {
-  MetaInfoResponse,
-  TopicPromptsResponse,
-  GeneratePromptsResponse,
-} from "@/types/inspiration"
-
-export interface GeneratePromptsRequest {
-  company_url: string
-  iso_country_code: string
-  topics: string[]
-  brand_variations: string[]
-}
-
-// ===== Inspiration API =====
-
-export const inspirationApi = {
-  /**
-   * Get meta info with matched/unmatched topics and brand variations
-   */
-  async getMetaInfo(
-    companyUrl: string,
-    isoCountryCode: string
-  ): Promise<MetaInfoResponse> {
-    const params = new URLSearchParams({
-      company_url: companyUrl,
-      iso_country_code: isoCountryCode,
-    })
-    const response = await fetchWithAuth(`/prompts/api/v1/meta-info?${params}`)
-    return response.json()
-  },
-
-  /**
-   * Get prompts from DB for matched topics (fast ~50ms)
-   */
-  async getTopicPrompts(topicIds: number[]): Promise<TopicPromptsResponse> {
-    const params = new URLSearchParams()
-    topicIds.forEach((id) => params.append("topic_ids", id.toString()))
-    const response = await fetchWithAuth(`/prompts/api/v1/prompts?${params}`)
-    return response.json()
-  },
-
-  /**
-   * Generate prompts for unmatched topics (slow 30-60s)
-   */
-  async generatePrompts(
-    request: GeneratePromptsRequest
-  ): Promise<GeneratePromptsResponse> {
-    const params = new URLSearchParams({
-      company_url: request.company_url,
-      iso_country_code: request.iso_country_code,
-    })
-    request.topics.forEach((t) => params.append("topics", t))
-    request.brand_variations.forEach((b) => params.append("brand_variations", b))
-    const response = await fetchWithAuth(`/prompts/api/v1/generate?${params}`)
-    return response.json()
-  },
-}
-
 // ===== Onboarding API =====
 
 export const onboardingApi = {
