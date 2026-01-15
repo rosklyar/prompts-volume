@@ -1,6 +1,7 @@
 import { createFileRoute, redirect, Link } from "@tanstack/react-router"
 import { isLoggedIn } from "@/hooks/useAuth"
 import { ChangePasswordForm } from "@/components/settings/ChangePasswordForm"
+import { BrandPreferencesForm } from "@/components/settings/BrandPreferencesForm"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Logo } from "@/components/Logo"
 import { Button } from "@/components/ui/button"
@@ -38,17 +39,31 @@ function Settings() {
           Account Settings
         </h1>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg text-[#1F2937]">Change Password</CardTitle>
-            <CardDescription>
-              Update your password to keep your account secure
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ChangePasswordForm />
-          </CardContent>
-        </Card>
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg text-[#1F2937]">Brand Preferences</CardTitle>
+              <CardDescription>
+                Default brand and competitors for new prompt groups
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <BrandPreferencesForm />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg text-[#1F2937]">Change Password</CardTitle>
+              <CardDescription>
+                Update your password to keep your account secure
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ChangePasswordForm />
+            </CardContent>
+          </Card>
+        </div>
       </main>
     </div>
   )

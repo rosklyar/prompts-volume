@@ -226,7 +226,7 @@ function PromptDiscovery() {
 
   // Handle creating a new group (from GroupSelector)
   const handleCreateGroup = useCallback(
-    async (title: string, topic: TopicInput, brand: BrandInfo, competitors?: CompetitorInfo[]) => {
+    async (title: string, topic: TopicInput | null, brand: BrandInfo, competitors?: CompetitorInfo[]) => {
       const result = await createGroup.mutateAsync({ title, topic, brand, competitors })
       // After creating, auto-select the new group
       if (result?.id && pendingPrompts) {

@@ -5,10 +5,12 @@
  * 2. Brand & Competitors info
  */
 
-import { useState, useRef, useEffect, useMemo } from "react"
-import { ChevronDown, ChevronRight, Plus, X, Globe, Sparkles, MapPin, Briefcase, Tag, Check, AlertTriangle } from "lucide-react"
+import { useState, useRef, useEffect, useMemo, useCallback } from "react"
+import { ChevronDown, ChevronRight, Plus, X, Globe, Sparkles, MapPin, Briefcase, Tag, Check } from "lucide-react"
 import type { BrandInfo, CompetitorInfo, TopicInput } from "@/types/groups"
 import { useCountries, useBusinessDomains, useTopicsFiltered } from "@/hooks/useTopics"
+import { useUserPreferences } from "@/hooks/useOnboarding"
+import { normalizeDomain } from "@/lib/domain"
 import { MAX_GROUPS } from "./constants"
 
 interface AddGroupCardProps {
@@ -17,16 +19,6 @@ interface AddGroupCardProps {
 }
 
 type CreationStep = "topic" | "details"
-
-function normalizeDomain(url: string): string {
-  let domain = url.trim().toLowerCase()
-  if (!domain) return ""
-  if (domain.startsWith("http://") || domain.startsWith("https://")) {
-    domain = domain.split("://")[1]
-  }
-  domain = domain.replace(/\/$/, "")
-  return domain
-}
 
 export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
   const [isCreating, setIsCreating] = useState(false)
@@ -55,6 +47,10 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
 
   const titleInputRef = useRef<HTMLInputElement>(null)
   const topicStepRef = useRef<HTMLDivElement>(null)
+  const hasPrefilledRef = useRef(false)
+
+  // Fetch user preferences for prefilling brand/competitor data
+  const { data: userPreferences } = useUserPreferences()
 
   // Fetch reference data
   const { data: countriesData, isLoading: isLoadingCountries } = useCountries()
@@ -85,6 +81,49 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
       titleInputRef.current.focus()
     }
   }, [isCreating, step])
+
+  // Prefill brand, competitors, and market from user preferences
+  const applyPrefill = useCallback(() => {
+    if (!userPreferences || hasPrefilledRef.current) return
+
+    hasPrefilledRef.current = true
+
+    // Prefill market (country and business domain)
+    if (userPreferences.default_country_id) {
+      setSelectedCountryId(userPreferences.default_country_id)
+      if (userPreferences.default_business_domain_id) {
+        setSkipTopicBinding(false)
+      }
+    }
+    if (userPreferences.default_business_domain_id) {
+      setSelectedBusinessDomainId(userPreferences.default_business_domain_id)
+    }
+
+    // Prefill brand
+    if (userPreferences.default_brand) {
+      const brand = userPreferences.default_brand
+      setBrandName(brand.name)
+      setBrandDomain(brand.domain ?? "")
+      setBrandVariations(brand.variations.join(", "))
+      setBrandVariationsTouched(true)
+    }
+
+    // Prefill competitors
+    if (userPreferences.default_competitors && userPreferences.default_competitors.length > 0) {
+      setCompetitors(userPreferences.default_competitors)
+      setShowCompetitors(true)
+    }
+  }, [userPreferences])
+
+  // Handle async loading of userPreferences - applies prefill when data arrives after form opens
+  useEffect(() => {
+    if (isCreating && userPreferences && !hasPrefilledRef.current) {
+      queueMicrotask(applyPrefill)
+    }
+    if (!isCreating) {
+      hasPrefilledRef.current = false
+    }
+  }, [isCreating, userPreferences, applyPrefill])
 
   // Handle brand name change with prefill logic
   const handleBrandNameChange = (value: string) => {
@@ -162,7 +201,7 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
     setSelectedCountryId(undefined)
     setSelectedBusinessDomainId(undefined)
     setSelectedTopicId(undefined)
-    setSkipTopicBinding(false)
+    setSkipTopicBinding(true)
     setBrandName("")
     setBrandDomain("")
     setBrandVariations("")
@@ -174,6 +213,7 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
     setNewCompVariationsTouched(false)
     setShowCompetitors(false)
     setIsCreating(false)
+    // Note: hasPrefilledRef is reset in the useEffect when isCreating becomes false
   }
 
   const handleCancel = () => {
@@ -274,7 +314,7 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
                   </div>
                   <div className="flex-1">
                     <p className="font-medium text-gray-900 text-sm">No topic</p>
-                    <p className="text-xs text-gray-500">Prompts require admin approval</p>
+                    <p className="text-xs text-gray-500">Add custom prompts manually</p>
                   </div>
                 </div>
 
@@ -298,7 +338,7 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
                   </div>
                   <div className="flex-1">
                     <p className="font-medium text-gray-900 text-sm">Select a topic</p>
-                    <p className="text-xs text-gray-500">Bind to existing topic for auto-approval</p>
+                    <p className="text-xs text-gray-500">Get suggested prompts from a topic</p>
                   </div>
                 </div>
               </div>
@@ -443,19 +483,17 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
             <div className="space-y-5 animate-in fade-in duration-200">
               {/* Selected topic summary OR skipped topic warning */}
               {skipTopicBinding ? (
-                <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
-                    <AlertTriangle className="w-4 h-4 text-amber-600" />
+                <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
+                    <Tag className="w-4 h-4 text-gray-500" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-amber-800">No topic selected</p>
-                    <p className="text-xs text-amber-600">
-                      Prompts will need admin approval
-                    </p>
+                    <p className="text-sm font-medium text-gray-700">No topic selected</p>
+                    <p className="text-xs text-gray-500">Custom prompts</p>
                   </div>
                   <button
                     onClick={() => setStep("topic")}
-                    className="text-xs text-amber-700 hover:underline flex-shrink-0"
+                    className="text-xs text-gray-600 hover:underline flex-shrink-0"
                   >
                     Change
                   </button>
@@ -712,9 +750,15 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
     )
   }
 
+  const handleStartCreating = () => {
+    setIsCreating(true)
+    // Apply prefill immediately if data is already loaded
+    applyPrefill()
+  }
+
   return (
     <button
-      onClick={() => setIsCreating(true)}
+      onClick={handleStartCreating}
       className="w-full flex items-center justify-center gap-3 rounded-2xl
         border-2 border-dashed border-gray-200 bg-gray-50/50
         py-6 transition-all duration-300

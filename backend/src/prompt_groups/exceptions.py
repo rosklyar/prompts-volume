@@ -26,14 +26,6 @@ class GroupAccessDeniedError(PromptGroupError):
         super().__init__(f"User {user_id} does not have access to group {group_id}")
 
 
-class DuplicateGroupTitleError(PromptGroupError):
-    """Raised when a group with the same title already exists."""
-
-    def __init__(self, title: str):
-        self.title = title
-        super().__init__(f"Group with title '{title}' already exists")
-
-
 class PromptNotFoundError(PromptGroupError):
     """Raised when a prompt is not found."""
 
@@ -72,8 +64,6 @@ def to_http_exception(error: PromptGroupError) -> HTTPException:
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error))
     if isinstance(error, GroupAccessDeniedError):
         return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(error))
-    if isinstance(error, DuplicateGroupTitleError):
-        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error))
     if isinstance(error, PromptNotFoundError):
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error))
     if isinstance(error, TopicNotFoundError):

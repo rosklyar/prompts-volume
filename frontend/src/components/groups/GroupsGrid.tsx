@@ -40,7 +40,6 @@ import { useInvalidateReportQueries } from "@/hooks/useReports"
 import { GroupCard } from "./GroupCard"
 import { AddGroupCard } from "./AddGroupCard"
 import { PromptItem } from "./PromptItem"
-import { PromptSelectionModal } from "./PromptSelectionModal"
 import { MAX_GROUPS, getGroupColor } from "./constants"
 
 interface PromptWithAnswer extends PromptInGroup {
@@ -140,14 +139,6 @@ export function GroupsGrid() {
 
   // Track which groups are expanded (collapsed by default)
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(loadExpandedGroups)
-
-  // Modal state for prompt selection after group creation
-  const [promptSelectionModal, setPromptSelectionModal] = useState<{
-    groupId: number
-    groupTitle: string
-    topicId: number
-    topicTitle: string
-  } | null>(null)
 
   // Persist selected reports to localStorage when they change
   useEffect(() => {
@@ -294,26 +285,10 @@ export function GroupsGrid() {
     title: string,
     topic: TopicInput | null,
     brand: BrandInfo,
-    competitors?: CompetitorInfo[],
-    topicTitle?: string | null
+    competitors?: CompetitorInfo[]
   ) => {
-    if (!topic) {
-      console.error("Cannot create group without a topic")
-      return
-    }
-
     try {
-      const newGroup = await createGroup.mutateAsync({ title, topic, brand, competitors })
-      // Only open prompt selection modal if a topic was selected
-      // (no topic = no prompts to suggest)
-      if (newGroup.topic_id && topicTitle) {
-        setPromptSelectionModal({
-          groupId: newGroup.id,
-          groupTitle: title,
-          topicId: newGroup.topic_id,
-          topicTitle: topicTitle,
-        })
-      }
+      await createGroup.mutateAsync({ title, topic, brand, competitors })
     } catch (error) {
       console.error("Failed to create group:", error)
     }
@@ -558,19 +533,6 @@ export function GroupsGrid() {
           </div>
         )}
       </DragOverlay>
-
-      {/* Prompt selection modal - opens after group creation */}
-      {promptSelectionModal && (
-        <PromptSelectionModal
-          isOpen={true}
-          groupId={promptSelectionModal.groupId}
-          groupTitle={promptSelectionModal.groupTitle}
-          topicId={promptSelectionModal.topicId}
-          topicTitle={promptSelectionModal.topicTitle}
-          onClose={() => setPromptSelectionModal(null)}
-          onSuccess={() => setPromptSelectionModal(null)}
-        />
-      )}
     </DndContext>
   )
 }
