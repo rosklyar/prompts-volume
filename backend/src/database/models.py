@@ -233,11 +233,6 @@ class PromptGroup(Base):
         cascade="all, delete-orphan"
     )
 
-    # Constraints - unique title per user
-    __table_args__ = (
-        UniqueConstraint("user_id", "title", name="uq_prompt_groups_user_title"),
-    )
-
     def __repr__(self) -> str:
         return f"<PromptGroup(id={self.id}, user_id='{self.user_id}', title='{self.title}')>"
 

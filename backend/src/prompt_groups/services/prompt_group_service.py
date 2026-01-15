@@ -9,18 +9,13 @@ from sqlalchemy.orm import selectinload
 
 from src.database.models import PromptGroup, PromptGroupBinding
 from src.prompt_groups.exceptions import (
-    DuplicateGroupTitleError,
     GroupAccessDeniedError,
     GroupNotFoundError,
 )
 
 
 class PromptGroupService:
-    """Service for managing prompt groups.
-
-    Handles CRUD operations for groups and ensures business rules:
-    - Group titles must be unique per user
-    """
+    """Service for managing prompt groups."""
 
     def __init__(self, session: AsyncSession):
         self._session = session
@@ -42,14 +37,7 @@ class PromptGroupService:
             brand: Brand dict with name, domain, variations
             topic_id: The topic ID to bind (optional, immutable after creation)
             competitors: Optional list of competitor dicts
-
-        Raises:
-            DuplicateGroupTitleError: If user already has a group with this title
         """
-        existing = await self._get_by_user_and_title(user_id, title)
-        if existing is not None:
-            raise DuplicateGroupTitleError(title)
-
         group = PromptGroup(
             user_id=user_id,
             title=title,
@@ -124,15 +112,10 @@ class PromptGroupService:
         Raises:
             GroupNotFoundError: If group doesn't exist
             GroupAccessDeniedError: If user doesn't own the group
-            DuplicateGroupTitleError: If new title already exists
         """
         group = await self.get_by_id_for_user(group_id, user_id)
 
-        # Only check title uniqueness if title is being changed
-        if title is not None and title != group.title:
-            existing = await self._get_by_user_and_title(user_id, title)
-            if existing is not None and existing.id != group_id:
-                raise DuplicateGroupTitleError(title)
+        if title is not None:
             group.title = title
 
         if brand is not None:
@@ -156,13 +139,3 @@ class PromptGroupService:
 
         await self._session.delete(group)
         await self._session.flush()
-
-    async def _get_by_user_and_title(
-        self, user_id: str, title: str
-    ) -> Optional[PromptGroup]:
-        """Get a group by user and title."""
-        stmt = select(PromptGroup).where(
-            PromptGroup.user_id == user_id, PromptGroup.title == title
-        )
-        result = await self._session.execute(stmt)
-        return result.scalar_one_or_none()
