@@ -2,11 +2,12 @@
 
 import enum
 import uuid as uuid_module
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, Enum, Integer, Numeric, String, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.database.users_session import UsersBase
@@ -151,3 +152,68 @@ class BalanceTransaction(UsersBase):
 
     def __repr__(self) -> str:
         return f"<BalanceTransaction(id={self.id}, user_id='{self.user_id}', type='{self.transaction_type.value}', amount={self.amount})>"
+
+
+class UserPreferences(UsersBase):
+    """User preferences for brand defaults and onboarding state.
+
+    One-to-one relationship with User.
+    Created lazily on first preference save or onboarding completion.
+    """
+
+    __tablename__ = "user_preferences"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String(36),
+        unique=True,
+        nullable=False,
+        index=True,
+    )  # No FK - application-level integrity
+
+    # Default market preferences
+    default_country_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    default_business_domain_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    # Default brand for new groups: {name, domain, variations}
+    default_brand: Mapped[Optional[dict]] = mapped_column(
+        JSONB,
+        nullable=True,
+    )
+
+    # Default competitors for new groups: [{name, domain, variations}, ...]
+    default_competitors: Mapped[Optional[list]] = mapped_column(
+        JSONB,
+        nullable=True,
+    )
+
+    # Onboarding tracking
+    onboarding_completed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    onboarding_skipped_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("NOW()"),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("NOW()"),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    def __repr__(self) -> str:
+        return f"<UserPreferences(id={self.id}, user_id='{self.user_id}', has_brand={self.default_brand is not None})>"

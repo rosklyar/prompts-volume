@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useNavigate } from "@tanstack/react-router"
 import {
   authApi,
+  onboardingApi,
   type LoginCredentials,
   type UserPublic,
   type UserRegister,
@@ -41,9 +42,20 @@ const useAuth = () => {
 
   const loginMutation = useMutation({
     mutationFn: login,
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ["currentUser"] })
-      navigate({ to: "/" })
+      // Check onboarding status and redirect accordingly
+      try {
+        const status = await onboardingApi.getStatus()
+        if (!status.is_completed && !status.is_skipped) {
+          navigate({ to: "/onboarding" })
+        } else {
+          navigate({ to: "/" })
+        }
+      } catch {
+        // If onboarding status check fails, go to dashboard
+        navigate({ to: "/" })
+      }
     },
   })
 

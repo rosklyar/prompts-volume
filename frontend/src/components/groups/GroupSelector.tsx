@@ -10,6 +10,7 @@ import type { GroupSummary, BrandInfo, CompetitorInfo, TopicInput } from "@/type
 import { getGroupColor, MAX_GROUPS } from "./constants"
 import { X, Plus, Check, Loader2, FolderPlus, Globe, MapPin, Briefcase, Tag, ChevronRight } from "lucide-react"
 import { useCountries, useBusinessDomains, useTopicsFiltered } from "@/hooks/useTopics"
+import { useUserPreferences } from "@/hooks/useOnboarding"
 
 interface GroupSelectorProps {
   groups: GroupSummary[]
@@ -46,6 +47,10 @@ export function GroupSelector({
   const [brandVariationsTouched, setBrandVariationsTouched] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState(0) // Start with first group highlighted
   const [isReady, setIsReady] = useState(false) // Prevent capturing the Enter that opened this selector
+  const [hasPrefilled, setHasPrefilled] = useState(false) // Track if we've prefilled from preferences
+
+  // Fetch user preferences for prefilling brand data
+  const { data: userPreferences } = useUserPreferences()
 
   // Topic selection state (used when defaultTopicId is not provided)
   const [selectedCountryId, setSelectedCountryId] = useState<number | undefined>()
@@ -100,6 +105,32 @@ export function GroupSelector({
   const totalItems = groups.length + (canCreateMore ? 1 : 0)
   const isCreateOptionHighlighted = highlightedIndex === groups.length && canCreateMore
 
+  // Prefill brand data from user preferences when entering create mode
+  const prefillFromPreferences = useCallback(() => {
+    if (userPreferences?.default_brand && !hasPrefilled) {
+      const brand = userPreferences.default_brand
+      setBrandName(brand.name)
+      setBrandDomain(brand.domain ?? "")
+      setBrandVariations(brand.variations.join(", "))
+      setBrandVariationsTouched(true) // Mark as touched so auto-prefill from name doesn't override
+      setHasPrefilled(true)
+    }
+  }, [userPreferences, hasPrefilled])
+
+  // Track if we've prefilled for empty state (using ref to avoid effect setState issues)
+  const hasPrefilledForEmptyState = useRef(false)
+
+  // For empty state: prefill once when preferences become available
+  // Using requestAnimationFrame to defer setState out of the render cycle
+  useEffect(() => {
+    if (showEmptyState && userPreferences?.default_brand && !hasPrefilledForEmptyState.current) {
+      hasPrefilledForEmptyState.current = true
+      requestAnimationFrame(() => {
+        prefillFromPreferences()
+      })
+    }
+  }, [showEmptyState, userPreferences, prefillFromPreferences])
+
   // Focus input when entering create mode
   useEffect(() => {
     if ((isCreatingNew || showEmptyState) && inputRef.current) {
@@ -146,6 +177,7 @@ export function GroupSelector({
           e.preventDefault()
           if (isCreateOptionHighlighted) {
             setIsCreatingNew(true)
+            prefillFromPreferences()
           } else if (highlightedIndex < groups.length) {
             onSelectGroup(groups[highlightedIndex].id)
           }
@@ -160,7 +192,7 @@ export function GroupSelector({
 
     document.addEventListener("keydown", handleKeyDown)
     return () => document.removeEventListener("keydown", handleKeyDown)
-  }, [isCreatingNew, showEmptyState, isAddingPrompt, isReady, highlightedIndex, totalItems, groups, canCreateMore, isCreateOptionHighlighted, onSelectGroup, onCancel])
+  }, [isCreatingNew, showEmptyState, isAddingPrompt, isReady, highlightedIndex, totalItems, groups, canCreateMore, isCreateOptionHighlighted, onSelectGroup, onCancel, prefillFromPreferences])
 
   function normalizeDomain(url: string): string {
     let domain = url.trim().toLowerCase()
@@ -223,6 +255,7 @@ export function GroupSelector({
     setBrandDomain("")
     setBrandVariations("")
     setBrandVariationsTouched(false)
+    setHasPrefilled(false) // Allow prefill again for next group creation
     setIsCreatingNew(false)
     setCreationStep("topic")
     setSelectedCountryId(undefined)
@@ -263,6 +296,7 @@ export function GroupSelector({
       setBrandDomain("")
       setBrandVariations("")
       setBrandVariationsTouched(false)
+      setHasPrefilled(false) // Allow prefill again for next group creation
       // Reset topic selection state
       setSelectedCountryId(undefined)
       setSelectedBusinessDomainId(undefined)
@@ -827,7 +861,10 @@ export function GroupSelector({
           <button
             id={`group-option-${groups.length}`}
             data-group-item
-            onClick={() => setIsCreatingNew(true)}
+            onClick={() => {
+              setIsCreatingNew(true)
+              prefillFromPreferences()
+            }}
             onMouseEnter={() => setHighlightedIndex(groups.length)}
             className={`w-full px-4 py-3 flex items-center gap-3
               text-left border-t border-[#F3F4F6]

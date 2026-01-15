@@ -1,5 +1,11 @@
 import type { BrandInfo, CompetitorInfo, TopicInput } from "@/types/groups"
 import type {
+  OnboardingStatusResponse,
+  UserPreferencesResponse,
+  CompleteOnboardingRequest,
+  SavePreferencesRequest,
+} from "@/types/onboarding"
+import type {
   BatchAnalyzeResponse,
   BatchCreateRequest,
   BatchCreateResponse,
@@ -885,6 +891,60 @@ export const inspirationApi = {
     request.topics.forEach((t) => params.append("topics", t))
     request.brand_variations.forEach((b) => params.append("brand_variations", b))
     const response = await fetchWithAuth(`/prompts/api/v1/generate?${params}`)
+    return response.json()
+  },
+}
+
+// ===== Onboarding API =====
+
+export const onboardingApi = {
+  /**
+   * Get onboarding status for current user
+   */
+  async getStatus(): Promise<OnboardingStatusResponse> {
+    const response = await fetchWithAuth("/onboarding/api/v1/status")
+    return response.json()
+  },
+
+  /**
+   * Complete onboarding with brand and competitor preferences
+   */
+  async complete(request: CompleteOnboardingRequest): Promise<UserPreferencesResponse> {
+    const response = await fetchWithAuth("/onboarding/api/v1/complete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    })
+    return response.json()
+  },
+
+  /**
+   * Skip onboarding (can complete later via settings)
+   */
+  async skip(): Promise<OnboardingStatusResponse> {
+    const response = await fetchWithAuth("/onboarding/api/v1/skip", {
+      method: "POST",
+    })
+    return response.json()
+  },
+
+  /**
+   * Get user preferences (for settings page and group prefill)
+   */
+  async getPreferences(): Promise<UserPreferencesResponse> {
+    const response = await fetchWithAuth("/onboarding/api/v1/preferences")
+    return response.json()
+  },
+
+  /**
+   * Update user preferences (from settings page)
+   */
+  async updatePreferences(request: SavePreferencesRequest): Promise<UserPreferencesResponse> {
+    const response = await fetchWithAuth("/onboarding/api/v1/preferences", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    })
     return response.json()
   },
 }
