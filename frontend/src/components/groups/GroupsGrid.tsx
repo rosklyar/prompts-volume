@@ -292,20 +292,28 @@ export function GroupsGrid() {
   // Handle group creation
   const handleCreateGroup = async (
     title: string,
-    topic: TopicInput,
+    topic: TopicInput | null,
     brand: BrandInfo,
     competitors?: CompetitorInfo[],
-    topicTitle?: string
+    topicTitle?: string | null
   ) => {
+    if (!topic) {
+      console.error("Cannot create group without a topic")
+      return
+    }
+
     try {
       const newGroup = await createGroup.mutateAsync({ title, topic, brand, competitors })
-      // Open prompt selection modal after successful group creation
-      setPromptSelectionModal({
-        groupId: newGroup.id,
-        groupTitle: title,
-        topicId: newGroup.topic_id,
-        topicTitle: topicTitle ?? newGroup.topic_title,
-      })
+      // Only open prompt selection modal if a topic was selected
+      // (no topic = no prompts to suggest)
+      if (newGroup.topic_id && topicTitle) {
+        setPromptSelectionModal({
+          groupId: newGroup.id,
+          groupTitle: title,
+          topicId: newGroup.topic_id,
+          topicTitle: topicTitle,
+        })
+      }
     } catch (error) {
       console.error("Failed to create group:", error)
     }

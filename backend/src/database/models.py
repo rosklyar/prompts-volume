@@ -1,14 +1,23 @@
 """SQLAlchemy ORM models for prompts_db tables."""
 
+import enum
 from datetime import datetime
 from typing import List, Optional
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.database.session import Base
+
+
+class PromptApprovalStatus(str, enum.Enum):
+    """Approval status for user-submitted prompts."""
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
 
 
 class Language(Base):
@@ -152,8 +161,28 @@ class Prompt(Base):
         index=True,
     )
 
+    # Approval workflow fields
+    approval_status: Mapped[PromptApprovalStatus] = mapped_column(
+        Enum(
+            PromptApprovalStatus,
+            values_callable=lambda x: [e.value for e in x],
+            name="promptapprovalstatus",
+        ),
+        nullable=False,
+        default=PromptApprovalStatus.APPROVED,
+        index=True,
+    )
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    reviewed_by: Mapped[Optional[str]] = mapped_column(
+        String(36),
+        nullable=True,
+    )
+
     # Relationships
-    topic: Mapped["Topic"] = relationship(back_populates="prompts")
+    topic: Mapped[Optional["Topic"]] = relationship(back_populates="prompts")
 
     def __repr__(self) -> str:
         return f"<Prompt(id={self.id}, topic_id={self.topic_id}, prompt_text='{self.prompt_text[:50]}...')>"
@@ -171,9 +200,9 @@ class PromptGroup(Base):
         index=True,
     )  # No FK - user is in users_db
     title: Mapped[str] = mapped_column(String(255), nullable=False)
-    topic_id: Mapped[int] = mapped_column(
+    topic_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("topics.id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -198,7 +227,7 @@ class PromptGroup(Base):
     )
 
     # Relationships
-    topic: Mapped["Topic"] = relationship()
+    topic: Mapped[Optional["Topic"]] = relationship()
     bindings: Mapped[List["PromptGroupBinding"]] = relationship(
         back_populates="group",
         cascade="all, delete-orphan"

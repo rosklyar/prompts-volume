@@ -11,7 +11,9 @@ import {
   AdminTopUpModal,
   AdminTabs,
   AdminPromptsTab,
+  AdminApprovalsTab,
 } from "@/components/admin"
+import { usePendingPrompts } from "@/hooks/useAdminApprovals"
 import type { UserWithBalance } from "@/types/admin"
 import type { AdminTab } from "@/components/admin"
 
@@ -29,6 +31,9 @@ function AdminDashboard() {
   const [selectedUser, setSelectedUser] = useState<UserWithBalance | null>(null)
   const [showTopUpModal, setShowTopUpModal] = useState(false)
   const [activeTab, setActiveTab] = useState<AdminTab>("users")
+
+  // Get pending prompts count for badge
+  const { data: pendingData } = usePendingPrompts(1, 0)
 
   const handleSelectUser = (user: UserWithBalance) => {
     setSelectedUser(user)
@@ -158,18 +163,25 @@ function AdminDashboard() {
           <p className="text-gray-500 max-w-md mx-auto">
             {activeTab === "users"
               ? "Search and top up user balances"
-              : "Upload prompts and manage topics"}
+              : activeTab === "prompts"
+                ? "Upload prompts and manage topics"
+                : "Review and approve pending prompts"}
           </p>
         </div>
 
         {/* Tabs */}
-        <AdminTabs activeTab={activeTab} onTabChange={setActiveTab} />
+        <AdminTabs
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          pendingCount={pendingData?.total}
+        />
 
         {/* Tab content */}
         {activeTab === "users" && (
           <AdminUserList onSelectUser={handleSelectUser} />
         )}
         {activeTab === "prompts" && <AdminPromptsTab />}
+        {activeTab === "approvals" && <AdminApprovalsTab />}
 
         {/* Top-up modal */}
         {showTopUpModal && selectedUser && (

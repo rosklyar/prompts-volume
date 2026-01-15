@@ -434,7 +434,7 @@ def test_enhanced_comparison_cost_estimation(client, create_verified_user, simul
     assert actual_cost == expected_cost, f"Expected {expected_cost}, got {actual_cost}"
 
     # User balance from signup credits
-    assert Decimal(str(compare["user_balance"])) == Decimal("10.00")
+    assert Decimal(str(compare["user_balance"])) == Decimal("5.00")
 
 
 def test_enhanced_comparison_can_generate_logic(client, create_verified_user, simulate_webhook):

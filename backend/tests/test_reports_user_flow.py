@@ -63,11 +63,11 @@ def test_complete_report_user_flow(client, create_verified_user, simulate_webhoo
     unique_email = f"test-flow-{uuid.uuid4()}@example.com"
     auth_headers = create_verified_user(unique_email, "testpassword123", "Flow Test User")
 
-    # === STEP 3: Check initial balance (should be 10.00 from signup credits) ===
+    # === STEP 3: Check initial balance (should be 5.00 from signup credits) ===
     balance_response = client.get("/billing/api/v1/balance", headers=auth_headers)
     assert balance_response.status_code == 200
     initial_balance = Decimal(str(balance_response.json()["available_balance"]))
-    assert initial_balance == Decimal("10.00"), f"Expected 10.00, got {initial_balance}"
+    assert initial_balance == Decimal("5.00"), f"Expected 5.00, got {initial_balance}"
 
     # === STEP 4: Create group (brand and topic are required) ===
     group_response = client.post(

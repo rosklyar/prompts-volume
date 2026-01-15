@@ -80,3 +80,35 @@ export interface UploadPromptsRequest {
   selected_indices: number[]
   topic_id: number
 }
+
+// ===== Pending Prompts Approval Types =====
+
+export interface PendingPromptResponse {
+  id: number
+  prompt_text: string
+  topic_id: number | null
+  topic_title: string | null
+  user_id: string
+  group_ids: number[]
+  group_titles: string[]
+}
+
+export interface PendingPromptsListResponse {
+  prompts: PendingPromptResponse[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface ApprovalResultResponse {
+  prompt_id: number
+  new_status: string
+  reviewed_by: string
+  reviewed_at: string
+}
+
+export interface BatchApprovalResponse {
+  results: ApprovalResultResponse[]
+  success_count: number
+  failed_ids: number[]
+}
