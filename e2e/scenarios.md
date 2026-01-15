@@ -21,9 +21,3 @@ Run these scenarios using Playwright MCP tools after docker-compose and frontend
 2. Navigate to a group with prompts
 3. Click generate report
 4. Verify: report preview shows
-
-### Fresh Prompt Answer
-1. Login as admin
-2. Navigate to group with prompts
-3. Request fresh answer for a prompt
-4. Verify: answer request queued/returned
