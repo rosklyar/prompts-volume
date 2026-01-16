@@ -96,6 +96,21 @@ export interface SimilarPromptsResponse {
   total_found: number
 }
 
+// Topic Prompts types
+export interface TopicPrompt {
+  id: number
+  prompt_text: string
+}
+
+export interface TopicPromptsGroup {
+  topic_id: number
+  prompts: TopicPrompt[]
+}
+
+export interface TopicPromptsListResponse {
+  topics: TopicPromptsGroup[]
+}
+
 export interface LoginCredentials {
   username: string
   password: string
@@ -242,6 +257,13 @@ export const promptsApi = {
       min_similarity: minSimilarity.toString(),
     })
     const response = await fetchWithAuth(`/prompts/api/v1/similar?${params}`)
+    return response.json()
+  },
+
+  async getPromptsByTopicIds(topicIds: number[]): Promise<TopicPromptsListResponse> {
+    const params = new URLSearchParams()
+    topicIds.forEach((id) => params.append("topic_ids", id.toString()))
+    const response = await fetchWithAuth(`/prompts/api/v1/prompts?${params}`)
     return response.json()
   },
 }
