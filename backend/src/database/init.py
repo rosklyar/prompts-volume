@@ -364,20 +364,16 @@ async def _seed_phone_evaluations(
         # Use first answer
         answer = answers[0]
 
-        # Skip if timestamp is missing
-        if "timestamp" not in answer:
-            continue
-
-        # Parse timestamp and calculate dates
-        completed_at = datetime.fromisoformat(answer["timestamp"])
+        # Use fresh timestamp (current time - 1 hour)
+        completed_at = datetime.now() - timedelta(hours=1)
         claimed_at = completed_at - timedelta(hours=1)
-        created_at = completed_at - timedelta(hours=2)
+        created_at = completed_at - timedelta(hours=1)
 
         # Build answer JSON
         answer_json = {
             "response": answer["response"],
-            "citations": answer["citations"],
-            "timestamp": answer["timestamp"]
+            "citations": answer.get("citations", []),
+            "timestamp": completed_at.isoformat(),
         }
 
         # Create evaluation
@@ -460,20 +456,16 @@ async def _seed_laptop_evaluations(
         # Use first answer
         answer = answers[0]
 
-        # Skip if timestamp is missing
-        if "timestamp" not in answer:
-            continue
-
-        # Parse timestamp and calculate dates
-        completed_at = datetime.fromisoformat(answer["timestamp"])
+        # Use fresh timestamp (current time - 1 hour)
+        completed_at = datetime.now() - timedelta(hours=1)
         claimed_at = completed_at - timedelta(hours=1)
-        created_at = completed_at - timedelta(hours=2)
+        created_at = completed_at - timedelta(hours=1)
 
         # Build answer JSON
         answer_json = {
             "response": answer["response"],
-            "citations": answer["citations"],
-            "timestamp": answer["timestamp"]
+            "citations": answer.get("citations", []),
+            "timestamp": completed_at.isoformat(),
         }
 
         # Create evaluation

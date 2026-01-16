@@ -10,10 +10,10 @@ Tests the complete daily batch flow:
 
 import asyncio
 import uuid
-from datetime import date
+from datetime import date, datetime, timedelta
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.database.evals_models import (
@@ -22,6 +22,7 @@ from src.database.evals_models import (
     DailyScheduleBatch,
     DailyBatchGroupResult,
     GroupReport,
+    PromptEvaluation,
 )
 from src.database.models import PromptGroup
 
@@ -149,6 +150,22 @@ async def _get_group_async(session_maker, group_id: int) -> PromptGroup | None:
         return result.scalar_one_or_none()
 
 
+async def _make_evaluations_stale_async(
+    session_maker,
+    prompt_ids: list[int],
+    hours_ago: int = 48,
+) -> None:
+    """Make evaluations for given prompts stale by setting old timestamps."""
+    async with session_maker() as session:
+        stale_time = datetime.now() - timedelta(hours=hours_ago)
+        await session.execute(
+            update(PromptEvaluation)
+            .where(PromptEvaluation.prompt_id.in_(prompt_ids))
+            .values(completed_at=stale_time)
+        )
+        await session.commit()
+
+
 async def _trigger_report_generation_async(session_maker, batch_id: int) -> int:
     """Trigger report generation for a batch."""
     from src.daily_scheduling.services.batch_report_generator import BatchReportGenerator
@@ -226,6 +243,17 @@ def test_daily_batch_with_fresh_and_stale_prompts(
         headers=user2_headers,
     )
     assert add_resp.status_code == 200, f"Add to group B failed: {add_resp.json()}"
+
+    # === STEP 4.5: Make all seeded evaluations stale ===
+    # This ensures that P2, P3, P4 have stale evaluations (>24h old)
+    # P1 will become fresh in the next step via webhook
+    asyncio.get_event_loop().run_until_complete(
+        _make_evaluations_stale_async(
+            session_maker,
+            [p1["id"], p2["id"], p3["id"], p4["id"]],
+            hours_ago=48,
+        )
+    )
 
     # === STEP 5: Make P1 fresh by requesting and simulating webhook ===
     request_resp = client.post(

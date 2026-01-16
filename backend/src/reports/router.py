@@ -869,7 +869,7 @@ async def export_report_json(
     safe_brand_name = "".join(
         c if c.isalnum() or c in ("-", "_", " ") else "_" for c in brand_name
     ).strip().replace(" ", "_")
-    datetime_str = report.created_at.strftime("%Y%m%d_%H%M%S")
+    datetime_str = report.created_at.strftime("%Y-%m-%d_%H-%M")
     filename = f"{safe_brand_name}_{datetime_str}.json"
     return Response(
         content=json_bytes,
