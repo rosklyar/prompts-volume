@@ -295,6 +295,12 @@ export interface RemovePromptsResult {
   removed_count: number
 }
 
+export interface ScheduleConfig {
+  group_id: number
+  enabled: boolean
+  last_run_at: string | null
+}
+
 // ===== Evaluation Types =====
 
 export interface Citation {
@@ -431,6 +437,28 @@ export const groupsApi = {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt_ids: promptIds }),
+      }
+    )
+    return response.json()
+  },
+
+  async getGroupSchedule(groupId: number): Promise<ScheduleConfig> {
+    const response = await fetchWithAuth(
+      `/prompt-groups/api/v1/groups/${groupId}/schedule`
+    )
+    return response.json()
+  },
+
+  async setGroupSchedule(
+    groupId: number,
+    enabled: boolean
+  ): Promise<ScheduleConfig> {
+    const response = await fetchWithAuth(
+      `/prompt-groups/api/v1/groups/${groupId}/schedule`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
       }
     )
     return response.json()

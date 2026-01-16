@@ -1,11 +1,11 @@
 """SQLAlchemy ORM models for evals_db tables."""
 
 import enum
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import List, Optional
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint, text
+from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -317,3 +317,164 @@ class BrightDataBatch(EvalsBase):
 
     def __repr__(self) -> str:
         return f"<BrightDataBatch(id={self.id}, batch_id='{self.batch_id}', status='{self.status.value}')>"
+
+
+# =============================================================================
+# Daily Schedule Batch Models
+# =============================================================================
+
+
+class DailyBatchStatus(str, enum.Enum):
+    """Status of a daily schedule batch."""
+    COLLECTING = "collecting"    # Determining prompts to refresh
+    REQUESTING = "requesting"    # Sending to BrightData
+    AWAITING = "awaiting"        # Waiting for webhooks
+    GENERATING = "generating"    # Generating reports
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class DailyBatchGroupStatus(str, enum.Enum):
+    """Status of a group within a daily batch."""
+    PENDING = "pending"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class DailyScheduleBatch(EvalsBase):
+    """Tracks a single daily batch processing run.
+
+    Lifecycle:
+    1. Created at 6 AM UTC when daily job starts
+    2. Collects all groups with schedule_enabled=true
+    3. Aggregates prompts needing refresh
+    4. Triggers BrightData batches
+    5. Waits for webhooks or timeout (6 hours)
+    6. Generates reports for all groups
+    """
+
+    __tablename__ = "daily_schedule_batches"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    scheduled_date: Mapped[date] = mapped_column(
+        Date,
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    status: Mapped[DailyBatchStatus] = mapped_column(
+        Enum(
+            DailyBatchStatus,
+            values_callable=lambda x: [e.value for e in x],
+            name="dailybatchstatus",
+        ),
+        nullable=False,
+        default=DailyBatchStatus.COLLECTING,
+    )
+
+    # BrightData batch IDs for webhook correlation
+    batch_ids: Mapped[list[str]] = mapped_column(
+        ARRAY(String(36)),
+        nullable=False,
+        default=[],
+    )
+
+    # Groups included in this batch
+    group_ids: Mapped[list[int]] = mapped_column(
+        ARRAY(Integer),
+        nullable=False,
+        default=[],
+    )
+
+    # Prompt stats
+    total_prompts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    prompts_needing_refresh: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    prompts_already_fresh: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("NOW()"),
+    )
+    timeout_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    # Relationships
+    group_results: Mapped[List["DailyBatchGroupResult"]] = relationship(
+        back_populates="batch",
+        cascade="all, delete-orphan"
+    )
+
+    def __repr__(self) -> str:
+        return f"<DailyScheduleBatch(id={self.id}, date='{self.scheduled_date}', status='{self.status.value}')>"
+
+
+class DailyBatchGroupResult(EvalsBase):
+    """Per-group result within a daily batch.
+
+    Tracks the state of each group's report generation within a daily batch.
+    Stores the evaluation selections made at scheduling time.
+    """
+
+    __tablename__ = "daily_batch_group_results"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    batch_id: Mapped[int] = mapped_column(
+        ForeignKey("daily_schedule_batches.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    group_id: Mapped[int] = mapped_column(
+        Integer,  # No ForeignKey - prompt_groups is in prompts_db
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36),
+        nullable=False,
+        index=True,
+    )  # No FK - user is in users_db
+
+    # Status
+    status: Mapped[DailyBatchGroupStatus] = mapped_column(
+        Enum(
+            DailyBatchGroupStatus,
+            values_callable=lambda x: [e.value for e in x],
+            name="dailybatchgroupstatus",
+        ),
+        nullable=False,
+        default=DailyBatchGroupStatus.PENDING,
+    )
+
+    # Generated report reference
+    report_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("group_reports.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    # Prompt stats for this group
+    prompts_in_group: Mapped[int] = mapped_column(Integer, nullable=False)
+    prompts_needing_refresh: Mapped[int] = mapped_column(Integer, nullable=False)
+    prompts_already_fresh: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # Pre-recorded evaluation selections (prompt_id -> evaluation_id for fresh prompts)
+    fresh_prompt_selections: Mapped[Optional[dict]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="Map of prompt_id -> evaluation_id for prompts that were fresh at scheduling time"
+    )
+
+    # Relationships
+    batch: Mapped["DailyScheduleBatch"] = relationship(back_populates="group_results")
+    report: Mapped[Optional["GroupReport"]] = relationship()
+
+    def __repr__(self) -> str:
+        return f"<DailyBatchGroupResult(id={self.id}, batch_id={self.batch_id}, group_id={self.group_id}, status='{self.status.value}')>"

@@ -155,6 +155,14 @@ async def receive_brightdata_webhook(
     await batch_service.complete_batch(batch_id, final_status)
     await evals_session.commit()
 
+    # Check if this batch is part of a daily scheduled batch
+    try:
+        from src.daily_scheduling.services.batch_completion_service import BatchCompletionService
+        completion_service = BatchCompletionService(evals_session)
+        await completion_service.on_brightdata_batch_completed(batch_id)
+    except Exception as e:
+        logger.warning(f"Failed to check daily batch completion: {e}")
+
     return WebhookResponse(
         status=final_status.value,
         batch_id=batch_id,

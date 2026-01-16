@@ -139,3 +139,19 @@ class PromptGroupService:
 
         await self._session.delete(group)
         await self._session.flush()
+
+    async def update_schedule(self, group_id: int, enabled: bool) -> None:
+        """Update schedule_enabled for a group.
+
+        Args:
+            group_id: The group ID to update
+            enabled: Whether daily scheduled reports are enabled
+        """
+        from sqlalchemy import update
+        stmt = (
+            update(PromptGroup)
+            .where(PromptGroup.id == group_id)
+            .values(schedule_enabled=enabled)
+        )
+        await self._session.execute(stmt)
+        await self._session.flush()

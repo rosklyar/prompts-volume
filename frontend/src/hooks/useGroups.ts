@@ -18,6 +18,7 @@ export const groupKeys = {
   lists: () => [...groupKeys.all, "list"] as const,
   details: () => [...groupKeys.all, "detail"] as const,
   detail: (id: number) => [...groupKeys.details(), id] as const,
+  schedule: (id: number) => [...groupKeys.all, "schedule", id] as const,
 }
 
 // ===== Queries =====
@@ -245,6 +246,29 @@ export function useMovePrompt() {
       queryClient.invalidateQueries({ queryKey: reportKeys.compare(targetGroupId) })
       queryClient.invalidateQueries({ queryKey: billingKeys.reportPreview(sourceGroupId) })
       queryClient.invalidateQueries({ queryKey: billingKeys.reportPreview(targetGroupId) })
+    },
+  })
+}
+
+// ===== Schedule Hooks =====
+
+export function useGroupSchedule(groupId: number) {
+  return useQuery({
+    queryKey: groupKeys.schedule(groupId),
+    queryFn: () => groupsApi.getGroupSchedule(groupId),
+    staleTime: 30 * 1000, // 30 seconds
+  })
+}
+
+export function useSetGroupSchedule() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ groupId, enabled }: { groupId: number; enabled: boolean }) =>
+      groupsApi.setGroupSchedule(groupId, enabled),
+    onSuccess: (data, { groupId }) => {
+      // Update the schedule cache directly
+      queryClient.setQueryData(groupKeys.schedule(groupId), data)
     },
   })
 }
