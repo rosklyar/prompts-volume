@@ -96,6 +96,21 @@ export interface SimilarPromptsResponse {
   total_found: number
 }
 
+// Topic Prompts types
+export interface TopicPrompt {
+  id: number
+  prompt_text: string
+}
+
+export interface TopicPromptsGroup {
+  topic_id: number
+  prompts: TopicPrompt[]
+}
+
+export interface TopicPromptsListResponse {
+  topics: TopicPromptsGroup[]
+}
+
 export interface LoginCredentials {
   username: string
   password: string
@@ -244,6 +259,13 @@ export const promptsApi = {
     const response = await fetchWithAuth(`/prompts/api/v1/similar?${params}`)
     return response.json()
   },
+
+  async getPromptsByTopicIds(topicIds: number[]): Promise<TopicPromptsListResponse> {
+    const params = new URLSearchParams()
+    topicIds.forEach((id) => params.append("topic_ids", id.toString()))
+    const response = await fetchWithAuth(`/prompts/api/v1/prompts?${params}`)
+    return response.json()
+  },
 }
 
 // ===== Group Types =====
@@ -293,6 +315,12 @@ export interface AddPromptsResult {
 
 export interface RemovePromptsResult {
   removed_count: number
+}
+
+export interface ScheduleConfig {
+  group_id: number
+  enabled: boolean
+  last_run_at: string | null
 }
 
 // ===== Evaluation Types =====
@@ -431,6 +459,28 @@ export const groupsApi = {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt_ids: promptIds }),
+      }
+    )
+    return response.json()
+  },
+
+  async getGroupSchedule(groupId: number): Promise<ScheduleConfig> {
+    const response = await fetchWithAuth(
+      `/prompt-groups/api/v1/groups/${groupId}/schedule`
+    )
+    return response.json()
+  },
+
+  async setGroupSchedule(
+    groupId: number,
+    enabled: boolean
+  ): Promise<ScheduleConfig> {
+    const response = await fetchWithAuth(
+      `/prompt-groups/api/v1/groups/${groupId}/schedule`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
       }
     )
     return response.json()
@@ -789,16 +839,23 @@ export const reportsApi = {
   },
 
   /**
-   * Export report as JSON file (returns blob for download)
+   * Export report as JSON file (returns blob and filename for download)
    */
-  async exportJson(groupId: number, reportId: number): Promise<Blob> {
+  async exportJson(
+    groupId: number,
+    reportId: number
+  ): Promise<{ blob: Blob; filename: string }> {
     const response = await fetchWithAuth(
       `/reports/api/v1/groups/${groupId}/reports/${reportId}/export/json`
     )
     if (!response.ok) {
       throw new Error("Export failed")
     }
-    return response.blob()
+    const blob = await response.blob()
+    const contentDisposition = response.headers.get("Content-Disposition")
+    const filenameMatch = contentDisposition?.match(/filename="(.+)"/)
+    const filename = filenameMatch?.[1] ?? `report_${reportId}.json`
+    return { blob, filename }
   },
 }
 

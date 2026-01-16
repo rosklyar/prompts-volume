@@ -27,6 +27,7 @@ import type { PromptSelection, PromptSelectionInfo } from "@/types/billing"
 import { getGroupColor } from "./constants"
 import { BatchUploadModal } from "./BatchUploadModal"
 import { AssistantSelectionModal } from "./AssistantSelectionModal"
+import { ScheduleToggle } from "./ScheduleToggle"
 
 interface PromptWithAnswer extends PromptInGroup {
   answer?: EvaluationAnswer | null
@@ -256,6 +257,7 @@ export function GroupCard({
 
             {/* Actions */}
             <div className="flex items-center gap-2">
+              <ScheduleToggle groupId={group.id} accentColor={colors.accent} />
               {/* Report button - opens preview modal or no-data modal */}
               <button
                 onClick={handleReportClick}

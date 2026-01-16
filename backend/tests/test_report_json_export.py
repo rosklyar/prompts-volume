@@ -168,7 +168,7 @@ def test_json_export_happy_path(client, create_verified_user, simulate_webhook):
     # Verify Content-Disposition header
     content_disposition = export_response.headers.get("Content-Disposition", "")
     assert "attachment" in content_disposition
-    assert f"report_{report_id}_" in content_disposition
+    assert "TestBrand_" in content_disposition  # Brand name in filename
     assert ".json" in content_disposition
 
     # Parse JSON content

@@ -865,7 +865,12 @@ async def export_report_json(
     json_bytes = json_formatter.format(export_data)
 
     # Return as downloadable file
-    filename = f"report_{report_id}_{report.created_at.strftime('%Y%m%d')}.json"
+    brand_name = group.brand["name"] if group.brand else "report"
+    safe_brand_name = "".join(
+        c if c.isalnum() or c in ("-", "_", " ") else "_" for c in brand_name
+    ).strip().replace(" ", "_")
+    datetime_str = report.created_at.strftime("%Y%m%d_%H%M%S")
+    filename = f"{safe_brand_name}_{datetime_str}.json"
     return Response(
         content=json_bytes,
         media_type=json_formatter.content_type,

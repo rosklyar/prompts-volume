@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -224,6 +224,18 @@ class PromptGroup(Base):
         JSONB,
         nullable=True,
         comment="Competitors: [{name, domain, variations}, ...]"
+    )
+
+    # Schedule configuration
+    schedule_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+    schedule_last_run_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )
 
     # Relationships

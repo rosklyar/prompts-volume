@@ -14,6 +14,7 @@ from src.config.settings import settings
 from src.database import close_db, get_session_maker, init_db, seed_evals_data, seed_initial_data, seed_superuser
 from src.database.users_session import close_users_db, get_users_session_maker, init_users_db
 from src.database.evals_session import close_evals_db, get_evals_session_maker, init_evals_db
+from src.daily_scheduling.scheduler import setup_scheduler, shutdown_scheduler
 from src.execution.router import router as execution_router
 from src.onboarding.router import router as onboarding_router
 from src.prompt_groups.router import router as prompt_groups_router
@@ -57,7 +58,13 @@ async def lifespan(app: FastAPI):
             async with evals_session_maker() as evals_session:
                 await seed_evals_data(prompts_session, evals_session)
 
+    # Start daily scheduling jobs
+    await setup_scheduler()
+
     yield
+
+    # Stop daily scheduling jobs
+    await shutdown_scheduler()
 
     # Shutdown: Close all three database connections
     await close_db()

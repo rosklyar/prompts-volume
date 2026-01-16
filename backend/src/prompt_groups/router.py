@@ -273,3 +273,56 @@ async def remove_prompts_from_group(
 # Note: Batch analyze/confirm endpoints moved to shared /prompts/api/v1/batch/* endpoints.
 # Use POST /prompts/api/v1/batch/analyze and POST /prompts/api/v1/batch/create
 # then POST /prompt-groups/api/v1/groups/{id}/prompts to bind.
+
+
+# ============================================================================
+# Schedule endpoints
+# ============================================================================
+
+
+from src.daily_scheduling.models.api_models import ScheduleConfigRequest, ScheduleConfigResponse
+
+
+@router.put("/groups/{group_id}/schedule", response_model=ScheduleConfigResponse)
+async def set_group_schedule(
+    group_id: int,
+    request: ScheduleConfigRequest,
+    current_user: CurrentUser,
+    group_service: PromptGroupServiceDep,
+):
+    """Enable or disable daily scheduled reports for a group.
+
+    When enabled, reports will be generated automatically at 6 AM UTC.
+    """
+    try:
+        group = await group_service.get_by_id_for_user(group_id, current_user.id)
+
+        # Update schedule_enabled
+        await group_service.update_schedule(group_id, request.enabled)
+
+        return ScheduleConfigResponse(
+            group_id=group_id,
+            enabled=request.enabled,
+            last_run_at=group.schedule_last_run_at,
+        )
+    except PromptGroupError as e:
+        raise to_http_exception(e)
+
+
+@router.get("/groups/{group_id}/schedule", response_model=ScheduleConfigResponse)
+async def get_group_schedule(
+    group_id: int,
+    current_user: CurrentUser,
+    group_service: PromptGroupServiceDep,
+):
+    """Get current schedule configuration for a group."""
+    try:
+        group = await group_service.get_by_id_for_user(group_id, current_user.id)
+
+        return ScheduleConfigResponse(
+            group_id=group_id,
+            enabled=group.schedule_enabled,
+            last_run_at=group.schedule_last_run_at,
+        )
+    except PromptGroupError as e:
+        raise to_http_exception(e)
