@@ -817,16 +817,23 @@ export const reportsApi = {
   },
 
   /**
-   * Export report as JSON file (returns blob for download)
+   * Export report as JSON file (returns blob and filename for download)
    */
-  async exportJson(groupId: number, reportId: number): Promise<Blob> {
+  async exportJson(
+    groupId: number,
+    reportId: number
+  ): Promise<{ blob: Blob; filename: string }> {
     const response = await fetchWithAuth(
       `/reports/api/v1/groups/${groupId}/reports/${reportId}/export/json`
     )
     if (!response.ok) {
       throw new Error("Export failed")
     }
-    return response.blob()
+    const blob = await response.blob()
+    const contentDisposition = response.headers.get("Content-Disposition")
+    const filenameMatch = contentDisposition?.match(/filename="(.+)"/)
+    const filename = filenameMatch?.[1] ?? `report_${reportId}.json`
+    return { blob, filename }
   },
 }
 
