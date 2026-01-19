@@ -325,10 +325,9 @@ export function ReportModal(props: ReportModalProps) {
                 className="
                   w-full px-3 py-2.5 rounded-lg border border-gray-200
                   bg-white text-gray-700 text-sm font-['DM_Sans']
-                  focus:outline-none focus:ring-2 focus:ring-opacity-50
+                  focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-50
                   disabled:opacity-50 disabled:cursor-not-allowed
                 "
-                style={{ focusRingColor: accentColor }}
               >
                 {assistantsData?.assistants.map((assistant) => (
                   <option key={assistant.id} value={assistant.id}>
