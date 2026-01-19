@@ -505,3 +505,107 @@ def test_create_group_with_invalid_topic_id(client, auth_headers):
     )
     assert response.status_code == 404
     assert "not found" in response.json()["detail"].lower()
+
+
+def test_get_available_prompts_with_topic(client, auth_headers):
+    """Test getting available prompts for a group with topic binding."""
+    # Create group with topic (uses topic 1 which has seeded prompts)
+    create_response = client.post(
+        "/prompt-groups/api/v1/groups",
+        json={
+            "title": "Available Prompts Test",
+            "topic": DEFAULT_TOPIC,
+            "brand": {"name": "TestBrand", "variations": []},
+        },
+        headers=auth_headers,
+    )
+    assert create_response.status_code == 201
+    group_id = create_response.json()["id"]
+
+    # Get available prompts - should return prompts from topic 1
+    response = client.get(
+        f"/prompt-groups/api/v1/groups/{group_id}/available-prompts",
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "prompts" in data
+    assert "total" in data
+    assert data["total"] == len(data["prompts"])
+    # Each prompt should have id and prompt_text
+    if data["total"] > 0:
+        assert "id" in data["prompts"][0]
+        assert "prompt_text" in data["prompts"][0]
+
+
+def test_get_available_prompts_filters_existing(client, auth_headers):
+    """Test that available prompts excludes prompts already in the group."""
+    # Create group with topic
+    create_response = client.post(
+        "/prompt-groups/api/v1/groups",
+        json={
+            "title": "Filter Test Group",
+            "topic": DEFAULT_TOPIC,
+            "brand": {"name": "TestBrand", "variations": []},
+        },
+        headers=auth_headers,
+    )
+    assert create_response.status_code == 201
+    group_id = create_response.json()["id"]
+
+    # Get initial available prompts
+    initial_response = client.get(
+        f"/prompt-groups/api/v1/groups/{group_id}/available-prompts",
+        headers=auth_headers,
+    )
+    assert initial_response.status_code == 200
+    initial_data = initial_response.json()
+    initial_count = initial_data["total"]
+
+    # Skip test if no prompts available
+    if initial_count == 0:
+        pytest.skip("No prompts available in topic for test")
+
+    # Add first prompt to group
+    first_prompt_id = initial_data["prompts"][0]["id"]
+    add_response = client.post(
+        f"/prompt-groups/api/v1/groups/{group_id}/prompts",
+        json={"prompt_ids": [first_prompt_id]},
+        headers=auth_headers,
+    )
+    assert add_response.status_code == 200
+
+    # Get available prompts again - count should be reduced by 1
+    after_response = client.get(
+        f"/prompt-groups/api/v1/groups/{group_id}/available-prompts",
+        headers=auth_headers,
+    )
+    assert after_response.status_code == 200
+    after_data = after_response.json()
+    assert after_data["total"] == initial_count - 1
+    # The added prompt should not be in the list
+    prompt_ids = [p["id"] for p in after_data["prompts"]]
+    assert first_prompt_id not in prompt_ids
+
+
+def test_get_available_prompts_no_topic_returns_404(client, auth_headers):
+    """Test that getting available prompts for a group without topic returns 404."""
+    # Create group without topic
+    create_response = client.post(
+        "/prompt-groups/api/v1/groups",
+        json={
+            "title": "No Topic Group",
+            "brand": {"name": "TestBrand", "variations": []},
+        },
+        headers=auth_headers,
+    )
+    assert create_response.status_code == 201
+    group_id = create_response.json()["id"]
+
+    # Get available prompts should return 404
+    response = client.get(
+        f"/prompt-groups/api/v1/groups/{group_id}/available-prompts",
+        headers=auth_headers,
+    )
+    assert response.status_code == 404
+    assert "no topic" in response.json()["detail"].lower()

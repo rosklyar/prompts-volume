@@ -326,6 +326,16 @@ export interface ScheduleConfig {
   last_run_at: string | null
 }
 
+export interface AvailablePrompt {
+  id: number
+  prompt_text: string
+}
+
+export interface AvailablePromptsResponse {
+  prompts: AvailablePrompt[]
+  total: number
+}
+
 // ===== Evaluation Types =====
 
 export interface Citation {
@@ -485,6 +495,13 @@ export const groupsApi = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled }),
       }
+    )
+    return response.json()
+  },
+
+  async getAvailablePrompts(groupId: number): Promise<AvailablePromptsResponse> {
+    const response = await fetchWithAuth(
+      `/prompt-groups/api/v1/groups/${groupId}/available-prompts`
     )
     return response.json()
   },
