@@ -2,6 +2,12 @@
 
 from decimal import Decimal
 
+
+class DuplicateReportError(Exception):
+    """Raised when attempting to generate a duplicate report."""
+
+    pass
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -426,6 +432,19 @@ class ReportService:
 
         # Build selection map: prompt_id -> evaluation_id (or None)
         selection_map = {s.prompt_id: s.evaluation_id for s in selections}
+
+        # Check for duplicate report
+        selected_eval_ids_set = {
+            s.evaluation_id for s in selections if s.evaluation_id is not None
+        }
+        latest_eval_ids = await self._comparison_service.get_latest_report_evaluation_ids(
+            group_id, user_id
+        )
+        if latest_eval_ids is not None and selected_eval_ids_set == latest_eval_ids:
+            raise DuplicateReportError(
+                "Report would be identical to your most recent report. "
+                "Wait for new evaluation data before generating another report."
+            )
 
         # Get all selected evaluation IDs (non-None)
         selected_eval_ids = [

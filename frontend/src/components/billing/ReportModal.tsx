@@ -217,8 +217,12 @@ export function ReportModal(props: ReportModalProps) {
       (p) => (p.status === "stale" || p.status === "absent") && !p.pending_execution
     ).length ?? 0
 
+  const wouldBeDuplicate = reportData?.would_be_duplicate ?? false
   const canGenerate =
-    (actionableFresh > 0 || actionableStaleAbsent > 0) && !generateSuccess && !hasPending
+    (actionableFresh > 0 || actionableStaleAbsent > 0) &&
+    !generateSuccess &&
+    !hasPending &&
+    !wouldBeDuplicate
   const allFresh = actionableFresh > 0 && actionableStaleAbsent === 0
   const globalQueueWait =
     reportData && reportData.global_queue_size > 0
@@ -496,6 +500,17 @@ export function ReportModal(props: ReportModalProps) {
 
             {/* Spacer when details hidden */}
             {!showDetails && <div className="flex-1 min-h-[16px]" />}
+
+            {/* Duplicate warning */}
+            {wouldBeDuplicate && !hasPending && !generateSuccess && (
+              <div className="px-5 pb-3">
+                <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                  <p className="text-sm text-amber-800 font-['DM_Sans']">
+                    Report would be identical to the most recent one. Wait for new evaluation data.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Footer with actions */}
             <div className="px-5 py-4 border-t border-gray-100 bg-gray-50/50 shrink-0">

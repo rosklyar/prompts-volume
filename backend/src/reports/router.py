@@ -56,6 +56,7 @@ from src.reports.services import (
     get_selection_pricing,
     get_selection_validator,
 )
+from src.reports.services.report_service import DuplicateReportError
 from src.reports.services.export import (
     JsonExportFormatter,
     ReportExportService,
@@ -116,6 +117,9 @@ async def get_report_data(
         await group_service.get_by_id_for_user(group_id, current_user.id)
     except Exception:
         raise to_http_exception(GroupNotFoundError(group_id))
+
+    # Get comparison service for duplicate detection
+    comparison_service = ComparisonService(prompts_session, evals_session)
 
     # Get all prompt IDs in the group
     bindings_result = await prompts_session.execute(
@@ -228,6 +232,19 @@ async def get_report_data(
             )
         )
 
+    # Check if generating a report now would be a duplicate
+    # (same evaluation IDs as the latest report)
+    would_be_duplicate = False
+    current_eval_ids = {
+        e.id for e in latest_eval_by_prompt.values()
+    }
+    if current_eval_ids:
+        latest_report_eval_ids = await comparison_service.get_latest_report_evaluation_ids(
+            group_id, current_user.id
+        )
+        if latest_report_eval_ids is not None:
+            would_be_duplicate = current_eval_ids == latest_report_eval_ids
+
     return ReportDataResponse(
         group_id=group_id,
         prompts=prompts_data,
@@ -237,6 +254,7 @@ async def get_report_data(
         prompts_absent=counts["absent"],
         prompts_pending_execution=counts["pending"],
         global_queue_size=pending_count,
+        would_be_duplicate=would_be_duplicate,
     )
 
 
@@ -312,14 +330,17 @@ async def generate_report(
                     ))
 
     # Generate report with validated selections
-    report = await report_service.generate_report_with_selections(
-        group_id=group_id,
-        user_id=current_user.id,
-        selections=validation.normalized_selections,
-        title=request.title,
-        brand_snapshot=group.brand,
-        competitors_snapshot=group.competitors,
-    )
+    try:
+        report = await report_service.generate_report_with_selections(
+            group_id=group_id,
+            user_id=current_user.id,
+            selections=validation.normalized_selections,
+            title=request.title,
+            brand_snapshot=group.brand,
+            competitors_snapshot=group.competitors,
+        )
+    except DuplicateReportError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
 
     # Get full report with items
     result = await report_service.get_report(report.id, current_user.id)
