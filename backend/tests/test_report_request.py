@@ -11,17 +11,54 @@ Tests the complete report request lifecycle:
 import asyncio
 import uuid
 from datetime import datetime, timedelta
+from decimal import Decimal
 
 import pytest
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from src.billing.models.domain import ChargeResult
 from src.database.evals_models import (
     GroupReport,
     PromptEvaluation,
     ReportRequest,
     ReportRequestStatus,
 )
+
+
+class NoOpChargeService:
+    """No-op charge service for tests.
+
+    Returns success without actually charging the user.
+    """
+
+    async def charge_for_evaluations(
+        self,
+        user_id: str,
+        evaluation_ids: list[int],
+    ) -> ChargeResult:
+        """Return success without charging."""
+        return ChargeResult(
+            charged_evaluation_ids=evaluation_ids,
+            skipped_evaluation_ids=[],
+            total_charged=Decimal("0"),
+            remaining_balance=Decimal("0"),
+        )
+
+    async def preview_charge(
+        self,
+        user_id: str,
+        evaluation_ids: list[int],
+    ) -> dict:
+        """Preview returns zero cost."""
+        return {
+            "fresh_count": len(evaluation_ids),
+            "already_consumed_count": 0,
+            "estimated_cost": Decimal("0"),
+            "user_balance": Decimal("0"),
+            "affordable_count": len(evaluation_ids),
+            "needs_top_up": False,
+        }
 
 
 def _make_session_maker(test_engine) -> async_sessionmaker[AsyncSession]:
@@ -118,7 +155,6 @@ async def _get_report_for_group(session_maker, group_id: int) -> GroupReport | N
 
 async def _check_and_process_ready_requests(session_maker) -> int:
     """Process ready requests to generate reports."""
-    from src.daily_scheduling.services.batch_report_generator import NoOpChargeService
     from src.reports.services.report_service import ReportService
     from src.reports.services.report_request_service import ReportRequestService
 

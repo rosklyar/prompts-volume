@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.billing.services.charge_service import ChargeService
 from src.brightdata.services.brightdata_service import BrightDataService
 from src.daily_scheduling.models.domain import EnabledGroup, GroupPromptAnalysis
 from src.daily_scheduling.repositories.daily_batch_repo import DailyBatchRepository
@@ -41,6 +42,7 @@ class DailyBatchOrchestrator:
         prompts_session: AsyncSession,
         evals_session: AsyncSession,
         *,
+        charge_service: ChargeService,
         group_collector: GroupCollectorService | None = None,
         prompt_aggregator: PromptAggregatorService | None = None,
         batch_repo: DailyBatchRepository | None = None,
@@ -58,7 +60,7 @@ class DailyBatchOrchestrator:
         self._brightdata_service = brightdata_service
         self._completion_service = completion_service or BatchCompletionService(evals_session)
         self._report_generator = report_generator or BatchReportGenerator(
-            prompts_session, evals_session
+            prompts_session, evals_session, charge_service=charge_service
         )
         self._chunk_size = chunk_size
 

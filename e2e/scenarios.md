@@ -6,7 +6,7 @@ Run these scenarios using Playwright MCP tools after docker-compose and frontend
 1. Navigate to http://localhost:5173
 2. Fill email: admin@example.com, password: changethis
 3. Click "Log in"
-4. Verify: redirected to dashboard, see "$10.00" balance
+4. Verify: redirected to dashboard, see "$5.00" balance
 
 ## Optional: Add scenarios relevant to your change
 
