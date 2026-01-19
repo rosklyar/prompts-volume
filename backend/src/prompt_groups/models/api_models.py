@@ -185,3 +185,19 @@ class AddPromptsResultResponse(BaseModel):
     added_count: int
     skipped_count: int
     bindings: List[PromptInGroupResponse]
+
+
+class AvailablePromptResponse(BaseModel):
+    """A prompt available to add to a group."""
+
+    id: int
+    prompt_text: str
+
+    model_config = {"from_attributes": True}
+
+
+class AvailablePromptsListResponse(BaseModel):
+    """List of prompts available to add to a group from its topic."""
+
+    prompts: List[AvailablePromptResponse]
+    total: int

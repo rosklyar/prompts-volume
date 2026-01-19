@@ -9,6 +9,8 @@ from src.prompt_groups.exceptions import PromptGroupError, to_http_exception
 from src.prompt_groups.models.api_models import (
     AddPromptsResultResponse,
     AddPromptsToGroupRequest,
+    AvailablePromptResponse,
+    AvailablePromptsListResponse,
     CreateGroupRequest,
     GroupDetailResponse,
     GroupListResponse,
@@ -266,6 +268,32 @@ async def remove_prompts_from_group(
             group, request.prompt_ids
         )
         return {"removed_count": removed_count}
+    except PromptGroupError as e:
+        raise to_http_exception(e)
+
+
+@router.get(
+    "/groups/{group_id}/available-prompts",
+    response_model=AvailablePromptsListResponse,
+)
+async def get_available_prompts(
+    group_id: int,
+    current_user: CurrentUser,
+    group_service: PromptGroupServiceDep,
+    binding_service: PromptGroupBindingServiceDep,
+):
+    """Get prompts from the group's topic that aren't already in the group.
+
+    Returns 404 if the group has no topic binding.
+    """
+    try:
+        group = await group_service.get_by_id_for_user(group_id, current_user.id)
+        prompts_data = await binding_service.get_available_prompts_for_group(group)
+
+        return AvailablePromptsListResponse(
+            prompts=[AvailablePromptResponse(**p) for p in prompts_data],
+            total=len(prompts_data),
+        )
     except PromptGroupError as e:
         raise to_http_exception(e)
 

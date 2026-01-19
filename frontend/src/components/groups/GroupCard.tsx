@@ -27,6 +27,7 @@ import { ReportModal } from "@/components/billing"
 import type { PromptSelection, PromptSelectionInfo } from "@/types/billing"
 import { getGroupColor } from "./constants"
 import { BatchUploadModal } from "./BatchUploadModal"
+import { AddFromTopicModal } from "./AddFromTopicModal"
 import { ScheduleToggle } from "./ScheduleToggle"
 
 interface PromptWithAnswer extends PromptInGroup {
@@ -77,6 +78,7 @@ export function GroupCard({
   const [showBrandEditor, setShowBrandEditor] = useState(false)
   const [brandEditorFocus, setBrandEditorFocus] = useState<"brand" | "competitors">("brand")
   const [showBatchUpload, setShowBatchUpload] = useState(false)
+  const [showAddFromTopic, setShowAddFromTopic] = useState(false)
   const [isReportCollapsed, setIsReportCollapsed] = useState(true)
   const [showReportModal, setShowReportModal] = useState(false)
   const colors = getGroupColor(colorIndex)
@@ -293,6 +295,30 @@ export function GroupCard({
                   )}
               </button>
 
+              {/* Add from topic button - only show if group has topic */}
+              {group.topic_id && (
+                <button
+                  onClick={() => setShowAddFromTopic(true)}
+                  className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-white/80 transition-colors"
+                  aria-label="Add prompts from topic"
+                  title="Add prompts from topic"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                </button>
+              )}
+
               {/* Batch upload button */}
               <button
                 onClick={() => setShowBatchUpload(true)}
@@ -473,6 +499,17 @@ export function GroupCard({
         isOpen={showBatchUpload}
         onClose={() => setShowBatchUpload(false)}
       />
+
+      {/* Add From Topic Modal */}
+      {group.topic_id && (
+        <AddFromTopicModal
+          groupId={group.id}
+          groupTitle={group.title}
+          accentColor={colors.accent}
+          isOpen={showAddFromTopic}
+          onClose={() => setShowAddFromTopic(false)}
+        />
+      )}
 
       {/* Report Modal */}
       <ReportModal

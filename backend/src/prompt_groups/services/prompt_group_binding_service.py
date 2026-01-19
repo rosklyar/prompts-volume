@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from src.database.models import Prompt, PromptGroup, PromptGroupBinding
-from src.prompt_groups.exceptions import PromptNotFoundError
+from src.prompt_groups.exceptions import GroupHasNoTopicError, PromptNotFoundError
 
 
 class PromptGroupBindingService:
@@ -102,6 +102,44 @@ class PromptGroupBindingService:
             )
 
         return prompts_data
+
+    async def get_available_prompts_for_group(
+        self,
+        group: PromptGroup,
+    ) -> List[dict]:
+        """Get prompts from the group's topic that aren't already in the group.
+
+        Args:
+            group: The prompt group (must have topic_id)
+
+        Returns:
+            List of dicts containing prompt id and text
+
+        Raises:
+            GroupHasNoTopicError: If group has no topic binding
+        """
+        if group.topic_id is None:
+            raise GroupHasNoTopicError(group.id)
+
+        # Get existing prompt IDs in this group
+        existing_stmt = select(PromptGroupBinding.prompt_id).where(
+            PromptGroupBinding.group_id == group.id
+        )
+        existing_result = await self._session.execute(existing_stmt)
+        existing_prompt_ids = {row[0] for row in existing_result.all()}
+
+        # Get prompts from topic that aren't in the group
+        prompts_stmt = select(Prompt).where(
+            Prompt.topic_id == group.topic_id,
+            ~Prompt.id.in_(existing_prompt_ids) if existing_prompt_ids else True,
+        )
+        prompts_result = await self._session.execute(prompts_stmt)
+        prompts = prompts_result.scalars().all()
+
+        return [
+            {"id": p.id, "prompt_text": p.prompt_text}
+            for p in prompts
+        ]
 
     async def _get_existing_prompt_ids(self, prompt_ids: List[int]) -> Set[int]:
         """Get set of prompt IDs that exist in database."""

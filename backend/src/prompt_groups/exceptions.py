@@ -58,6 +58,14 @@ class InvalidCountryError(PromptGroupError):
         super().__init__(f"Country with id {country_id} not found")
 
 
+class GroupHasNoTopicError(PromptGroupError):
+    """Raised when a group has no topic binding."""
+
+    def __init__(self, group_id: int):
+        self.group_id = group_id
+        super().__init__(f"Group {group_id} has no topic binding")
+
+
 def to_http_exception(error: PromptGroupError) -> HTTPException:
     """Convert domain exception to HTTP exception."""
     if isinstance(error, GroupNotFoundError):
@@ -72,6 +80,8 @@ def to_http_exception(error: PromptGroupError) -> HTTPException:
         return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error))
     if isinstance(error, InvalidCountryError):
         return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error))
+    if isinstance(error, GroupHasNoTopicError):
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error))
     return HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(error)
     )

@@ -19,6 +19,7 @@ export const groupKeys = {
   details: () => [...groupKeys.all, "detail"] as const,
   detail: (id: number) => [...groupKeys.details(), id] as const,
   schedule: (id: number) => [...groupKeys.all, "schedule", id] as const,
+  availablePrompts: (id: number) => [...groupKeys.all, "available-prompts", id] as const,
 }
 
 // ===== Queries =====
@@ -128,6 +129,8 @@ export function useAddPromptsToGroup() {
       queryClient.invalidateQueries({ queryKey: groupKeys.all })
       // Explicitly invalidate group details to update prompts in group cards
       queryClient.invalidateQueries({ queryKey: groupKeys.details() })
+      // Invalidate available prompts cache since we just added some
+      queryClient.invalidateQueries({ queryKey: groupKeys.availablePrompts(groupId) })
       // Invalidate report comparison to detect new data for Report button
       queryClient.invalidateQueries({ queryKey: reportKeys.compare(groupId) })
       queryClient.invalidateQueries({ queryKey: billingKeys.reportPreview(groupId) })
@@ -270,6 +273,16 @@ export function useSetGroupSchedule() {
       // Update the schedule cache directly
       queryClient.setQueryData(groupKeys.schedule(groupId), data)
     },
+  })
+}
+
+// ===== Available Prompts Hook =====
+
+export function useAvailablePrompts(groupId: number | undefined) {
+  return useQuery({
+    queryKey: groupKeys.availablePrompts(groupId!),
+    queryFn: () => groupsApi.getAvailablePrompts(groupId!),
+    enabled: !!groupId,
   })
 }
 
