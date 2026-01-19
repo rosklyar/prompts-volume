@@ -5,7 +5,7 @@ Tests the complete user journey:
 2. Login
 3. Create group with prompts
 4. Generate report with selections (charges for fresh evaluations)
-5. Generating again is free (already consumed)
+5. Generating duplicate report is blocked (409 Conflict)
 6. Add more evaluations
 7. Compare (shows fresh data with selection options)
 8. Generate another report (charges only for new)
@@ -162,7 +162,7 @@ def test_complete_report_user_flow(client, create_verified_user, simulate_webhoo
     assert balance_after_first == expected_after_first, \
         f"Expected {expected_after_first}, got {balance_after_first}"
 
-    # === STEP 9: Generate same report again - should be FREE ===
+    # === STEP 9: Generate same report again - should be BLOCKED (duplicate) ===
     # Get fresh selections (should have no fresh options since we just consumed them)
     compare2_response = client.get(
         f"/reports/api/v1/groups/{group_id}/compare",
@@ -178,19 +178,18 @@ def test_complete_report_user_flow(client, create_verified_user, simulate_webhoo
     # Build selections (should use same evaluations but now they're consumed)
     selections2 = _build_selections_from_compare(compare2)
 
+    # Attempt to generate duplicate report - should be rejected with 409
     report2_response = client.post(
         f"/reports/api/v1/groups/{group_id}/generate",
         json={"selections": selections2},
         headers=auth_headers,
     )
-    assert report2_response.status_code == 200, f"Generate 2nd report failed: {report2_response.json()}"
-    report2 = report2_response.json()
+    assert report2_response.status_code == 409, \
+        f"Expected 409 Conflict for duplicate report, got {report2_response.status_code}"
+    assert "identical" in report2_response.json()["detail"].lower(), \
+        f"Expected duplicate error message, got: {report2_response.json()['detail']}"
 
-    # No fresh evaluations - cost should be 0
-    report2_cost = Decimal(str(report2["total_cost"]))
-    assert report2_cost == Decimal("0.00"), f"Expected 0.00 (no fresh data), got {report2_cost}"
-
-    # Balance should remain unchanged
+    # Balance should remain unchanged (no report was generated)
     balance_response = client.get("/billing/api/v1/balance", headers=auth_headers)
     balance_after_second = Decimal(str(balance_response.json()["available_balance"]))
     assert balance_after_second == balance_after_first, \
@@ -272,7 +271,7 @@ def test_complete_report_user_flow(client, create_verified_user, simulate_webhoo
     expected_spent = first_report_cost + third_report_cost
     assert total_spent == expected_spent, f"Expected to spend {expected_spent}, spent {total_spent}"
 
-    # === STEP 14: Generate one more report - should be FREE again ===
+    # === STEP 14: Generate one more report - should be BLOCKED (duplicate) ===
     # Get fresh selections (should have no fresh options)
     compare4_response = client.get(
         f"/reports/api/v1/groups/{group_id}/compare",
@@ -282,18 +281,18 @@ def test_complete_report_user_flow(client, create_verified_user, simulate_webhoo
     compare4 = compare4_response.json()
     selections4 = _build_selections_from_compare(compare4)
 
+    # Attempt to generate duplicate report - should be rejected with 409
     report4_response = client.post(
         f"/reports/api/v1/groups/{group_id}/generate",
         json={"selections": selections4},
         headers=auth_headers,
     )
-    assert report4_response.status_code == 200
-    report4 = report4_response.json()
+    assert report4_response.status_code == 409, \
+        f"Expected 409 Conflict for duplicate report, got {report4_response.status_code}"
+    assert "identical" in report4_response.json()["detail"].lower(), \
+        f"Expected duplicate error message, got: {report4_response.json()['detail']}"
 
-    report4_cost = Decimal(str(report4["total_cost"]))
-    assert report4_cost == Decimal("0.00"), f"Expected 0.00 (no fresh data), got {report4_cost}"
-
-    # Balance should remain unchanged
+    # Balance should remain unchanged (no duplicate report was generated)
     balance_response = client.get("/billing/api/v1/balance", headers=auth_headers)
     final_balance_confirmed = Decimal(str(balance_response.json()["available_balance"]))
     assert final_balance_confirmed == final_balance, \

@@ -478,3 +478,121 @@ class DailyBatchGroupResult(EvalsBase):
 
     def __repr__(self) -> str:
         return f"<DailyBatchGroupResult(id={self.id}, batch_id={self.batch_id}, group_id={self.group_id}, status='{self.status.value}')>"
+
+
+# =============================================================================
+# Report Request Models (Unified Manual + Scheduled)
+# =============================================================================
+
+
+class ReportRequestStatus(str, enum.Enum):
+    """Status of a report request."""
+    AWAITING = "awaiting"        # Waiting for BrightData responses
+    READY = "ready"              # All data ready for report generation
+    GENERATING = "generating"    # Creating report
+    COMPLETED = "completed"      # Report generated
+    TIMED_OUT = "timed_out"      # 6 hour timeout exceeded
+    CANCELLED = "cancelled"      # User cancelled
+
+
+class ReportRequest(EvalsBase):
+    """Tracks a manual report generation request.
+
+    Unified model for manual requests that works similarly to DailyScheduleBatch
+    but for on-demand user-initiated report generation.
+
+    Lifecycle:
+    1. User clicks "Request Report" in UI
+    2. Fresh prompts are recorded, stale/absent prompts trigger BrightData
+    3. Webhooks complete -> status moves to READY
+    4. Report is auto-generated -> status moves to COMPLETED
+    5. Or timeout (6 hours) -> report generated with available data
+    """
+
+    __tablename__ = "report_requests"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    group_id: Mapped[int] = mapped_column(
+        Integer,  # No ForeignKey - prompt_groups is in prompts_db
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36),
+        nullable=False,
+        index=True,
+    )  # No FK - user is in users_db
+
+    assistant_id: Mapped[int] = mapped_column(
+        ForeignKey("ai_assistants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    status: Mapped[ReportRequestStatus] = mapped_column(
+        Enum(
+            ReportRequestStatus,
+            values_callable=lambda x: [e.value for e in x],
+            name="reportrequeststatus",
+        ),
+        nullable=False,
+        default=ReportRequestStatus.AWAITING,
+    )
+
+    # BrightData batch IDs for webhook correlation
+    batch_ids: Mapped[list[str]] = mapped_column(
+        ARRAY(String(36)),
+        nullable=False,
+        default=[],
+    )
+
+    # Pre-recorded evaluation selections for prompts that were fresh at request time
+    # Format: {prompt_id: evaluation_id}
+    fresh_prompt_selections: Mapped[Optional[dict]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="Map of prompt_id -> evaluation_id for prompts that were fresh at request time"
+    )
+
+    # Prompt stats
+    total_prompts: Mapped[int] = mapped_column(Integer, nullable=False)
+    prompts_fresh_at_request: Mapped[int] = mapped_column(Integer, nullable=False)
+    prompts_requested: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # Generated report reference
+    report_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("group_reports.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("NOW()"),
+        index=True,
+    )
+    timeout_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    # Optional link to daily batch (if this request was created by scheduled job)
+    daily_batch_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("daily_schedule_batches.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    # Relationships
+    assistant: Mapped["AIAssistant"] = relationship()
+    report: Mapped[Optional["GroupReport"]] = relationship()
+    daily_batch: Mapped[Optional["DailyScheduleBatch"]] = relationship()
+
+    def __repr__(self) -> str:
+        return f"<ReportRequest(id={self.id}, group_id={self.group_id}, status='{self.status.value}')>"

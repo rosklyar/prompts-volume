@@ -22,6 +22,9 @@ import type {
   FullReportResponse,
   ComparisonResponse,
   SelectiveGenerateReportRequest,
+  ReportRequest,
+  CreateReportRequestBody,
+  ReportRequestStatusResponse,
 } from "@/types/billing"
 import type {
   AdminUsersListResponse,
@@ -856,6 +859,46 @@ export const reportsApi = {
     const filenameMatch = contentDisposition?.match(/filename="(.+)"/)
     const filename = filenameMatch?.[1] ?? `report_${reportId}.json`
     return { blob, filename }
+  },
+
+  // ===== Report Request (Unified Manual/Scheduled) =====
+
+  /**
+   * Create a new report request for a group
+   * Triggers BrightData for stale/absent prompts and waits for completion
+   */
+  async createRequest(
+    groupId: number,
+    body: CreateReportRequestBody = {}
+  ): Promise<ReportRequest> {
+    const response = await fetchWithAuth(
+      `/reports/api/v1/groups/${groupId}/request`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }
+    )
+    return response.json()
+  },
+
+  /**
+   * Get the status of any pending report request for a group
+   */
+  async getRequestStatus(groupId: number): Promise<ReportRequestStatusResponse> {
+    const response = await fetchWithAuth(
+      `/reports/api/v1/groups/${groupId}/request-status`
+    )
+    return response.json()
+  },
+
+  /**
+   * Cancel a pending report request for a group
+   */
+  async cancelRequest(groupId: number): Promise<void> {
+    await fetchWithAuth(`/reports/api/v1/groups/${groupId}/request`, {
+      method: "DELETE",
+    })
   },
 }
 

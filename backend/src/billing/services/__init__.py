@@ -57,6 +57,28 @@ def get_charge_service(
     )
 
 
+def build_charge_service(
+    evals_session: AsyncSession,
+    users_session: AsyncSession,
+) -> ChargeService:
+    """Build ChargeService for use outside FastAPI dependency injection.
+
+    Use this factory when creating ChargeService in scheduled jobs or
+    background tasks where DI context is not available.
+    """
+    balance_service = BalanceService(users_session)
+    consumption_service = ConsumptionService(evals_session)
+    pricing_strategy = FixedPricingStrategy(
+        Decimal(str(settings.billing_price_per_evaluation))
+    )
+    return ChargeService(
+        balance_reader=balance_service,
+        balance_modifier=balance_service,
+        consumption_tracker=consumption_service,
+        pricing_strategy=pricing_strategy,
+    )
+
+
 __all__ = [
     "BalanceService",
     "ConsumptionService",
@@ -66,4 +88,5 @@ __all__ = [
     "get_consumption_service",
     "get_charge_service",
     "get_pricing_strategy",
+    "build_charge_service",
 ]

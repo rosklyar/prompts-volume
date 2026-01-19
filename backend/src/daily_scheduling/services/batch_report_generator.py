@@ -2,19 +2,16 @@
 
 import logging
 from datetime import datetime, timezone
-from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.billing.models.domain import ChargeResult
+from src.billing.services.charge_service import ChargeService
 from src.daily_scheduling.repositories.daily_batch_repo import DailyBatchRepository
 from src.database.evals_models import (
     DailyBatchGroupStatus,
     DailyBatchStatus,
-    DailyScheduleBatch,
     EvaluationStatus,
-    GroupReport,
     PromptEvaluation,
 )
 from src.database.models import PromptGroup
@@ -22,42 +19,6 @@ from src.reports.models.api_models import PromptSelection
 from src.reports.services.report_service import ReportService
 
 logger = logging.getLogger(__name__)
-
-
-class NoOpChargeService:
-    """No-op charge service for scheduled reports.
-
-    Scheduled reports are free - no billing charges applied.
-    Returns success without actually charging the user.
-    """
-
-    async def charge_for_evaluations(
-        self,
-        user_id: str,
-        evaluation_ids: list[int],
-    ) -> ChargeResult:
-        """Return success without charging."""
-        return ChargeResult(
-            charged_evaluation_ids=evaluation_ids,
-            skipped_evaluation_ids=[],
-            total_charged=Decimal("0"),
-            remaining_balance=Decimal("0"),
-        )
-
-    async def preview_charge(
-        self,
-        user_id: str,
-        evaluation_ids: list[int],
-    ) -> dict:
-        """Preview returns zero cost."""
-        return {
-            "fresh_count": len(evaluation_ids),
-            "already_consumed_count": 0,
-            "estimated_cost": Decimal("0"),
-            "user_balance": Decimal("0"),
-            "affordable_count": len(evaluation_ids),
-            "needs_top_up": False,
-        }
 
 
 class BatchReportGenerator:
@@ -71,6 +32,7 @@ class BatchReportGenerator:
         prompts_session: AsyncSession,
         evals_session: AsyncSession,
         *,
+        charge_service: ChargeService,
         report_service: ReportService | None = None,
         batch_repo: DailyBatchRepository | None = None,
     ) -> None:
@@ -79,7 +41,7 @@ class BatchReportGenerator:
         self._report_service = report_service or ReportService(
             prompts_session,
             evals_session,
-            charge_service=NoOpChargeService(),
+            charge_service=charge_service,
         )
         self._batch_repo = batch_repo or DailyBatchRepository(evals_session)
 

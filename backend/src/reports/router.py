@@ -16,11 +16,14 @@ from src.prompt_groups.exceptions import GroupNotFoundError, to_http_exception
 from src.prompt_groups.services import PromptGroupService, get_prompt_group_service
 from src.reports.models.api_models import (
     ComparisonResponse,
+    CreateReportRequestBody,
     EnhancedComparisonResponse,
     GenerateReportRequest,
     PromptSelection,
     ReportItemResponse,
     ReportListResponse,
+    ReportRequestResponse,
+    ReportRequestStatusResponse,
     ReportResponse,
     ReportStatistics,
     ReportSummaryResponse,
@@ -39,6 +42,7 @@ from src.reports.services import (
     DomainInput,
     FreshnessAnalyzerService,
     ReportEnricher,
+    ReportRequestService,
     ReportService,
     SelectionAnalyzerService,
     SelectionPricingService,
@@ -46,11 +50,13 @@ from src.reports.services import (
     get_comparison_service,
     get_freshness_analyzer,
     get_report_enricher,
+    get_report_request_service,
     get_report_service,
     get_selection_analyzer,
     get_selection_pricing,
     get_selection_validator,
 )
+from src.reports.services.report_service import DuplicateReportError
 from src.reports.services.export import (
     JsonExportFormatter,
     ReportExportService,
@@ -76,6 +82,7 @@ SelectionPricingDep = Annotated[SelectionPricingService, Depends(get_selection_p
 SelectionValidatorDep = Annotated[SelectionValidatorService, Depends(get_selection_validator)]
 ReportExportServiceDep = Annotated[ReportExportService, Depends(get_report_export_service)]
 JsonFormatterDep = Annotated[JsonExportFormatter, Depends(get_json_formatter)]
+ReportRequestServiceDep = Annotated[ReportRequestService, Depends(get_report_request_service)]
 
 # 24-hour freshness threshold
 FRESH_THRESHOLD_HOURS = 24
@@ -110,6 +117,9 @@ async def get_report_data(
         await group_service.get_by_id_for_user(group_id, current_user.id)
     except Exception:
         raise to_http_exception(GroupNotFoundError(group_id))
+
+    # Get comparison service for duplicate detection
+    comparison_service = ComparisonService(prompts_session, evals_session)
 
     # Get all prompt IDs in the group
     bindings_result = await prompts_session.execute(
@@ -222,6 +232,19 @@ async def get_report_data(
             )
         )
 
+    # Check if generating a report now would be a duplicate
+    # (same evaluation IDs as the latest report)
+    would_be_duplicate = False
+    current_eval_ids = {
+        e.id for e in latest_eval_by_prompt.values()
+    }
+    if current_eval_ids:
+        latest_report_eval_ids = await comparison_service.get_latest_report_evaluation_ids(
+            group_id, current_user.id
+        )
+        if latest_report_eval_ids is not None:
+            would_be_duplicate = current_eval_ids == latest_report_eval_ids
+
     return ReportDataResponse(
         group_id=group_id,
         prompts=prompts_data,
@@ -231,6 +254,7 @@ async def get_report_data(
         prompts_absent=counts["absent"],
         prompts_pending_execution=counts["pending"],
         global_queue_size=pending_count,
+        would_be_duplicate=would_be_duplicate,
     )
 
 
@@ -306,14 +330,17 @@ async def generate_report(
                     ))
 
     # Generate report with validated selections
-    report = await report_service.generate_report_with_selections(
-        group_id=group_id,
-        user_id=current_user.id,
-        selections=validation.normalized_selections,
-        title=request.title,
-        brand_snapshot=group.brand,
-        competitors_snapshot=group.competitors,
-    )
+    try:
+        report = await report_service.generate_report_with_selections(
+            group_id=group_id,
+            user_id=current_user.id,
+            selections=validation.normalized_selections,
+            title=request.title,
+            brand_snapshot=group.brand,
+            competitors_snapshot=group.competitors,
+        )
+    except DuplicateReportError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
 
     # Get full report with items
     result = await report_service.get_report(report.id, current_user.id)
@@ -876,3 +903,128 @@ async def export_report_json(
         media_type=json_formatter.content_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# =============================================================================
+# Report Request endpoints (unified manual/scheduled)
+# =============================================================================
+
+
+def _request_to_response(request) -> ReportRequestResponse:
+    """Convert ReportRequest model to API response."""
+    return ReportRequestResponse(
+        id=request.id,
+        group_id=request.group_id,
+        status=request.status.value,
+        assistant_id=request.assistant_id,
+        total_prompts=request.total_prompts,
+        prompts_fresh_at_request=request.prompts_fresh_at_request,
+        prompts_requested=request.prompts_requested,
+        report_id=request.report_id,
+        created_at=request.created_at,
+        timeout_at=request.timeout_at,
+        completed_at=request.completed_at,
+    )
+
+
+@router.post("/groups/{group_id}/request", response_model=ReportRequestResponse, status_code=status.HTTP_201_CREATED)
+async def create_report_request(
+    group_id: int,
+    request_body: CreateReportRequestBody,
+    current_user: CurrentUser,
+    request_service: ReportRequestServiceDep,
+    group_service: PromptGroupServiceDep,
+):
+    """Create a new report request for a group.
+
+    This triggers BrightData for stale/absent prompts and waits for completion.
+    The report is auto-generated when all data is ready (or on 6-hour timeout).
+
+    Returns 409 if there's already a pending request for this group.
+    """
+    # Verify user owns the group
+    try:
+        await group_service.get_by_id_for_user(group_id, current_user.id)
+    except Exception:
+        raise to_http_exception(GroupNotFoundError(group_id))
+
+    # Check for existing pending request
+    existing = await request_service.get_pending_request(group_id, current_user.id)
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "A report request is already pending for this group",
+                "existing_request_id": existing.id,
+                "existing_status": existing.status.value,
+            },
+        )
+
+    # Create new request
+    report_request = await request_service.create_request(
+        group_id=group_id,
+        user_id=current_user.id,
+        assistant_id=request_body.assistant_id,
+    )
+
+    return _request_to_response(report_request)
+
+
+@router.get("/groups/{group_id}/request-status", response_model=ReportRequestStatusResponse)
+async def get_report_request_status(
+    group_id: int,
+    current_user: CurrentUser,
+    request_service: ReportRequestServiceDep,
+    group_service: PromptGroupServiceDep,
+):
+    """Get the status of any pending report request for this group.
+
+    Used by the frontend to show badge on GroupCard.
+    """
+    # Verify user owns the group
+    try:
+        await group_service.get_by_id_for_user(group_id, current_user.id)
+    except Exception:
+        raise to_http_exception(GroupNotFoundError(group_id))
+
+    pending = await request_service.get_pending_request(group_id, current_user.id)
+
+    if pending is None:
+        return ReportRequestStatusResponse(has_pending=False)
+
+    return ReportRequestStatusResponse(
+        has_pending=True,
+        request=_request_to_response(pending),
+    )
+
+
+@router.delete("/groups/{group_id}/request", status_code=status.HTTP_204_NO_CONTENT)
+async def cancel_report_request(
+    group_id: int,
+    current_user: CurrentUser,
+    request_service: ReportRequestServiceDep,
+    group_service: PromptGroupServiceDep,
+):
+    """Cancel a pending report request for this group.
+
+    Returns 404 if no pending request exists.
+    """
+    # Verify user owns the group
+    try:
+        await group_service.get_by_id_for_user(group_id, current_user.id)
+    except Exception:
+        raise to_http_exception(GroupNotFoundError(group_id))
+
+    pending = await request_service.get_pending_request(group_id, current_user.id)
+    if pending is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No pending report request for this group",
+        )
+
+    cancelled = await request_service.cancel_request(pending.id, current_user.id)
+    if not cancelled:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Request could not be cancelled (already completed or failed)",
+        )

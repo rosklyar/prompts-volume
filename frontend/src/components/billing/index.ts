@@ -4,5 +4,5 @@
 
 export { BalanceIndicator } from "./BalanceIndicator"
 export { BalanceCard } from "./BalanceCard"
-export { ReportPreviewModal } from "./ReportPreviewModal"
+export { ReportModal } from "./ReportModal"
 export { LowBalanceModal } from "./LowBalanceModal"

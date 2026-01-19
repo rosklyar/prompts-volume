@@ -316,3 +316,36 @@ export interface FullReportResponse {
   brand_snapshot: Record<string, unknown> | null
   competitors_snapshot: Array<Record<string, unknown>> | null
 }
+
+// ===== Report Request Types (Unified Manual/Scheduled) =====
+
+export type ReportRequestStatus =
+  | "awaiting"
+  | "ready"
+  | "generating"
+  | "completed"
+  | "timed_out"
+  | "cancelled"
+
+export interface ReportRequest {
+  id: number
+  group_id: number
+  status: ReportRequestStatus
+  assistant_id: number
+  total_prompts: number
+  prompts_fresh_at_request: number
+  prompts_requested: number
+  report_id: number | null
+  created_at: string
+  timeout_at: string
+  completed_at: string | null
+}
+
+export interface CreateReportRequestBody {
+  assistant_id?: number
+}
+
+export interface ReportRequestStatusResponse {
+  has_pending: boolean
+  request: ReportRequest | null
+}

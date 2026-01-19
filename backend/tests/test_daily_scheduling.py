@@ -11,11 +11,13 @@ Tests the complete daily batch flow:
 import asyncio
 import uuid
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 
 import pytest
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from src.billing.models.domain import ChargeResult
 from src.database.evals_models import (
     DailyBatchGroupStatus,
     DailyBatchStatus,
@@ -25,6 +27,41 @@ from src.database.evals_models import (
     PromptEvaluation,
 )
 from src.database.models import PromptGroup
+
+
+class NoOpChargeService:
+    """No-op charge service for tests.
+
+    Returns success without actually charging the user.
+    """
+
+    async def charge_for_evaluations(
+        self,
+        user_id: str,
+        evaluation_ids: list[int],
+    ) -> ChargeResult:
+        """Return success without charging."""
+        return ChargeResult(
+            charged_evaluation_ids=evaluation_ids,
+            skipped_evaluation_ids=[],
+            total_charged=Decimal("0"),
+            remaining_balance=Decimal("0"),
+        )
+
+    async def preview_charge(
+        self,
+        user_id: str,
+        evaluation_ids: list[int],
+    ) -> dict:
+        """Preview returns zero cost."""
+        return {
+            "fresh_count": len(evaluation_ids),
+            "already_consumed_count": 0,
+            "estimated_cost": Decimal("0"),
+            "user_balance": Decimal("0"),
+            "affordable_count": len(evaluation_ids),
+            "needs_top_up": False,
+        }
 
 # Default topic using seeded topic ID 1
 DEFAULT_TOPIC = {"existing_topic_id": 1}
@@ -104,9 +141,11 @@ async def _trigger_daily_batch_async(session_maker) -> int | None:
                 default_country="US",
             )
 
+            charge_service = NoOpChargeService()
             orchestrator = DailyBatchOrchestrator(
                 prompts_session,
                 evals_session,
+                charge_service=charge_service,
                 brightdata_service=brightdata_service,
             )
 
@@ -179,7 +218,10 @@ async def _trigger_report_generation_async(session_maker, batch_id: int) -> int:
             await evals_session.commit()
 
             # Generate reports
-            generator = BatchReportGenerator(prompts_session, evals_session)
+            charge_service = NoOpChargeService()
+            generator = BatchReportGenerator(
+                prompts_session, evals_session, charge_service=charge_service
+            )
             count = await generator.generate_all_reports(batch_id)
 
             await evals_session.commit()

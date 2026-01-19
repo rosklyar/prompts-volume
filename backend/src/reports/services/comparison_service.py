@@ -8,6 +8,7 @@ from src.database.evals_models import (
     ConsumedEvaluation,
     EvaluationStatus,
     GroupReport,
+    GroupReportItem,
     PromptEvaluation,
 )
 from src.database.models import PromptGroupBinding
@@ -44,6 +45,25 @@ class ComparisonService:
         )
         result = await self._evals_session.execute(query)
         return result.scalar_one_or_none()
+
+    async def get_latest_report_evaluation_ids(
+        self, group_id: int, user_id: str
+    ) -> set[int] | None:
+        """Get evaluation IDs from user's latest report for the group.
+
+        Returns None if no previous report exists.
+        Returns set of evaluation_ids (excluding None values).
+        """
+        latest = await self.get_latest_report(group_id, user_id)
+        if not latest:
+            return None
+
+        query = select(GroupReportItem.evaluation_id).where(
+            GroupReportItem.report_id == latest.id,
+            GroupReportItem.evaluation_id.isnot(None),
+        )
+        result = await self._evals_session.execute(query)
+        return set(result.scalars().all())
 
     async def get_prompt_ids_in_group(self, group_id: int) -> list[int]:
         """Get all prompt IDs in a group."""

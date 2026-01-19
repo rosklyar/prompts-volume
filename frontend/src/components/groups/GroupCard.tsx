@@ -17,16 +17,16 @@ import type {
   DomainMentionResult,
 } from "@/types/groups"
 import { useHasFreshData, useReport, useExportReportJson } from "@/hooks/useReports"
+import { useReportRequestStatus } from "@/hooks/useReportRequest"
 import { EditableTitle } from "./EditableTitle"
 import { PromptItem } from "./PromptItem"
 import { ReportPanel } from "./ReportPanel"
 import { ReportHistoryPanel } from "./ReportHistoryPanel"
 import { BrandEditor } from "./BrandEditor"
-import { ReportPreviewModal } from "@/components/billing"
+import { ReportModal } from "@/components/billing"
 import type { PromptSelection, PromptSelectionInfo } from "@/types/billing"
 import { getGroupColor } from "./constants"
 import { BatchUploadModal } from "./BatchUploadModal"
-import { AssistantSelectionModal } from "./AssistantSelectionModal"
 import { ScheduleToggle } from "./ScheduleToggle"
 
 interface PromptWithAnswer extends PromptInGroup {
@@ -78,11 +78,7 @@ export function GroupCard({
   const [brandEditorFocus, setBrandEditorFocus] = useState<"brand" | "competitors">("brand")
   const [showBatchUpload, setShowBatchUpload] = useState(false)
   const [isReportCollapsed, setIsReportCollapsed] = useState(true)
-  const [showAssistantSelector, setShowAssistantSelector] = useState(false)
-  const [selectedAssistantId, setSelectedAssistantId] = useState<number | null>(null)
-  const [showPreviewModal, setShowPreviewModal] = useState(false)
-  const [showLowBalanceModal, setShowLowBalanceModal] = useState(false)
-  const [lowBalanceCost, setLowBalanceCost] = useState<number>(0)
+  const [showReportModal, setShowReportModal] = useState(false)
   const colors = getGroupColor(colorIndex)
 
   // Check for fresh data and generation status
@@ -107,6 +103,11 @@ export function GroupCard({
   // Export hook for JSON download
   const exportMutation = useExportReportJson()
 
+  // Report request status for badge
+  const { data: requestStatus } = useReportRequestStatus(group.id, true)
+  const hasPendingRequest = requestStatus?.has_pending ?? false
+  const pendingStatus = requestStatus?.request?.status
+
   // Merge answers from selected report into prompts
   const promptsWithSelectedReportAnswers = selectedReport
     ? prompts.map((p) => {
@@ -128,37 +129,16 @@ export function GroupCard({
   // Report button disabled when loading or no prompts
   const isReportDisabled = isLoadingAnswers || prompts.length === 0
 
-  // Handle report button click - show assistant selector first
+  // Handle report button click - show report modal directly
   const handleReportClick = () => {
     if (prompts.length === 0) return
-    setShowAssistantSelector(true)
+    setShowReportModal(true)
   }
 
-  // Handle assistant selection - store assistant ID and show preview modal
-  const handleAssistantSelect = (assistantId: number) => {
-    setSelectedAssistantId(assistantId)
-    setShowAssistantSelector(false)
-    setShowPreviewModal(true)
-  }
-
-  // Handle preview confirm - proceed with loading using selections
-  const handlePreviewConfirm = (selections: PromptSelection[], assistantId: number) => {
-    setShowPreviewModal(false)
-    setSelectedAssistantId(null)
+  // Handle report generated from modal
+  const handleReportGenerated = (selections: PromptSelection[], assistantId: number) => {
+    setShowReportModal(false)
     onLoadReport(selections, assistantId)
-  }
-
-  // Handle low balance scenario from preview
-  const handleNeedsTopUp = (estimatedCost: number) => {
-    setShowPreviewModal(false)
-    setLowBalanceCost(estimatedCost)
-    setShowLowBalanceModal(true)
-  }
-
-  // Handle close low balance modal
-  const handleCloseLowBalance = () => {
-    setShowLowBalanceModal(false)
-    setLowBalanceCost(0)
   }
 
   const { setNodeRef, isOver } = useDroppable({
@@ -252,6 +232,26 @@ export function GroupCard({
                 >
                   {competitors.length} competitor{competitors.length !== 1 ? "s" : ""}
                 </button>
+                {/* Pending report request badge */}
+                {hasPendingRequest && pendingStatus && (
+                  <span
+                    className={`text-[10px] font-semibold px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center gap-1.5 ${
+                      pendingStatus === "awaiting" || pendingStatus === "generating"
+                        ? "bg-blue-50 text-blue-600"
+                        : pendingStatus === "ready" || pendingStatus === "completed"
+                          ? "bg-green-50 text-green-600"
+                          : "bg-gray-100 text-gray-500"
+                    }`}
+                  >
+                    {(pendingStatus === "awaiting" || pendingStatus === "generating") && (
+                      <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
+                    )}
+                    {pendingStatus === "awaiting" && "Fetching..."}
+                    {pendingStatus === "generating" && "Generating..."}
+                    {pendingStatus === "ready" && "Report Ready"}
+                    {pendingStatus === "completed" && "Report Ready"}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -474,63 +474,15 @@ export function GroupCard({
         onClose={() => setShowBatchUpload(false)}
       />
 
-      {/* Assistant Selection Modal - Step 1 */}
-      <AssistantSelectionModal
-        isOpen={showAssistantSelector}
-        accentColor={colors.accent}
-        onClose={() => setShowAssistantSelector(false)}
-        onSelect={handleAssistantSelect}
-      />
-
-      {/* Report Preview Modal - Step 2 */}
-      <ReportPreviewModal
+      {/* Report Modal */}
+      <ReportModal
         groupId={group.id}
         groupTitle={group.title}
         accentColor={colors.accent}
-        isOpen={showPreviewModal}
-        assistantId={selectedAssistantId ?? 1}
-        onClose={() => {
-          setShowPreviewModal(false)
-          setSelectedAssistantId(null)
-        }}
-        onConfirm={handlePreviewConfirm}
-        onNeedsTopUp={handleNeedsTopUp}
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        onReportGenerated={handleReportGenerated}
       />
-
-      {/* Low Balance Modal - simplified to just show top-up prompt */}
-      {showLowBalanceModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-black/20 backdrop-blur-sm"
-            onClick={handleCloseLowBalance}
-          />
-          <div className="relative w-full max-w-sm mx-4 bg-white rounded-xl shadow-2xl p-6">
-            <div className="h-1 w-full -mt-6 mb-6 rounded-t-xl" style={{ backgroundColor: colors.accent }} />
-            <h3 className="text-lg font-medium mb-2" style={{ color: colors.accent }}>
-              Insufficient balance
-            </h3>
-            <p className="text-sm text-gray-500 mb-4 font-['DM_Sans']">
-              You need ${lowBalanceCost.toFixed(2)} to generate this report.
-              Please top up your balance to continue.
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={handleCloseLowBalance}
-                className="flex-1 py-2.5 px-4 rounded-lg text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors font-['DM_Sans']"
-              >
-                Cancel
-              </button>
-              <a
-                href="/top-up"
-                className="flex-1 py-2.5 px-4 rounded-lg text-sm font-medium text-white text-center transition-colors font-['DM_Sans']"
-                style={{ backgroundColor: colors.accent }}
-              >
-                Top up
-              </a>
-            </div>
-          </div>
-        </div>
-      )}
 
     </>
   )
