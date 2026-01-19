@@ -27,6 +27,8 @@ jobs:
   wait-for-backend-ci:
     if: ${{ inputs.deploy_backend }}
     runs-on: ubuntu-latest
+    permissions:
+      checks: read
     steps:
       - name: Wait for Backend CI
         uses: lewagon/wait-on-check-action@v1.3.4
@@ -40,6 +42,8 @@ jobs:
   wait-for-frontend-ci:
     if: ${{ inputs.deploy_frontend }}
     runs-on: ubuntu-latest
+    permissions:
+      checks: read
     steps:
       - name: Wait for Frontend CI
         uses: lewagon/wait-on-check-action@v1.3.4
