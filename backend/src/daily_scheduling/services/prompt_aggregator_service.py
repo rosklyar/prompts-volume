@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.config.settings import settings
 from src.daily_scheduling.models.domain import GroupPromptAnalysis, PromptFreshnessInfo
 from src.database.evals_models import EvaluationStatus, PromptEvaluation
 from src.execution.models.domain import FreshnessCategory
@@ -24,7 +25,14 @@ class PromptAggregatorService:
         freshness_service: FreshnessService | None = None,
     ) -> None:
         self._session = evals_session
-        self._freshness = freshness_service or FreshnessService()
+        # Use tighter threshold for scheduled batches: fresh_threshold - batch_timeout
+        # This ensures prompts are refreshed before they become stale after batch completes
+        scheduled_threshold = (
+            settings.freshness_fresh_threshold_hours - settings.scheduled_batch_timeout_hours
+        )
+        self._freshness = freshness_service or FreshnessService(
+            fresh_threshold_hours=scheduled_threshold,
+        )
 
     async def analyze_group_prompts(
         self,

@@ -49,7 +49,7 @@ class Settings(BaseSettings):
 
     # Freshness thresholds (hours)
     freshness_fresh_threshold_hours: int = 24  # < 24h = fresh
-    freshness_stale_threshold_hours: int = 72  # > 72h = very stale, 24-72h = stale
+    scheduled_batch_timeout_hours: int = 6  # Timeout for scheduled batch completion
 
     # Execution queue configuration
     execution_timeout_hours: int = 2  # Hours before timed-out entries reset to PENDING
