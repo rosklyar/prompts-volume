@@ -55,6 +55,24 @@ async def setup_scheduler() -> None:
         name="Batch report generator",
     )
 
+    # Job 4: Check for timed-out report requests every 5 minutes
+    scheduler.add_job(
+        _check_report_request_timeouts_job,
+        trigger=IntervalTrigger(minutes=5),
+        id="report_request_timeout_checker",
+        replace_existing=True,
+        name="Report request timeout checker",
+    )
+
+    # Job 5: Generate reports for ready requests every 2 minutes
+    scheduler.add_job(
+        _generate_ready_reports_job,
+        trigger=IntervalTrigger(minutes=2),
+        id="ready_reports_generator",
+        replace_existing=True,
+        name="Ready reports generator",
+    )
+
     scheduler.start()
     logger.info("Daily scheduling jobs started")
 
@@ -165,6 +183,82 @@ async def _generate_reports_job() -> None:
                     logger.exception(f"Failed to generate reports for batch {batch.id}")
                     await evals_session.rollback()
                     await prompts_session.rollback()
+
+
+async def _check_report_request_timeouts_job() -> None:
+    """Job to check for timed-out manual report requests.
+
+    Runs every 5 minutes. Generates reports with available data for requests
+    that have exceeded their 6-hour timeout.
+    """
+    from src.database import get_session_maker
+    from src.database.evals_session import get_evals_session_maker
+    from src.daily_scheduling.services.batch_report_generator import NoOpChargeService
+    from src.reports.services.report_service import ReportService
+    from src.reports.services.report_request_service import ReportRequestService
+
+    prompts_session_maker = get_session_maker()
+    evals_session_maker = get_evals_session_maker()
+
+    async with prompts_session_maker() as prompts_session:
+        async with evals_session_maker() as evals_session:
+            charge_service = NoOpChargeService()
+            report_service = ReportService(prompts_session, evals_session, charge_service)
+
+            request_service = ReportRequestService(
+                prompts_session,
+                evals_session,
+                report_service=report_service,
+            )
+
+            try:
+                count = await request_service.check_timed_out_requests()
+                if count > 0:
+                    logger.info(f"Processed {count} timed-out report requests")
+                    await evals_session.commit()
+                    await prompts_session.commit()
+            except Exception:
+                logger.exception("Failed to check timed-out report requests")
+                await evals_session.rollback()
+                await prompts_session.rollback()
+
+
+async def _generate_ready_reports_job() -> None:
+    """Job to generate reports for requests in READY status.
+
+    Runs every 2 minutes. Generates reports for requests where all
+    BrightData batches have completed.
+    """
+    from src.database import get_session_maker
+    from src.database.evals_session import get_evals_session_maker
+    from src.daily_scheduling.services.batch_report_generator import NoOpChargeService
+    from src.reports.services.report_service import ReportService
+    from src.reports.services.report_request_service import ReportRequestService
+
+    prompts_session_maker = get_session_maker()
+    evals_session_maker = get_evals_session_maker()
+
+    async with prompts_session_maker() as prompts_session:
+        async with evals_session_maker() as evals_session:
+            charge_service = NoOpChargeService()
+            report_service = ReportService(prompts_session, evals_session, charge_service)
+
+            request_service = ReportRequestService(
+                prompts_session,
+                evals_session,
+                report_service=report_service,
+            )
+
+            try:
+                count = await request_service.generate_ready_reports()
+                if count > 0:
+                    logger.info(f"Generated {count} reports for ready requests")
+                    await evals_session.commit()
+                    await prompts_session.commit()
+            except Exception:
+                logger.exception("Failed to generate ready reports")
+                await evals_session.rollback()
+                await prompts_session.rollback()
 
 
 async def trigger_daily_batch_manually() -> int | None:

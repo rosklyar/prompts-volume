@@ -249,3 +249,38 @@ class EnhancedComparisonResponse(BaseModel):
     # Generate button state
     can_generate: bool
     generation_disabled_reason: str | None
+
+
+# --- Report Request models (unified manual/scheduled) ---
+
+
+class CreateReportRequestBody(BaseModel):
+    """Request body for creating a report request."""
+
+    assistant_id: int = 1  # AI Assistant ID (default: ChatGPT)
+
+
+class ReportRequestResponse(BaseModel):
+    """Response for a report request."""
+
+    id: int
+    group_id: int
+    status: str  # 'awaiting', 'ready', 'generating', 'completed', 'timed_out', 'cancelled'
+    assistant_id: int
+    total_prompts: int
+    prompts_fresh_at_request: int
+    prompts_requested: int
+    report_id: int | None
+    created_at: datetime
+    timeout_at: datetime
+    completed_at: datetime | None
+
+
+class ReportRequestStatusResponse(BaseModel):
+    """Status response for pending report request.
+
+    Used by GroupCard to show badge.
+    """
+
+    has_pending: bool
+    request: ReportRequestResponse | None = None

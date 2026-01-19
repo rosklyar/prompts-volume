@@ -36,6 +36,7 @@ from src.reports.services.results_enricher import (
     ReportEnricher,
     get_report_enricher,
 )
+from src.reports.services.report_request_service import ReportRequestService
 
 
 def get_report_service(
@@ -96,6 +97,25 @@ def get_selection_validator() -> SelectionValidatorService:
     return SelectionValidatorService()
 
 
+def get_report_request_service(
+    prompts_session: AsyncSession = Depends(get_async_session),
+    evals_session: AsyncSession = Depends(get_evals_session),
+    charge_service: ChargeService = Depends(get_charge_service),
+) -> ReportRequestService:
+    """Dependency injection for ReportRequestService."""
+    from src.brightdata.services.brightdata_service import get_brightdata_service
+
+    report_service = ReportService(prompts_session, evals_session, charge_service)
+    brightdata_service = get_brightdata_service(evals_session)
+
+    return ReportRequestService(
+        prompts_session,
+        evals_session,
+        brightdata_service=brightdata_service,
+        report_service=report_service,
+    )
+
+
 __all__ = [
     "ReportService",
     "ComparisonService",
@@ -103,12 +123,14 @@ __all__ = [
     "SelectionAnalyzerService",
     "SelectionPricingService",
     "SelectionValidatorService",
+    "ReportRequestService",
     "get_report_service",
     "get_comparison_service",
     "get_freshness_analyzer",
     "get_selection_analyzer",
     "get_selection_pricing",
     "get_selection_validator",
+    "get_report_request_service",
     "BrandMentionDetector",
     "BrandInput",
     "get_brand_mention_detector",

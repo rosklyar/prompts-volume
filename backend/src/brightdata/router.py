@@ -163,6 +163,14 @@ async def receive_brightdata_webhook(
     except Exception as e:
         logger.warning(f"Failed to check daily batch completion: {e}")
 
+    # Check if this batch is part of a manual report request
+    try:
+        from src.reports.services.report_request_service import ReportRequestService
+        request_service = ReportRequestService(prompts_session, evals_session)
+        await request_service.on_brightdata_completed(batch_id)
+    except Exception as e:
+        logger.warning(f"Failed to check report request completion: {e}")
+
     return WebhookResponse(
         status=final_status.value,
         batch_id=batch_id,
