@@ -515,3 +515,24 @@ async def seed_superuser(session: AsyncSession) -> None:
             is_superuser=True,
         )
         await create_user(session, user_in)
+
+
+async def seed_regular_user(session: AsyncSession) -> None:
+    """
+    Seed a regular test user if it doesn't exist.
+
+    Args:
+        session: AsyncSession to use for database operations
+    """
+    from src.auth.crud import create_user, get_user_by_email
+    from src.auth.models import UserCreate
+    from src.config.settings import settings
+
+    user = await get_user_by_email(session, settings.first_regular_user_email)
+    if not user:
+        user_in = UserCreate(
+            email=settings.first_regular_user_email,
+            password=settings.first_regular_user_password,
+            is_superuser=False,
+        )
+        await create_user(session, user_in)

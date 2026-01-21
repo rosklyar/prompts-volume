@@ -76,6 +76,10 @@ class Settings(BaseSettings):
     first_superuser_email: str = "admin@example.com"
     first_superuser_password: str = "changethis"
 
+    # Regular test user (for E2E testing)
+    first_regular_user_email: str = "user@example.com"
+    first_regular_user_password: str = "changethis"
+
     # Startup configuration
     seed_data: bool = False  # Enable data seeding on startup (for local dev only)
     log_level: str = "INFO"  # DEBUG, INFO, WARNING, ERROR

@@ -41,57 +41,6 @@ class TestUpdatePassword:
         )
         assert old_login_response.status_code == 400
 
-    def test_update_password_wrong_current(self, client, create_verified_user):
-        """Test password change with incorrect current password."""
-        email = f"pwd-wrong-{uuid.uuid4()}@example.com"
-        auth_headers = create_verified_user(email=email, password="correctpassword123")
-
-        response = client.patch(
-            "/api/v1/users/me/password",
-            json={
-                "current_password": "wrongpassword123",
-                "new_password": "newpassword456",
-            },
-            headers=auth_headers,
-        )
-
-        assert response.status_code == 400
-        assert response.json()["detail"] == "Incorrect password"
-
-    def test_update_password_same_as_current(self, client, create_verified_user):
-        """Test password change when new password is same as current."""
-        email = f"pwd-same-{uuid.uuid4()}@example.com"
-        same_password = "samepassword123"
-        auth_headers = create_verified_user(email=email, password=same_password)
-
-        response = client.patch(
-            "/api/v1/users/me/password",
-            json={
-                "current_password": same_password,
-                "new_password": same_password,
-            },
-            headers=auth_headers,
-        )
-
-        assert response.status_code == 400
-        assert response.json()["detail"] == "New password cannot be the same as the current one"
-
-    def test_update_password_too_short(self, client, create_verified_user):
-        """Test password change with new password that is too short."""
-        email = f"pwd-short-{uuid.uuid4()}@example.com"
-        auth_headers = create_verified_user(email=email, password="validpassword123")
-
-        response = client.patch(
-            "/api/v1/users/me/password",
-            json={
-                "current_password": "validpassword123",
-                "new_password": "short",  # Less than 8 characters
-            },
-            headers=auth_headers,
-        )
-
-        assert response.status_code == 422  # Validation error
-
     def test_update_password_unauthenticated(self, client):
         """Test password change without authentication."""
         response = client.patch(

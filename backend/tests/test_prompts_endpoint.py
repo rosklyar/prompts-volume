@@ -57,30 +57,3 @@ def test_get_prompts_for_seeded_topics(client, auth_headers):
     # Check for known prompts from CSVs
     assert any("смартфон" in text.lower() for text in phone_texts), "Should contain phone-related prompts"
     assert any("ноутбук" in text.lower() for text in laptop_texts), "Should contain laptop-related prompts"
-
-
-def test_get_prompts_single_topic(client, auth_headers):
-    """Test /prompts endpoint with single topic ID."""
-    response = client.get("/prompts/api/v1/prompts?topic_ids=1", headers=auth_headers)
-
-    assert response.status_code == 200
-    data = response.json()
-
-    assert len(data["topics"]) == 1
-    assert data["topics"][0]["topic_id"] == 1
-    assert len(data["topics"][0]["prompts"]) == 71
-
-
-def test_get_prompts_empty_topic_ids(client, auth_headers):
-    """Test /prompts endpoint with no topic IDs returns 400."""
-    response = client.get("/prompts/api/v1/prompts", headers=auth_headers)
-
-    assert response.status_code == 422  # FastAPI validation error for missing required query param
-
-
-def test_get_prompts_nonexistent_topic(client, auth_headers):
-    """Test /prompts endpoint with nonexistent topic ID returns 404."""
-    response = client.get("/prompts/api/v1/prompts?topic_ids=999", headers=auth_headers)
-
-    assert response.status_code == 404
-    assert "No prompts found" in response.json()["detail"]

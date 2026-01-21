@@ -14,16 +14,13 @@ Note: Prompt analysis endpoint has been moved to the shared batch router
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from src.admin.models.api_models import (
     AdminUploadRequest,
     AdminUploadResponse,
     CreateTopicRequest,
-    TopicResponse,
 )
 from src.approval.exceptions import ApprovalError, to_http_exception as approval_to_http
 from src.approval.models import (
@@ -37,8 +34,11 @@ from src.approval.models import (
 from src.approval.service import PromptApprovalService, get_prompt_approval_service
 from src.auth.deps import CurrentUser, get_current_active_superuser
 from src.database import get_async_session
-from src.database.models import BusinessDomain, Country, Topic
+from src.database.models import Topic
 from src.prompts.batch.service import BatchPromptsService, get_batch_prompts_service
+from src.reference.models import TopicResponse
+from src.topics.exceptions import BusinessDomainNotFoundError, CountryNotFoundError
+from src.topics.services.topic_service import TopicServiceDep
 
 router = APIRouter(
     prefix="/admin/api/v1",
@@ -54,44 +54,29 @@ ApprovalServiceDep = Annotated[PromptApprovalService, Depends(get_prompt_approva
 @router.post("/topics", response_model=TopicResponse)
 async def create_topic(
     request: CreateTopicRequest,
-    session: SessionDep,
+    topic_service: TopicServiceDep,
 ):
     """Create a new topic."""
-    # Verify business domain exists
-    bd_result = await session.execute(
-        select(BusinessDomain).where(BusinessDomain.id == request.business_domain_id)
-    )
-    business_domain = bd_result.scalar_one_or_none()
-    if not business_domain:
+    try:
+        topic, bd_name, country_name = await topic_service.create_validated(
+            request.title,
+            request.description,
+            request.business_domain_id,
+            request.country_id,
+        )
+    except BusinessDomainNotFoundError:
         raise HTTPException(status_code=404, detail="Business domain not found")
-
-    # Verify country exists
-    country_result = await session.execute(
-        select(Country).where(Country.id == request.country_id)
-    )
-    country = country_result.scalar_one_or_none()
-    if not country:
+    except CountryNotFoundError:
         raise HTTPException(status_code=404, detail="Country not found")
-
-    # Create topic
-    topic = Topic(
-        title=request.title,
-        description=request.description,
-        business_domain_id=request.business_domain_id,
-        country_id=request.country_id,
-    )
-    session.add(topic)
-    await session.commit()
-    await session.refresh(topic)
 
     return TopicResponse(
         id=topic.id,
         title=topic.title,
         description=topic.description,
         business_domain_id=topic.business_domain_id,
-        business_domain_name=business_domain.name,
+        business_domain_name=bd_name,
         country_id=topic.country_id,
-        country_name=country.name,
+        country_name=country_name,
     )
 
 

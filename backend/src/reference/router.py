@@ -9,11 +9,11 @@ Provides read-only access to:
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from src.admin.models.api_models import (
+from src.auth.deps import get_current_user
+from src.businessdomain.services import BusinessDomainService, get_business_domain_service
+from src.geography.services import CountryService, get_country_service
+from src.reference.models import (
     BusinessDomainResponse,
     BusinessDomainsListResponse,
     CountriesListResponse,
@@ -21,9 +21,7 @@ from src.admin.models.api_models import (
     TopicResponse,
     TopicsListResponse,
 )
-from src.auth.deps import get_current_user
-from src.database import get_async_session
-from src.database.models import BusinessDomain, Country, Topic
+from src.topics.services.topic_service import TopicServiceDep
 
 router = APIRouter(
     prefix="/api/v1/reference",
@@ -31,16 +29,16 @@ router = APIRouter(
     dependencies=[Depends(get_current_user)],
 )
 
-SessionDep = Annotated[AsyncSession, Depends(get_async_session)]
+BusinessDomainServiceDep = Annotated[
+    BusinessDomainService, Depends(get_business_domain_service)
+]
+CountryServiceDep = Annotated[CountryService, Depends(get_country_service)]
 
 
 @router.get("/business-domains", response_model=BusinessDomainsListResponse)
-async def list_business_domains(session: SessionDep):
+async def list_business_domains(bd_service: BusinessDomainServiceDep):
     """List all business domains for dropdown selection."""
-    result = await session.execute(
-        select(BusinessDomain).order_by(BusinessDomain.name)
-    )
-    domains = result.scalars().all()
+    domains = await bd_service.get_all()
 
     return BusinessDomainsListResponse(
         business_domains=[
@@ -55,10 +53,9 @@ async def list_business_domains(session: SessionDep):
 
 
 @router.get("/countries", response_model=CountriesListResponse)
-async def list_countries(session: SessionDep):
+async def list_countries(country_service: CountryServiceDep):
     """List all countries for dropdown selection."""
-    result = await session.execute(select(Country).order_by(Country.name))
-    countries = result.scalars().all()
+    countries = await country_service.get_all()
 
     return CountriesListResponse(
         countries=[
@@ -74,24 +71,15 @@ async def list_countries(session: SessionDep):
 
 @router.get("/topics", response_model=TopicsListResponse)
 async def list_topics(
-    session: SessionDep,
+    topic_service: TopicServiceDep,
     business_domain_id: int | None = Query(None, description="Filter by business domain"),
     country_id: int | None = Query(None, description="Filter by country"),
 ):
     """List topics with optional filtering by business domain and country."""
-    query = (
-        select(Topic)
-        .options(selectinload(Topic.business_domain), selectinload(Topic.country))
-        .order_by(Topic.title)
+    topics = await topic_service.get_all_with_relations(
+        business_domain_id=business_domain_id,
+        country_id=country_id,
     )
-
-    if business_domain_id is not None:
-        query = query.where(Topic.business_domain_id == business_domain_id)
-    if country_id is not None:
-        query = query.where(Topic.country_id == country_id)
-
-    result = await session.execute(query)
-    topics = result.scalars().all()
 
     return TopicsListResponse(
         topics=[
