@@ -44,3 +44,4 @@ Run these scenarios using Playwright MCP tools after docker-compose and frontend
 8. Fill brand name (e.g., "TestBrand")
 9. Click "Continue", then "Finish Setup"
 10. Verify: dashboard loads with "$5.00" balance shown
+

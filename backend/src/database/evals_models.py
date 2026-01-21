@@ -340,6 +340,14 @@ class BrightDataBatch(EvalsBase):
         nullable=True,
     )
 
+    # Index-based prompt matching for reliable webhook correlation
+    # Format: {"1": prompt_id_1, "2": prompt_id_2, ...} (string keys for JSON)
+    index_to_prompt_id: Mapped[Optional[dict]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="Map of 1-based index to prompt_id for webhook matching"
+    )
+
     def __repr__(self) -> str:
         return f"<BrightDataBatch(id={self.id}, batch_id='{self.batch_id}', country_id={self.country_id}, status='{self.status.value}')>"
 

@@ -418,29 +418,39 @@ def simulate_webhook(client):
             resp = client.post("/execution/api/v1/request-fresh", json={"prompt_ids": [1, 2]}, headers=auth_headers)
             batch_id = resp.json()["batch_id"]
 
-            # Simulate webhook with matching prompt texts
+            # Simulate webhook with matching items (index-based matching)
             items = [
-                {"prompt": "Prompt text 1", "answer_text": "Response 1", "citations": []},
-                {"prompt": "Prompt text 2", "answer_text": "Response 2", "citations": []},
+                {"prompt": "Prompt text 1", "answer_text": "Response 1", "citations": [], "index": 1},
+                {"prompt": "Prompt text 2", "answer_text": "Response 2", "citations": [], "index": 2},
             ]
             webhook_resp = simulate_webhook(batch_id, items)
             assert webhook_resp.status_code == 200
     """
-    def _simulate(batch_id: str, items: list[dict]):
+    def _simulate(batch_id: str, items: list[dict], *, assistant_key: str = "chatgpt"):
         """Simulate Bright Data webhook.
 
         Args:
             batch_id: UUID batch identifier from request-fresh response
             items: List of dicts with keys:
-                - prompt: str (must match Prompt.prompt_text exactly)
+                - prompt: str (original prompt text)
                 - answer_text: str
+                - index: int (1-based index for matching, added automatically if missing)
                 - citations: list[dict] with url, domain, cited, title keys (optional)
+            assistant_key: Assistant key for webhook URL (default: "chatgpt")
         """
-        payload = json.dumps(items).encode("utf-8")
+        # Ensure each item has an index for index-based matching
+        indexed_items = []
+        for i, item in enumerate(items):
+            indexed_item = dict(item)
+            if "index" not in indexed_item:
+                indexed_item["index"] = i + 1  # 1-based index
+            indexed_items.append(indexed_item)
+
+        payload = json.dumps(indexed_items).encode("utf-8")
         compressed = gzip.compress(payload)
 
         return client.post(
-            f"/evaluations/api/v1/webhook/{batch_id}",
+            f"/evaluations/api/v1/webhook/{assistant_key}/{batch_id}",
             content=compressed,
             headers={
                 "Authorization": f"Basic {settings.brightdata_webhook_secret}",

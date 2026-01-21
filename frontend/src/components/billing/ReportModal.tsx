@@ -313,7 +313,7 @@ export function ReportModal(props: ReportModalProps) {
         {/* Content */}
         {reportData && !isLoading && (
           <>
-            {/* Assistant Dropdown - First */}
+            {/* Assistant Dropdown */}
             <div className="px-5 pt-4 pb-3 shrink-0">
               <label className="block text-sm font-medium text-gray-600 mb-2 font-['DM_Sans']">
                 AI Assistant
@@ -337,9 +337,9 @@ export function ReportModal(props: ReportModalProps) {
               </select>
             </div>
 
-            {/* Summary Card */}
+            {/* Summary Card - fixed height to prevent layout shift */}
             <div className="px-5 pb-3 shrink-0">
-              <div className="p-4 rounded-lg bg-gray-50 border border-gray-100">
+              <div className="p-4 rounded-lg bg-gray-50 border border-gray-100 min-h-[72px]">
                 <div className="flex items-center gap-4">
                   {freshCount > 0 && (
                     <div className="flex items-center gap-2">
@@ -373,12 +373,16 @@ export function ReportModal(props: ReportModalProps) {
                   )}
                 </div>
 
-                {/* Subtle note for stale/absent */}
-                {needsRefreshCount > 0 && !hasPending && !generateSuccess && (
-                  <p className="text-xs text-gray-500 font-['DM_Sans'] mt-2">
-                    Report will generate automatically when answers are ready
-                  </p>
-                )}
+                {/* Subtle note - always reserve space to prevent layout shift */}
+                <p
+                  className={`text-xs font-['DM_Sans'] mt-2 transition-opacity ${
+                    needsRefreshCount > 0 && !hasPending && !generateSuccess
+                      ? "text-gray-500"
+                      : "text-transparent select-none"
+                  }`}
+                >
+                  Report will generate automatically when answers are ready
+                </p>
               </div>
             </div>
 
