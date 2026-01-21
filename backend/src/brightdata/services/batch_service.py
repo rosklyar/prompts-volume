@@ -25,6 +25,7 @@ class BrightDataBatchService:
         batch_id: str,
         prompt_ids: list[int],
         user_id: str,
+        country_id: int,
         *,
         assistant_id: int = 1,
     ) -> BrightDataBatch:
@@ -34,6 +35,7 @@ class BrightDataBatchService:
             batch_id: Unique batch identifier (UUID)
             prompt_ids: List of prompt IDs included in the batch
             user_id: User who requested the batch
+            country_id: Country ID used for scraping
             assistant_id: AI assistant ID for this batch (default: 1 = ChatGPT)
 
         Returns:
@@ -44,11 +46,12 @@ class BrightDataBatchService:
             user_id=user_id,
             prompt_ids=prompt_ids,
             assistant_id=assistant_id,
+            country_id=country_id,
             status=BrightDataBatchStatus.PENDING,
         )
         self._session.add(batch)
         await self._session.flush()
-        logger.info(f"Registered batch {batch_id} with {len(prompt_ids)} prompts")
+        logger.info(f"Registered batch {batch_id} with {len(prompt_ids)} prompts for country_id={country_id}")
         return batch
 
     async def get_batch(self, batch_id: str) -> BrightDataBatch | None:

@@ -211,6 +211,7 @@ class TestPromptGroupWithoutTopic:
             "/prompt-groups/api/v1/groups",
             json={
                 "title": "Group Without Topic",
+                "country_id": 1,  # Ukraine (from seed data)
                 "brand": {
                     "name": "Test Brand",
                     "domain": "testbrand.com",
@@ -224,6 +225,7 @@ class TestPromptGroupWithoutTopic:
         assert data["title"] == "Group Without Topic"
         assert data["topic_id"] is None
         assert data["topic_title"] is None
+        assert data["country"]["id"] == 1
 
     def test_create_group_with_existing_topic(
         self, client, auth_headers, test_user

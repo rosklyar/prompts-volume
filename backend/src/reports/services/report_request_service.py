@@ -7,6 +7,7 @@ from typing import Literal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from src.brightdata.services.brightdata_service import BrightDataService
 from src.database.evals_models import (
@@ -15,7 +16,7 @@ from src.database.evals_models import (
     ReportRequest,
     ReportRequestStatus,
 )
-from src.database.models import Prompt, PromptGroupBinding
+from src.database.models import Prompt, PromptGroup, PromptGroupBinding
 from src.reports.models.api_models import PromptSelection
 from src.reports.repositories.report_request_repo import ReportRequestRepository
 from src.reports.services.report_service import DuplicateReportError, ReportService
@@ -71,6 +72,23 @@ class ReportRequestService:
         """
         now = datetime.now(timezone.utc)
         timeout_at = now + timedelta(hours=TIMEOUT_HOURS)
+
+        # Get group with country info for BrightData
+        group_result = await self._prompts_session.execute(
+            select(PromptGroup)
+            .where(PromptGroup.id == group_id)
+            .options(selectinload(PromptGroup.country))
+        )
+        group = group_result.scalar_one_or_none()
+
+        if not group:
+            raise ValueError(f"Group {group_id} not found")
+
+        if not group.country:
+            raise ValueError(f"Group {group_id} has no country configured")
+
+        country_id = group.country_id
+        country_iso_code = group.country.iso_code
 
         # Get prompt IDs in the group
         bindings_result = await self._prompts_session.execute(
@@ -151,6 +169,8 @@ class ReportRequestService:
                 batch_id=batch_id,
                 prompts=prompts_to_trigger,
                 user_id=user_id,
+                country_id=country_id,
+                country_iso_code=country_iso_code,
                 assistant_id=assistant_id,
             )
             batch_ids.append(batch_id)

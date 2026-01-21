@@ -12,12 +12,8 @@ class OnboardingStatusResponse(BaseModel):
     """Response for onboarding status check."""
 
     is_completed: bool = Field(description="Whether onboarding has been completed")
-    is_skipped: bool = Field(description="Whether onboarding was skipped")
     completed_at: Optional[datetime] = Field(
         None, description="Timestamp when onboarding was completed"
-    )
-    skipped_at: Optional[datetime] = Field(
-        None, description="Timestamp when onboarding was skipped"
     )
     has_preferences: bool = Field(
         description="Whether user has any preferences saved"
@@ -27,8 +23,8 @@ class OnboardingStatusResponse(BaseModel):
 class UserPreferencesResponse(BaseModel):
     """Response containing user's default preferences."""
 
-    default_country_id: Optional[int] = Field(
-        None, description="Default country ID for new groups"
+    default_country_id: int = Field(
+        description="Default country ID for new groups"
     )
     default_business_domain_id: Optional[int] = Field(
         None, description="Default business domain ID for new groups"
@@ -47,8 +43,8 @@ class UserPreferencesResponse(BaseModel):
 class SavePreferencesRequest(BaseModel):
     """Request to save/update user preferences."""
 
-    default_country_id: Optional[int] = Field(
-        None, description="Default country ID for new groups"
+    default_country_id: int = Field(
+        ..., gt=0, description="Default country ID for new groups (REQUIRED)"
     )
     default_business_domain_id: Optional[int] = Field(
         None, description="Default business domain ID for new groups"
@@ -74,8 +70,8 @@ class SavePreferencesRequest(BaseModel):
 class CompleteOnboardingRequest(BaseModel):
     """Request to complete onboarding with preferences."""
 
-    default_country_id: Optional[int] = Field(
-        None, description="Default country ID for new groups"
+    default_country_id: int = Field(
+        ..., gt=0, description="Default country ID for new groups (REQUIRED)"
     )
     default_business_domain_id: Optional[int] = Field(
         None, description="Default business domain ID for new groups"

@@ -2,6 +2,14 @@
  * TypeScript types for Prompt Groups feature
  */
 
+// ===== Country Info Type =====
+
+export interface CountryInfo {
+  id: number
+  name: string
+  iso_code: string
+}
+
 // ===== Company Info Types =====
 
 export interface CompanyInfo {
@@ -40,6 +48,8 @@ export interface GroupSummary {
   competitor_count: number
   topic_id: number
   topic_title: string
+  country: CountryInfo
+  country_locked: boolean
   created_at: string
   updated_at: string
 }
@@ -57,6 +67,8 @@ export interface GroupDetail {
   topic_id: number
   topic_title: string
   topic_description: string
+  country: CountryInfo
+  country_locked: boolean
   created_at: string
   updated_at: string
   brand: BrandInfo

@@ -35,6 +35,8 @@ class FreshnessAnalyzerService:
         self,
         group_id: int,
         last_report: GroupReport | None,
+        *,
+        country_id: int | None = None,
     ) -> list[PromptFreshnessInfo]:
         """Analyze freshness for all prompts in a group.
 
@@ -44,6 +46,12 @@ class FreshnessAnalyzerService:
         3. Compare completed_at timestamps
         4. Check if any IN_PROGRESS evaluation exists
         5. Return time estimate based on in_progress status
+
+        Args:
+            group_id: The group ID to analyze
+            last_report: The previous report (if any)
+            country_id: Optional country filter. If provided, only considers
+                       evaluations for that country.
         """
         # Get all prompts in the group with their text
         prompts_data = await self._get_prompts_in_group(group_id)
@@ -53,16 +61,18 @@ class FreshnessAnalyzerService:
         prompt_ids = [p["id"] for p in prompts_data]
         prompts_map = {p["id"]: p["text"] for p in prompts_data}
 
-        # Get latest completed evaluation for each prompt
-        latest_evals = await self._get_latest_evaluations(prompt_ids)
+        # Get latest completed evaluation for each prompt (filtered by country)
+        latest_evals = await self._get_latest_evaluations(prompt_ids, country_id=country_id)
 
         # Get evaluations used in last report (if exists)
         report_evals: dict[int, datetime | None] = {}
         if last_report:
             report_evals = await self._get_report_evaluations(last_report.id)
 
-        # Get prompts with in-progress evaluations
-        in_progress_prompts = await self._get_in_progress_prompts(prompt_ids)
+        # Get prompts with in-progress evaluations (filtered by country)
+        in_progress_prompts = await self._get_in_progress_prompts(
+            prompt_ids, country_id=country_id
+        )
 
         # Build freshness info for each prompt
         result = []
@@ -112,11 +122,28 @@ class FreshnessAnalyzerService:
         return [{"id": row.id, "text": row.prompt_text} for row in result.all()]
 
     async def _get_latest_evaluations(
-        self, prompt_ids: list[int]
+        self,
+        prompt_ids: list[int],
+        *,
+        country_id: int | None = None,
     ) -> dict[int, PromptEvaluation]:
-        """Get the latest COMPLETED evaluation for each prompt."""
+        """Get the latest COMPLETED evaluation for each prompt.
+
+        Args:
+            prompt_ids: List of prompt IDs to check
+            country_id: Optional country filter. If provided, only considers
+                       evaluations for that country.
+        """
         if not prompt_ids:
             return {}
+
+        # Build conditions for the subquery
+        subq_conditions = [
+            PromptEvaluation.prompt_id.in_(prompt_ids),
+            PromptEvaluation.status == EvaluationStatus.COMPLETED,
+        ]
+        if country_id is not None:
+            subq_conditions.append(PromptEvaluation.country_id == country_id)
 
         # Subquery to get max completed_at per prompt_id
         subq = (
@@ -124,10 +151,7 @@ class FreshnessAnalyzerService:
                 PromptEvaluation.prompt_id,
                 func.max(PromptEvaluation.completed_at).label("max_completed_at"),
             )
-            .where(
-                PromptEvaluation.prompt_id.in_(prompt_ids),
-                PromptEvaluation.status == EvaluationStatus.COMPLETED,
-            )
+            .where(*subq_conditions)
             .group_by(PromptEvaluation.prompt_id)
             .subquery()
         )
@@ -160,17 +184,32 @@ class FreshnessAnalyzerService:
         result = await self._evals_session.execute(query)
         return {row.prompt_id: row.completed_at for row in result.all()}
 
-    async def _get_in_progress_prompts(self, prompt_ids: list[int]) -> set[int]:
-        """Get prompt IDs that have IN_PROGRESS evaluations."""
+    async def _get_in_progress_prompts(
+        self,
+        prompt_ids: list[int],
+        *,
+        country_id: int | None = None,
+    ) -> set[int]:
+        """Get prompt IDs that have IN_PROGRESS evaluations.
+
+        Args:
+            prompt_ids: List of prompt IDs to check
+            country_id: Optional country filter. If provided, only considers
+                       evaluations for that country.
+        """
         if not prompt_ids:
             return set()
 
+        conditions = [
+            PromptEvaluation.prompt_id.in_(prompt_ids),
+            PromptEvaluation.status == EvaluationStatus.IN_PROGRESS,
+        ]
+        if country_id is not None:
+            conditions.append(PromptEvaluation.country_id == country_id)
+
         query = (
             select(PromptEvaluation.prompt_id)
-            .where(
-                PromptEvaluation.prompt_id.in_(prompt_ids),
-                PromptEvaluation.status == EvaluationStatus.IN_PROGRESS,
-            )
+            .where(*conditions)
             .distinct()
         )
 

@@ -21,6 +21,7 @@ from src.database.evals_models import (
     ReportItemStatus,
 )
 from src.database.models import (
+    Country,
     Prompt,
     PromptGroup,
     PromptGroupBinding,
@@ -124,12 +125,21 @@ class ReportService:
         3. Charges for fresh (not consumed) evaluations
         4. Creates report snapshot with all items
         """
-        # Get group to verify it exists (from prompts_db)
-        group_query = select(PromptGroup).where(PromptGroup.id == group_id)
+        # Get group to verify it exists and load country (from prompts_db)
+        group_query = (
+            select(PromptGroup)
+            .where(PromptGroup.id == group_id)
+            .options(selectinload(PromptGroup.country))
+        )
         group_result = await self._prompts_session.execute(group_query)
         group = group_result.scalar_one_or_none()
         if not group:
             raise ValueError(f"Group {group_id} not found")
+
+        if not group.country_id:
+            raise ValueError(f"Group {group_id} has no country configured")
+
+        country_id = group.country_id
 
         # Get prompts in group with their texts (from prompts_db)
         prompts_query = (
@@ -147,6 +157,7 @@ class ReportService:
                 group_id=group_id,
                 user_id=user_id,
                 title=title,
+                country_id=country_id,
                 total_prompts=0,
                 prompts_with_data=0,
                 prompts_awaiting=0,
@@ -159,12 +170,13 @@ class ReportService:
             await self._evals_session.flush()
             return report
 
-        # Get completed evaluations for these prompts (from evals_db)
+        # Get completed evaluations for these prompts filtered by country (from evals_db)
         evals_query = (
             select(PromptEvaluation)
             .where(
                 PromptEvaluation.prompt_id.in_(prompt_ids),
                 PromptEvaluation.status == EvaluationStatus.COMPLETED,
+                PromptEvaluation.country_id == country_id,
             )
         )
         evals_result = await self._evals_session.execute(evals_query)
@@ -207,6 +219,7 @@ class ReportService:
             group_id=group_id,
             user_id=user_id,
             title=title,
+            country_id=country_id,
             total_prompts=len(prompt_ids),
             prompts_with_data=prompts_with_data,
             prompts_awaiting=prompts_awaiting,
@@ -395,12 +408,21 @@ class ReportService:
         """
         from src.reports.models.api_models import PromptSelection
 
-        # Get group to verify it exists (from prompts_db)
-        group_query = select(PromptGroup).where(PromptGroup.id == group_id)
+        # Get group to verify it exists and load country (from prompts_db)
+        group_query = (
+            select(PromptGroup)
+            .where(PromptGroup.id == group_id)
+            .options(selectinload(PromptGroup.country))
+        )
         group_result = await self._prompts_session.execute(group_query)
         group = group_result.scalar_one_or_none()
         if not group:
             raise ValueError(f"Group {group_id} not found")
+
+        if not group.country_id:
+            raise ValueError(f"Group {group_id} has no country configured")
+
+        country_id = group.country_id
 
         # Get prompts in group (from prompts_db)
         prompts_query = (
@@ -418,6 +440,7 @@ class ReportService:
                 group_id=group_id,
                 user_id=user_id,
                 title=title,
+                country_id=country_id,
                 total_prompts=0,
                 prompts_with_data=0,
                 prompts_awaiting=0,
@@ -485,6 +508,7 @@ class ReportService:
             group_id=group_id,
             user_id=user_id,
             title=title,
+            country_id=country_id,
             total_prompts=len(prompts),
             prompts_with_data=prompts_with_data,
             prompts_awaiting=prompts_awaiting,

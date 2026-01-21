@@ -590,11 +590,12 @@ def test_get_available_prompts_filters_existing(client, auth_headers):
 
 def test_get_available_prompts_no_topic_returns_404(client, auth_headers):
     """Test that getting available prompts for a group without topic returns 404."""
-    # Create group without topic
+    # Create group without topic (must provide country_id)
     create_response = client.post(
         "/prompt-groups/api/v1/groups",
         json={
             "title": "No Topic Group",
+            "country_id": 1,  # Ukraine (from seed data)
             "brand": {"name": "TestBrand", "variations": []},
         },
         headers=auth_headers,

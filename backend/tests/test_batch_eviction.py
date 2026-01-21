@@ -114,7 +114,7 @@ def test_batch_eviction_webhook_never_arrives(client, create_verified_user, test
     # Add prompts to group
     add_response = client.post(
         f"/prompt-groups/api/v1/groups/{group_id}/prompts",
-        json={"prompt_ids": prompt_ids},
+        json={"prompt_ids": prompt_ids, "country_id": 1},
         headers=auth_headers,
     )
     assert add_response.status_code == 200
@@ -122,7 +122,7 @@ def test_batch_eviction_webhook_never_arrives(client, create_verified_user, test
     # === STEP 4: First request - creates batch in PENDING state ===
     request_resp = client.post(
         "/execution/api/v1/request-fresh",
-        json={"prompt_ids": prompt_ids},
+        json={"prompt_ids": prompt_ids, "country_id": 1},
         headers=auth_headers,
     )
     assert request_resp.status_code == 200
@@ -141,7 +141,7 @@ def test_batch_eviction_webhook_never_arrives(client, create_verified_user, test
     # === STEP 5: Second request - prompts should be "already_pending" ===
     request_resp = client.post(
         "/execution/api/v1/request-fresh",
-        json={"prompt_ids": prompt_ids},
+        json={"prompt_ids": prompt_ids, "country_id": 1},
         headers=auth_headers,
     )
     assert request_resp.status_code == 200
@@ -158,7 +158,7 @@ def test_batch_eviction_webhook_never_arrives(client, create_verified_user, test
     # === STEP 7: Third request - should evict stale batch and create new one ===
     request_resp = client.post(
         "/execution/api/v1/request-fresh",
-        json={"prompt_ids": prompt_ids},
+        json={"prompt_ids": prompt_ids, "country_id": 1},
         headers=auth_headers,
     )
     assert request_resp.status_code == 200
@@ -213,7 +213,7 @@ def test_batch_eviction_partial_webhook_received(
     # Add prompts to group
     add_response = client.post(
         f"/prompt-groups/api/v1/groups/{group_id}/prompts",
-        json={"prompt_ids": prompt_ids},
+        json={"prompt_ids": prompt_ids, "country_id": 1},
         headers=auth_headers,
     )
     assert add_response.status_code == 200
@@ -221,7 +221,7 @@ def test_batch_eviction_partial_webhook_received(
     # === STEP 4: Request fresh execution ===
     request_resp = client.post(
         "/execution/api/v1/request-fresh",
-        json={"prompt_ids": prompt_ids},
+        json={"prompt_ids": prompt_ids, "country_id": 1},
         headers=auth_headers,
     )
     assert request_resp.status_code == 200
@@ -294,7 +294,7 @@ def test_batch_eviction_full_webhook_received(
     # Add prompts to group
     add_response = client.post(
         f"/prompt-groups/api/v1/groups/{group_id}/prompts",
-        json={"prompt_ids": prompt_ids},
+        json={"prompt_ids": prompt_ids, "country_id": 1},
         headers=auth_headers,
     )
     assert add_response.status_code == 200
@@ -302,7 +302,7 @@ def test_batch_eviction_full_webhook_received(
     # === STEP 4: Request fresh execution ===
     request_resp = client.post(
         "/execution/api/v1/request-fresh",
-        json={"prompt_ids": prompt_ids},
+        json={"prompt_ids": prompt_ids, "country_id": 1},
         headers=auth_headers,
     )
     assert request_resp.status_code == 200
@@ -371,7 +371,7 @@ def test_chunk_based_processing(client, create_verified_user, test_engine, monke
     # Add prompts to group
     add_response = client.post(
         f"/prompt-groups/api/v1/groups/{group_id}/prompts",
-        json={"prompt_ids": prompt_ids},
+        json={"prompt_ids": prompt_ids, "country_id": 1},
         headers=auth_headers,
     )
     assert add_response.status_code == 200
@@ -379,7 +379,7 @@ def test_chunk_based_processing(client, create_verified_user, test_engine, monke
     # === STEP 4: Request fresh execution ===
     request_resp = client.post(
         "/execution/api/v1/request-fresh",
-        json={"prompt_ids": prompt_ids},
+        json={"prompt_ids": prompt_ids, "country_id": 1},
         headers=auth_headers,
     )
     assert request_resp.status_code == 200
@@ -452,7 +452,7 @@ def test_batch_eviction_respects_timeout_setting(
     # Add prompt to group
     add_response = client.post(
         f"/prompt-groups/api/v1/groups/{group_id}/prompts",
-        json={"prompt_ids": [prompt_id]},
+        json={"prompt_ids": [prompt_id], "country_id": 1},
         headers=auth_headers,
     )
     assert add_response.status_code == 200
@@ -460,7 +460,7 @@ def test_batch_eviction_respects_timeout_setting(
     # === STEP 4: First request - creates batch ===
     request_resp = client.post(
         "/execution/api/v1/request-fresh",
-        json={"prompt_ids": [prompt_id]},
+        json={"prompt_ids": [prompt_id], "country_id": 1},
         headers=auth_headers,
     )
     assert request_resp.status_code == 200
@@ -485,7 +485,7 @@ def test_batch_eviction_respects_timeout_setting(
     # === STEP 6: Second request - should NOT evict (30 min < 1 hour timeout) ===
     request_resp = client.post(
         "/execution/api/v1/request-fresh",
-        json={"prompt_ids": [prompt_id]},
+        json={"prompt_ids": [prompt_id], "country_id": 1},
         headers=auth_headers,
     )
     assert request_resp.status_code == 200
@@ -507,7 +507,7 @@ def test_batch_eviction_respects_timeout_setting(
     # === STEP 8: Third request - should evict (2 hours > 1 hour timeout) ===
     request_resp = client.post(
         "/execution/api/v1/request-fresh",
-        json={"prompt_ids": [prompt_id]},
+        json={"prompt_ids": [prompt_id], "country_id": 1},
         headers=auth_headers,
     )
     assert request_resp.status_code == 200

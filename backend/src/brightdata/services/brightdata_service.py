@@ -27,19 +27,19 @@ class BrightDataService:
         batch_service: BrightDataBatchService,
         webhook_base_url: str,
         webhook_secret: str,
-        default_country: str,
     ):
         self._client = client
         self._batch_service = batch_service
         self._webhook_base_url = webhook_base_url
         self._webhook_secret = webhook_secret
-        self._default_country = default_country
 
     async def trigger_batch(
         self,
         batch_id: str,
         prompts: dict[int, str],
         user_id: str,
+        country_id: int,
+        country_iso_code: str,
         *,
         assistant_id: int = 1,
     ) -> None:
@@ -49,6 +49,8 @@ class BrightDataService:
             batch_id: Unique batch identifier
             prompts: Dict mapping prompt_id to prompt_text
             user_id: User who requested the batch
+            country_id: Country ID for database storage
+            country_iso_code: ISO country code for BrightData API (e.g., "UA")
             assistant_id: AI assistant ID to scrape (default: 1 = ChatGPT)
         """
         if not prompts:
@@ -58,12 +60,12 @@ class BrightDataService:
         # Get URL strategy for the selected assistant
         strategy = AssistantStrategyFactory.get_strategy(assistant_id)
         assistant_url = strategy.get_url()
-        logger.info(f"Using {strategy.get_assistant_name()} URL: {assistant_url}")
+        logger.info(f"Using {strategy.get_assistant_name()} URL: {assistant_url} for country={country_iso_code}")
 
         # Always register batch in database (for webhook correlation and pending tracking)
         prompt_ids = list(prompts.keys())
         await self._batch_service.register_batch(
-            batch_id, prompt_ids, user_id, assistant_id=assistant_id
+            batch_id, prompt_ids, user_id, country_id, assistant_id=assistant_id
         )
 
         if not self._client:
@@ -77,7 +79,7 @@ class BrightDataService:
                 BrightDataPromptInput(
                     url=assistant_url,
                     prompt=text,
-                    country=self._default_country,
+                    country=country_iso_code,
                 )
                 for text in prompts.values()
             ]
@@ -92,7 +94,7 @@ class BrightDataService:
             )
 
             await self._client.trigger_batch(trigger_request)
-            logger.info(f"Bright Data batch {batch_id} triggered successfully")
+            logger.info(f"Bright Data batch {batch_id} triggered successfully for country={country_iso_code}")
 
         except Exception as e:
             logger.exception(f"Failed to trigger Bright Data batch: {e}")
@@ -113,5 +115,4 @@ def get_brightdata_service(evals_session: AsyncSession) -> BrightDataService:
         batch_service=BrightDataBatchService(evals_session),
         webhook_base_url=settings.backend_webhook_base_url,
         webhook_secret=settings.brightdata_webhook_secret,
-        default_country=settings.brightdata_default_country,
     )

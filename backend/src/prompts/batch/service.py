@@ -12,7 +12,7 @@ from src.brightdata.services.brightdata_service import get_brightdata_service
 from src.config.settings import settings
 from src.database import get_async_session
 from src.database.evals_session import get_evals_session
-from src.database.models import Prompt, PromptApprovalStatus
+from src.database.models import Country, Prompt, PromptApprovalStatus, Topic
 from src.embeddings.embeddings_service import EmbeddingsService, get_embeddings_service
 from src.prompts.batch.models import (
     BatchAnalyzeResponse,
@@ -162,19 +162,34 @@ class BatchPromptsService:
             await self._prompts_session.flush()
             prompt_ids.append(new_prompt.id)
 
-        # Trigger Bright Data for all new prompts
-        if prompt_ids:
-            prompt_dict = {
-                pid: text_embeddings[i].text
-                for i, pid in enumerate(prompt_ids)
-            }
-            brightdata_service = get_brightdata_service(self._evals_session)
-            await brightdata_service.trigger_batch(
-                batch_id=batch_id,
-                prompts=prompt_dict,
-                user_id="system",  # Admin-added prompts
+        # Trigger Bright Data for all new prompts (only if topic has country)
+        if prompt_ids and topic_id:
+            # Get topic's country for BrightData
+            topic_result = await self._prompts_session.execute(
+                select(Topic).where(Topic.id == topic_id)
             )
-            await self._evals_session.flush()
+            topic = topic_result.scalar_one_or_none()
+
+            if topic and topic.country_id:
+                country_result = await self._prompts_session.execute(
+                    select(Country).where(Country.id == topic.country_id)
+                )
+                country = country_result.scalar_one_or_none()
+
+                if country:
+                    prompt_dict = {
+                        pid: text_embeddings[i].text
+                        for i, pid in enumerate(prompt_ids)
+                    }
+                    brightdata_service = get_brightdata_service(self._evals_session)
+                    await brightdata_service.trigger_batch(
+                        batch_id=batch_id,
+                        prompts=prompt_dict,
+                        user_id="system",  # Admin-added prompts
+                        country_id=country.id,
+                        country_iso_code=country.iso_code,
+                    )
+                    await self._evals_session.flush()
 
         return BatchCreateResponse(
             created_count=len(prompt_ids),

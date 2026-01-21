@@ -19,10 +19,7 @@ import {
   Sparkles
 } from "lucide-react"
 import { useCountries, useBusinessDomains } from "@/hooks/useTopics"
-import {
-  useCompleteOnboarding,
-  useSkipOnboarding,
-} from "@/hooks/useOnboarding"
+import { useCompleteOnboarding } from "@/hooks/useOnboarding"
 import { normalizeDomain } from "@/lib/domain"
 import type { CompetitorInfo } from "@/types/groups"
 
@@ -62,7 +59,6 @@ export function LinearOnboarding() {
   const navigate = useNavigate()
   const hasSubmittedRef = useRef(false)
   const completeOnboarding = useCompleteOnboarding()
-  const skipOnboarding = useSkipOnboarding()
 
   // Step state
   const [currentStep, setCurrentStep] = useState<OnboardingStep>(1)
@@ -89,7 +85,7 @@ export function LinearOnboarding() {
   const { data: countriesData, isLoading: isLoadingCountries } = useCountries()
   const { data: businessDomainsData, isLoading: isLoadingDomains } = useBusinessDomains()
 
-  const isPending = completeOnboarding.isPending || skipOnboarding.isPending
+  const isPending = completeOnboarding.isPending
 
   // Navigation
   const goNext = useCallback(() => {
@@ -173,7 +169,7 @@ export function LinearOnboarding() {
 
     completeOnboarding.mutate(
       {
-        default_country_id: countryId,
+        default_country_id: countryId!,
         default_business_domain_id: businessDomainId,
         default_brand: {
           name: brand.name.trim(),
@@ -198,18 +194,6 @@ export function LinearOnboarding() {
   const handleStep4Continue = useCallback(() => {
     handleSubmit()
   }, [handleSubmit])
-
-  // Skip handler
-  const handleSkip = useCallback(() => {
-    skipOnboarding.mutate(undefined, {
-      onSuccess: () => {
-        navigate({ to: "/" })
-      },
-      onError: (err) => {
-        setError(err.message || "Failed to skip onboarding")
-      },
-    })
-  }, [skipOnboarding, navigate])
 
   // Get country and domain names for summary
   const selectedCountry = countriesData?.countries.find((c) => c.id === countryId)
@@ -591,19 +575,6 @@ export function LinearOnboarding() {
             )}
           </div>
         </div>
-
-        {/* Skip link */}
-        {currentStep < 5 && (
-          <div className="mt-6 text-center">
-            <button
-              onClick={handleSkip}
-              disabled={isPending}
-              className="text-sm text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
-            >
-              {skipOnboarding.isPending ? "Skipping..." : "Skip onboarding"}
-            </button>
-          </div>
-        )}
 
         {/* Footer hint */}
         <p className="mt-6 text-xs text-gray-400 text-center italic">

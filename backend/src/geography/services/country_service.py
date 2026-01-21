@@ -86,6 +86,21 @@ class CountryService:
         await self.session.refresh(country)
         return country
 
+    async def exists(self, country_id: int) -> bool:
+        """
+        Check if a country exists by its ID.
+
+        Args:
+            country_id: Country ID to check
+
+        Returns:
+            True if country exists, False otherwise
+        """
+        result = await self.session.execute(
+            select(Country.id).where(Country.id == country_id)
+        )
+        return result.scalar_one_or_none() is not None
+
 
 def get_country_service(
     session: AsyncSession = Depends(get_async_session),

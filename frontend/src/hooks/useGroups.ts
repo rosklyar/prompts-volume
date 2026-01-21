@@ -63,12 +63,14 @@ export function useCreateGroup() {
       topic,
       brand,
       competitors,
+      countryId,
     }: {
       title: string
       topic: TopicInput | null
       brand: BrandInfo
       competitors?: CompetitorInfo[]
-    }) => groupsApi.createGroup(title, topic, brand, competitors),
+      countryId?: number
+    }) => groupsApi.createGroup(title, topic, brand, competitors, countryId),
     onSuccess: () => {
       // Invalidate all group queries to ensure UI updates
       queryClient.invalidateQueries({ queryKey: groupKeys.all })
@@ -85,12 +87,14 @@ export function useUpdateGroup() {
       title,
       brand,
       competitors,
+      countryId,
     }: {
       groupId: number
       title?: string
       brand?: BrandInfo
       competitors?: CompetitorInfo[] | null
-    }) => groupsApi.updateGroup(groupId, { title, brand, competitors }),
+      countryId?: number
+    }) => groupsApi.updateGroup(groupId, { title, brand, competitors, country_id: countryId }),
     onSuccess: (_data, variables) => {
       // Invalidate all group queries to ensure UI updates
       queryClient.invalidateQueries({ queryKey: groupKeys.all })

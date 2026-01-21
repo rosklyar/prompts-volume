@@ -111,6 +111,10 @@ function BrandPreferencesFormInner({
   }
 
   const handleSave = () => {
+    if (!countryId) {
+      setError("Please select a country")
+      return
+    }
     if (!brandName.trim()) {
       setError("Please enter your brand name")
       return

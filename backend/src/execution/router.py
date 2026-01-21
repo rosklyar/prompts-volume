@@ -4,7 +4,7 @@ import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.deps import CurrentUser
@@ -12,11 +12,13 @@ from src.brightdata.services.batch_service import BrightDataBatchService
 from src.brightdata.services.brightdata_service import get_brightdata_service
 from src.config.settings import settings
 from src.database.evals_session import get_evals_session
+from src.database.session import get_async_session
 from src.execution.models.api_models import (
     QueuedItemInfo,
     RequestFreshExecutionRequest,
     RequestFreshExecutionResponse,
 )
+from src.geography.services.country_service import CountryService
 from src.prompts.services.prompt_service import PromptService, get_prompt_service
 
 logger = logging.getLogger(__name__)
@@ -46,6 +48,7 @@ async def request_fresh_execution(
     request: RequestFreshExecutionRequest,
     current_user: CurrentUser,
     prompt_service: PromptService = Depends(get_prompt_service),
+    prompts_session: AsyncSession = Depends(get_async_session),
     evals_session: AsyncSession = Depends(get_evals_session),
 ) -> RequestFreshExecutionResponse:
     """Request fresh execution for prompts via Bright Data.
@@ -57,6 +60,12 @@ async def request_fresh_execution(
     Stale PENDING batches (older than eviction timeout) are evicted first.
     Prompts are processed in configurable chunk sizes.
     """
+    # Validate and get country
+    country_service = CountryService(prompts_session)
+    country = await country_service.get_by_id(request.country_id)
+    if not country:
+        raise HTTPException(status_code=400, detail=f"Invalid country_id: {request.country_id}")
+
     batch_service = BrightDataBatchService(evals_session)
 
     # Evict stale PENDING batches before checking for pending prompts
@@ -106,9 +115,11 @@ async def request_fresh_execution(
             batch_id,
             prompt_dict,
             str(current_user.id),
+            country_id=request.country_id,
+            country_iso_code=country.iso_code,
             assistant_id=request.assistant_id,
         )
-        logger.info(f"Triggered batch {batch_id} with {len(chunk)} prompts")
+        logger.info(f"Triggered batch {batch_id} with {len(chunk)} prompts for country={country.iso_code}")
 
     await evals_session.commit()
 

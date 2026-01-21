@@ -319,6 +319,21 @@ export function GroupsGrid() {
     updateGroup.mutate({ groupId, title })
   }
 
+  // Handle country change
+  const handleCountryChange = (groupId: number, countryId: number) => {
+    updateGroup.mutate(
+      { groupId, countryId },
+      {
+        onSuccess: () => {
+          toast.success("Country updated")
+        },
+        onError: () => {
+          toast.error("Failed to update country")
+        },
+      }
+    )
+  }
+
   // Handle group deletion
   const handleDeleteGroup = (groupId: number) => {
     deleteGroup.mutate(groupId)
@@ -511,6 +526,7 @@ export function GroupsGrid() {
                   onLoadReport={(selections, assistantId) => handleLoadReport(group, selections, assistantId)}
                   onBrandChange={(brand) => handleBrandChange(group.id, brand)}
                   onCompetitorsChange={(competitors) => handleCompetitorsChange(group.id, competitors)}
+                  onCountryChange={(countryId) => handleCountryChange(group.id, countryId)}
                   isExpanded={expandedGroups.has(group.id)}
                   onToggleExpand={() => handleToggleExpand(group.id)}
                 />

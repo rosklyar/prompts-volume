@@ -1,13 +1,16 @@
 """Service for collecting groups with scheduling enabled."""
 
+import logging
 from typing import Sequence
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from src.daily_scheduling.models.domain import EnabledGroup
 from src.database.models import Prompt, PromptGroup, PromptGroupBinding
+
+logger = logging.getLogger(__name__)
 
 
 class GroupCollectorService:
@@ -22,23 +25,31 @@ class GroupCollectorService:
     async def get_enabled_groups(self) -> Sequence[EnabledGroup]:
         """Get all groups with scheduling enabled.
 
-        Returns list of EnabledGroup with group_id, user_id, title.
+        Returns list of EnabledGroup with group_id, user_id, title, country info.
         """
         query = (
             select(PromptGroup)
             .where(PromptGroup.schedule_enabled == True)  # noqa: E712
+            .options(selectinload(PromptGroup.country))
         )
         result = await self._session.execute(query)
         groups = result.scalars().all()
 
-        return [
-            EnabledGroup(
-                group_id=g.id,
-                user_id=g.user_id,
-                title=g.title,
+        enabled_groups = []
+        for g in groups:
+            if not g.country:
+                logger.warning(f"Group {g.id} has no country, skipping from scheduled batch")
+                continue
+            enabled_groups.append(
+                EnabledGroup(
+                    group_id=g.id,
+                    user_id=g.user_id,
+                    title=g.title,
+                    country_id=g.country_id,
+                    country_iso_code=g.country.iso_code,
+                )
             )
-            for g in groups
-        ]
+        return enabled_groups
 
     async def get_prompt_ids_for_group(self, group_id: int) -> list[int]:
         """Get all prompt IDs in a group."""

@@ -138,7 +138,6 @@ async def _trigger_daily_batch_async(session_maker) -> int | None:
                 batch_service=batch_service,
                 webhook_base_url="http://testserver",
                 webhook_secret="test-secret",
-                default_country="US",
             )
 
             charge_service = NoOpChargeService()
@@ -300,7 +299,7 @@ def test_daily_batch_with_fresh_and_stale_prompts(
     # === STEP 5: Make P1 fresh by requesting and simulating webhook ===
     request_resp = client.post(
         "/execution/api/v1/request-fresh",
-        json={"prompt_ids": [p1["id"]]},
+        json={"prompt_ids": [p1["id"]], "country_id": 1},
         headers=user1_headers,
     )
     assert request_resp.status_code == 200, f"Request fresh failed: {request_resp.json()}"

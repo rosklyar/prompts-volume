@@ -11,6 +11,8 @@ class EnabledGroup:
     group_id: int
     user_id: str
     title: str
+    country_id: int
+    country_iso_code: str
 
 
 @dataclass(frozen=True)

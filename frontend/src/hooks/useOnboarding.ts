@@ -40,17 +40,6 @@ export function useCompleteOnboarding() {
   })
 }
 
-export function useSkipOnboarding() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: () => onboardingApi.skip(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["onboardingStatus"] })
-    },
-  })
-}
-
 export function useUpdatePreferences() {
   const queryClient = useQueryClient()
 
@@ -64,9 +53,9 @@ export function useUpdatePreferences() {
 
 /**
  * Check if user needs to complete onboarding
- * Returns true if user hasn't completed AND hasn't skipped
+ * Returns true if user hasn't completed onboarding
  */
 export function needsOnboarding(status: OnboardingStatusResponse | undefined): boolean {
   if (!status) return false
-  return !status.is_completed && !status.is_skipped
+  return !status.is_completed
 }

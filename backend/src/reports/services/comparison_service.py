@@ -73,27 +73,57 @@ class ComparisonService:
         result = await self._prompts_session.execute(query)
         return list(result.scalars().all())
 
-    async def count_completed_evaluations(self, prompt_ids: list[int]) -> int:
-        """Count completed evaluations for given prompts."""
+    async def count_completed_evaluations(
+        self,
+        prompt_ids: list[int],
+        *,
+        country_id: int | None = None,
+    ) -> int:
+        """Count completed evaluations for given prompts.
+
+        Args:
+            prompt_ids: List of prompt IDs to check
+            country_id: Optional country filter. If provided, only counts
+                       evaluations for that country.
+        """
         if not prompt_ids:
             return 0
 
-        query = select(func.count(PromptEvaluation.id)).where(
+        conditions = [
             PromptEvaluation.prompt_id.in_(prompt_ids),
             PromptEvaluation.status == EvaluationStatus.COMPLETED,
-        )
+        ]
+        if country_id is not None:
+            conditions.append(PromptEvaluation.country_id == country_id)
+
+        query = select(func.count(PromptEvaluation.id)).where(*conditions)
         result = await self._evals_session.execute(query)
         return result.scalar() or 0
 
-    async def get_evaluation_ids_for_prompts(self, prompt_ids: list[int]) -> list[int]:
-        """Get all completed evaluation IDs for given prompts."""
+    async def get_evaluation_ids_for_prompts(
+        self,
+        prompt_ids: list[int],
+        *,
+        country_id: int | None = None,
+    ) -> list[int]:
+        """Get all completed evaluation IDs for given prompts.
+
+        Args:
+            prompt_ids: List of prompt IDs to check
+            country_id: Optional country filter. If provided, only returns
+                       evaluations for that country.
+        """
         if not prompt_ids:
             return []
 
-        query = select(PromptEvaluation.id).where(
+        conditions = [
             PromptEvaluation.prompt_id.in_(prompt_ids),
             PromptEvaluation.status == EvaluationStatus.COMPLETED,
-        )
+        ]
+        if country_id is not None:
+            conditions.append(PromptEvaluation.country_id == country_id)
+
+        query = select(PromptEvaluation.id).where(*conditions)
         result = await self._evals_session.execute(query)
         return list(result.scalars().all())
 
@@ -112,18 +142,31 @@ class ComparisonService:
         return set(result.scalars().all())
 
     async def get_prompts_with_evaluations(
-        self, prompt_ids: list[int]
+        self,
+        prompt_ids: list[int],
+        *,
+        country_id: int | None = None,
     ) -> set[int]:
-        """Get which prompts have at least one completed evaluation."""
+        """Get which prompts have at least one completed evaluation.
+
+        Args:
+            prompt_ids: List of prompt IDs to check
+            country_id: Optional country filter. If provided, only considers
+                       evaluations for that country.
+        """
         if not prompt_ids:
             return set()
 
+        conditions = [
+            PromptEvaluation.prompt_id.in_(prompt_ids),
+            PromptEvaluation.status == EvaluationStatus.COMPLETED,
+        ]
+        if country_id is not None:
+            conditions.append(PromptEvaluation.country_id == country_id)
+
         query = (
             select(PromptEvaluation.prompt_id)
-            .where(
-                PromptEvaluation.prompt_id.in_(prompt_ids),
-                PromptEvaluation.status == EvaluationStatus.COMPLETED,
-            )
+            .where(*conditions)
             .distinct()
         )
         result = await self._evals_session.execute(query)
@@ -134,16 +177,27 @@ class ComparisonService:
         user_id: str,
         prompt_ids: list[int],
         since: datetime | None = None,
+        *,
+        country_id: int | None = None,
     ) -> int:
         """Count evaluations that are 'fresh' (not consumed by user).
 
         If since is provided, also includes re-evaluations after that date.
+
+        Args:
+            user_id: User ID to check consumption for
+            prompt_ids: List of prompt IDs to check
+            since: Optional date filter (unused in current implementation)
+            country_id: Optional country filter. If provided, only considers
+                       evaluations for that country.
         """
         if not prompt_ids:
             return 0
 
         # Get all completed evaluation IDs for these prompts
-        evaluation_ids = await self.get_evaluation_ids_for_prompts(prompt_ids)
+        evaluation_ids = await self.get_evaluation_ids_for_prompts(
+            prompt_ids, country_id=country_id
+        )
 
         if not evaluation_ids:
             return 0

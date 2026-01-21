@@ -336,7 +336,7 @@ def test_report_request_with_fresh_prompts_generates_immediately(
     # === STEP 2: Make prompts fresh by requesting and simulating webhook ===
     request_resp = client.post(
         "/execution/api/v1/request-fresh",
-        json={"prompt_ids": prompt_ids},
+        json={"prompt_ids": prompt_ids, "country_id": 1},
         headers=auth_headers,
     )
     assert request_resp.status_code == 200

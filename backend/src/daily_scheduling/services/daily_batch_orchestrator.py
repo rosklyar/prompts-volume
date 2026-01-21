@@ -128,19 +128,17 @@ class DailyBatchOrchestrator:
                     fresh_prompt_selections=analysis.fresh_prompt_selections or None,
                 )
 
-            # 6. Deduplicate and trigger BrightData
-            unique_prompts = self._prompt_aggregator.get_unique_prompts_needing_refresh(
-                group_analyses
-            )
-
-            # Get prompt texts for unique prompts needing refresh
-            prompts_for_refresh = await self._build_prompts_for_refresh(
-                unique_prompts,
+            # 6. Trigger BrightData grouped by country
+            # Note: Same prompt may be triggered multiple times for different countries
+            brightdata_batch_ids = await self._trigger_brightdata_batches_by_country(
+                list(enabled_groups),
+                group_analyses,
                 groups_prompts,
             )
 
-            brightdata_batch_ids = await self._trigger_brightdata_batches(
-                prompts_for_refresh,
+            # Get unique prompts count for stats
+            unique_prompts = self._prompt_aggregator.get_unique_prompts_needing_refresh(
+                group_analyses
             )
 
             # 7. Update batch with stats and batch IDs
@@ -204,11 +202,62 @@ class DailyBatchOrchestrator:
                     prompts_dict[p["prompt_id"]] = p["prompt_text"]
         return prompts_dict
 
+    def _build_prompts_by_country(
+        self,
+        enabled_groups: list[EnabledGroup],
+        group_analyses: list[GroupPromptAnalysis],
+        groups_prompts: dict[int, list[dict]],
+    ) -> dict[tuple[int, str], dict[int, str]]:
+        """Build prompts grouped by country for BrightData triggering.
+
+        Returns dict mapping (country_id, country_iso_code) -> (prompt_id -> prompt_text).
+        If the same prompt is in groups with different countries, it will be triggered
+        for each country separately.
+        """
+        # Build mapping from group_id to country info
+        group_to_country: dict[int, tuple[int, str]] = {
+            g.group_id: (g.country_id, g.country_iso_code)
+            for g in enabled_groups
+        }
+
+        # Build prompt_id to prompt_text mapping
+        prompt_texts: dict[int, str] = {}
+        for prompts in groups_prompts.values():
+            for p in prompts:
+                prompt_texts[p["prompt_id"]] = p["prompt_text"]
+
+        # Group prompts by country based on which groups need them
+        country_prompts: dict[tuple[int, str], dict[int, str]] = {}
+
+        for analysis in group_analyses:
+            country_key = group_to_country.get(analysis.group_id)
+            if not country_key:
+                continue
+
+            for prompt_id in analysis.prompts_needing_refresh:
+                if prompt_id not in prompt_texts:
+                    continue
+
+                if country_key not in country_prompts:
+                    country_prompts[country_key] = {}
+
+                country_prompts[country_key][prompt_id] = prompt_texts[prompt_id]
+
+        return country_prompts
+
     async def _trigger_brightdata_batches(
         self,
         prompts: dict[int, str],
+        *,
+        country_id: int | None = None,
+        country_iso_code: str | None = None,
     ) -> list[str]:
         """Trigger BrightData batches for prompts.
+
+        Args:
+            prompts: Dict of prompt_id -> prompt_text
+            country_id: Country ID for scraping (required for new implementation)
+            country_iso_code: Country ISO code for scraping (required for new implementation)
 
         Returns list of batch IDs.
         """
@@ -217,6 +266,10 @@ class DailyBatchOrchestrator:
 
         if self._brightdata_service is None:
             logger.warning("BrightDataService not configured, skipping trigger")
+            return []
+
+        if country_id is None or country_iso_code is None:
+            logger.error("Country info required for triggering BrightData batches")
             return []
 
         # Chunk prompts
@@ -235,10 +288,39 @@ class DailyBatchOrchestrator:
                 batch_id,
                 chunk_dict,
                 user_id="system",  # System-triggered
+                country_id=country_id,
+                country_iso_code=country_iso_code,
             )
             batch_ids.append(batch_id)
+            logger.info(f"Triggered batch {batch_id} for country={country_iso_code} with {len(chunk)} prompts")
 
         return batch_ids
+
+    async def _trigger_brightdata_batches_by_country(
+        self,
+        enabled_groups: list[EnabledGroup],
+        group_analyses: list[GroupPromptAnalysis],
+        groups_prompts: dict[int, list[dict]],
+    ) -> list[str]:
+        """Trigger BrightData batches grouped by country.
+
+        Returns list of all batch IDs.
+        """
+        country_prompts = self._build_prompts_by_country(
+            enabled_groups, group_analyses, groups_prompts
+        )
+
+        all_batch_ids: list[str] = []
+
+        for (country_id, country_iso_code), prompts in country_prompts.items():
+            batch_ids = await self._trigger_brightdata_batches(
+                prompts,
+                country_id=country_id,
+                country_iso_code=country_iso_code,
+            )
+            all_batch_ids.extend(batch_ids)
+
+        return all_batch_ids
 
     async def process_completed_batch(self, batch_id: int) -> int:
         """Process a batch that's ready for report generation.

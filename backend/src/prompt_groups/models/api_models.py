@@ -8,6 +8,16 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from src.prompt_groups.models.brand_models import BrandModel, CompetitorModel
 
 
+class CountryInfo(BaseModel):
+    """Country information for API responses."""
+
+    id: int
+    name: str
+    iso_code: str
+
+    model_config = {"from_attributes": True}
+
+
 class CreateTopicInput(BaseModel):
     """Input for creating a new topic inline with group."""
 
@@ -52,6 +62,12 @@ class CreateGroupRequest(BaseModel):
         description="Topic binding (optional, immutable after creation). "
         "If omitted, prompts require admin approval.",
     )
+    country_id: Optional[int] = Field(
+        None,
+        gt=0,
+        description="Country ID for scraping. Required if no topic is provided. "
+        "If topic is provided, country is taken from the topic and locked.",
+    )
     brand: BrandModel = Field(
         ...,
         description="Brand/company info (required)"
@@ -92,6 +108,11 @@ class UpdateGroupRequest(BaseModel):
     competitors: Optional[List[CompetitorModel]] = Field(
         None,
         description="Competitors list (null = no change, [] = clear)"
+    )
+    country_id: Optional[int] = Field(
+        None,
+        gt=0,
+        description="New country ID. Fails if country_locked is true.",
     )
 
     @field_validator("title")
@@ -149,6 +170,8 @@ class GroupSummaryResponse(BaseModel):
     competitor_count: int
     topic_id: Optional[int]
     topic_title: Optional[str]
+    country: CountryInfo
+    country_locked: bool
     created_at: datetime
     updated_at: datetime
 
@@ -163,6 +186,8 @@ class GroupDetailResponse(BaseModel):
     topic_id: Optional[int]
     topic_title: Optional[str]
     topic_description: Optional[str]
+    country: CountryInfo
+    country_locked: bool
     created_at: datetime
     updated_at: datetime
     brand: BrandModel
