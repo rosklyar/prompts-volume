@@ -2,22 +2,45 @@
 
 Run these scenarios using Playwright MCP tools after docker-compose and frontend are up.
 
-## Required: Login Flow
+## Scenario 1: Login Flow
 1. Navigate to http://localhost:5173
 2. Fill email: admin@example.com, password: changethis
 3. Click "Log in"
 4. Verify: redirected to dashboard, see "$5.00" balance
 
-## Optional: Add scenarios relevant to your change
+## Scenario 2: Admin Navigation
+1. After login, click "Admin" in sidebar navigation
+2. Verify: Admin page loads with tabs (Users, Prompts, Approvals)
+3. Verify: "Prompts" tab is accessible
 
-### Search and Add Prompt to Group
-1. Login as admin
-2. Use search combobox to search for a prompt
-3. Click to add prompt to a group
-4. Verify: prompt appears in group
+## Scenario 3: Reference Data Loading (Tests Reference Router)
+1. After admin login, go to Admin page
+2. Click "Prompts" tab
+3. Verify: Business Domains dropdown loads with options
+4. Verify: Countries dropdown loads with options
+5. Select a business domain and country
+6. Verify: Topics list loads (may be empty if no topics exist)
 
-### Generate Report
-1. Login as admin
-2. Navigate to a group with prompts
-3. Click generate report
-4. Verify: report preview shows
+## Scenario 4: Create Topic (Tests TopicService)
+1. After admin login, go to Admin → Prompts tab
+2. Click "Create New Topic" button
+3. Fill form:
+   - Title: "Test Topic E2E"
+   - Description: "Test topic created via E2E"
+   - Select any Business Domain
+   - Select any Country
+4. Click "Create" button
+5. Verify: Success message appears
+6. Verify: New topic appears in topics dropdown
+
+## Scenario 5: Regular User Login (No Onboarding)
+1. Navigate to http://localhost:5173
+2. Fill email: user@example.com, password: changethis
+3. Click "Log in"
+4. Verify: redirected to onboarding page
+5. Click "Get Started"
+6. Select country (e.g., Ukraine), skip industry selection
+7. Click "Continue" - verify it proceeds without industry
+8. Fill brand name (e.g., "TestBrand")
+9. Click "Continue", then "Finish Setup"
+10. Verify: dashboard loads with "$5.00" balance shown

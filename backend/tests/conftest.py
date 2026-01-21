@@ -220,11 +220,15 @@ def language_service(test_session):
 
 
 @pytest.fixture(scope="function")
-def topic_service(test_session):
+def topic_service(test_session, business_domain_service, country_service):
     """
     Fixture that provides a TopicService instance for testing.
     """
-    return TopicService(test_session)
+    return TopicService(
+        test_session,
+        business_domain_service=business_domain_service,
+        country_service=country_service,
+    )
 
 
 @pytest_asyncio.fixture(scope="function")

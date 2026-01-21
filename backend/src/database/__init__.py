@@ -1,6 +1,6 @@
 """Database package for PostgreSQL with pgvector support."""
 
-from src.database.init import seed_evals_data, seed_initial_data, seed_superuser
+from src.database.init import seed_evals_data, seed_initial_data, seed_regular_user, seed_superuser
 from src.database.models import BusinessDomain, Country, CountryLanguage, Language, Prompt, PromptApprovalStatus, PromptGroup, PromptGroupBinding, Topic
 from src.database.session import (
     Base,
@@ -48,4 +48,5 @@ __all__ = [
     "seed_initial_data",
     "seed_evals_data",
     "seed_superuser",
+    "seed_regular_user",
 ]

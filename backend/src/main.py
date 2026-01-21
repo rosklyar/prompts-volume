@@ -11,7 +11,7 @@ from src.billing.router import router as billing_router
 from src.brightdata.router import router as brightdata_router
 from src.reference.router import router as reference_router
 from src.config.settings import settings
-from src.database import close_db, get_session_maker, init_db, seed_evals_data, seed_initial_data, seed_superuser
+from src.database import close_db, get_session_maker, init_db, seed_evals_data, seed_initial_data, seed_regular_user, seed_superuser
 from src.database.users_session import close_users_db, get_users_session_maker, init_users_db
 from src.database.evals_session import close_evals_db, get_evals_session_maker, init_evals_db
 from src.daily_scheduling.scheduler import setup_scheduler, shutdown_scheduler
@@ -47,10 +47,11 @@ async def lifespan(app: FastAPI):
         async with session_maker() as session:
             await seed_initial_data(session)
 
-        # Seed superuser in users_db
+        # Seed superuser and regular user in users_db
         users_session_maker = get_users_session_maker()
         async with users_session_maker() as users_session:
             await seed_superuser(users_session)
+            await seed_regular_user(users_session)
 
         # Seed evals data (AI assistants, plans, evaluations) in evals_db
         evals_session_maker = get_evals_session_maker()

@@ -150,12 +150,12 @@ export function LinearOnboarding() {
   const canProceed = useCallback(() => {
     switch (currentStep) {
       case 1: return true // Welcome - always can proceed
-      case 2: return countryId !== undefined && businessDomainId !== undefined
+      case 2: return countryId !== undefined // Industry is optional
       case 3: return brand.name.trim().length > 0
       case 4: return true // Competitors - optional
       default: return true
     }
-  }, [currentStep, countryId, businessDomainId, brand.name])
+  }, [currentStep, countryId, brand.name])
 
   // Submit handler
   const handleSubmit = useCallback(() => {
