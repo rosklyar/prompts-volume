@@ -50,11 +50,13 @@ export function useRequestFresh() {
   return useMutation({
     mutationFn: ({
       promptIds,
+      countryId,
       assistantId,
     }: {
       promptIds: number[]
+      countryId: number
       assistantId: number
-    }) => executionApi.requestFresh(promptIds, assistantId),
+    }) => executionApi.requestFresh(promptIds, countryId, assistantId),
     onSuccess: () => {
       // Invalidate all report data queries to update pending_execution status
       queryClient.invalidateQueries({

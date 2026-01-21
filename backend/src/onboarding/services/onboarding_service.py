@@ -10,7 +10,7 @@ class OnboardingService:
     """Service for onboarding workflow orchestration.
 
     Coordinates preference saving with onboarding status tracking.
-    Designed for extensibility - future steps can be added.
+    Country selection is mandatory during onboarding.
     """
 
     def __init__(self, preferences_service: UserPreferencesService):
@@ -22,9 +22,7 @@ class OnboardingService:
         Returns:
             {
                 "is_completed": bool,
-                "is_skipped": bool,
                 "completed_at": datetime | None,
-                "skipped_at": datetime | None,
                 "has_preferences": bool,
             }
         """
@@ -33,17 +31,13 @@ class OnboardingService:
         if prefs is None:
             return {
                 "is_completed": False,
-                "is_skipped": False,
                 "completed_at": None,
-                "skipped_at": None,
                 "has_preferences": False,
             }
 
         return {
             "is_completed": prefs.onboarding_completed_at is not None,
-            "is_skipped": prefs.onboarding_skipped_at is not None,
             "completed_at": prefs.onboarding_completed_at,
-            "skipped_at": prefs.onboarding_skipped_at,
             "has_preferences": prefs.default_brand is not None,
         }
 
@@ -51,7 +45,7 @@ class OnboardingService:
         self,
         user_id: str,
         *,
-        default_country_id: Optional[int] = None,
+        default_country_id: int,
         default_business_domain_id: Optional[int] = None,
         default_brand: dict,
         default_competitors: Optional[List[dict]] = None,
@@ -60,7 +54,7 @@ class OnboardingService:
 
         Args:
             user_id: The user ID
-            default_country_id: Default country ID for new groups
+            default_country_id: Default country ID for new groups (REQUIRED)
             default_business_domain_id: Default business domain ID for new groups
             default_brand: Brand dict with name, domain, variations
             default_competitors: Optional list of competitor dicts
@@ -80,14 +74,6 @@ class OnboardingService:
         prefs = await self._preferences.mark_onboarding_completed(user_id)
         return prefs
 
-    async def skip_onboarding(self, user_id: str) -> UserPreferences:
-        """Skip onboarding without setting preferences.
-
-        Returns:
-            UserPreferences record with skipped status
-        """
-        return await self._preferences.mark_onboarding_skipped(user_id)
-
     async def get_preferences(self, user_id: str) -> Optional[UserPreferences]:
         """Get user preferences (delegates to preferences service)."""
         return await self._preferences.get_preferences(user_id)
@@ -96,7 +82,7 @@ class OnboardingService:
         self,
         user_id: str,
         *,
-        default_country_id: Optional[int] = None,
+        default_country_id: int,
         default_business_domain_id: Optional[int] = None,
         default_brand: dict,
         default_competitors: Optional[List[dict]] = None,
@@ -105,7 +91,7 @@ class OnboardingService:
 
         Args:
             user_id: The user ID
-            default_country_id: Default country ID for new groups
+            default_country_id: Default country ID for new groups (REQUIRED)
             default_business_domain_id: Default business domain ID for new groups
             default_brand: Brand dict with name, domain, variations
             default_competitors: Optional list of competitor dicts

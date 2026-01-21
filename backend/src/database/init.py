@@ -380,6 +380,7 @@ async def _seed_phone_evaluations(
         evaluation = PromptEvaluation(
             prompt_id=prompt.id,
             assistant_id=1,  # ChatGPT
+            country_id=1,  # Ukraine
             status=EvaluationStatus.COMPLETED,
             answer=answer_json,
             created_at=created_at,
@@ -472,6 +473,7 @@ async def _seed_laptop_evaluations(
         evaluation = PromptEvaluation(
             prompt_id=prompt.id,
             assistant_id=1,  # ChatGPT
+            country_id=1,  # Ukraine
             status=EvaluationStatus.COMPLETED,
             answer=answer_json,
             created_at=created_at,

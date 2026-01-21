@@ -47,7 +47,7 @@ const useAuth = () => {
       // Check onboarding status and redirect accordingly
       try {
         const status = await onboardingApi.getStatus()
-        if (!status.is_completed && !status.is_skipped) {
+        if (!status.is_completed) {
           navigate({ to: "/onboarding" })
         } else {
           navigate({ to: "/" })

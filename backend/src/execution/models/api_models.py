@@ -27,6 +27,11 @@ class RequestFreshExecutionRequest(BaseModel):
         default=1,
         description="AI Assistant ID to use for execution (default: 1 = ChatGPT)"
     )
+    country_id: int = Field(
+        ...,
+        gt=0,
+        description="Country ID for scraping (determines geo-location for results)"
+    )
 
 
 # =============================================================================

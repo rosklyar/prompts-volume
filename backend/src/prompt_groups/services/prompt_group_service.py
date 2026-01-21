@@ -8,6 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.database.models import PromptGroup, PromptGroupBinding
+from src.geography.services.country_resolver import (
+    CountryLockedError,
+    CountryResolution,
+    CountryResolver,
+)
 from src.prompt_groups.exceptions import (
     GroupAccessDeniedError,
     GroupNotFoundError,
@@ -25,35 +30,47 @@ class PromptGroupService:
         user_id: str,
         title: str,
         brand: dict,
+        country_resolution: CountryResolution,
         *,
         topic_id: Optional[int] = None,
         competitors: Optional[List[dict]] = None,
     ) -> PromptGroup:
-        """Create a new prompt group with optional topic binding.
+        """Create a new prompt group with mandatory country binding.
 
         Args:
             user_id: The user ID who owns the group
             title: The group title
             brand: Brand dict with name, domain, variations
+            country_resolution: Resolved country (from CountryResolver)
             topic_id: The topic ID to bind (optional, immutable after creation)
             competitors: Optional list of competitor dicts
+
+        Returns:
+            Created PromptGroup with topic and country relationships loaded.
         """
         group = PromptGroup(
             user_id=user_id,
             title=title,
             topic_id=topic_id,
+            country_id=country_resolution.country_id,
+            country_locked=country_resolution.is_locked,
             brand=brand,
             competitors=competitors,
         )
         self._session.add(group)
         await self._session.flush()
-        return group
+
+        # Reload with relationships for the response
+        return await self.get_by_id(group.id)
 
     async def get_by_id(self, group_id: int) -> Optional[PromptGroup]:
-        """Get a group by ID with topic eagerly loaded."""
+        """Get a group by ID with topic and country eagerly loaded."""
         stmt = (
             select(PromptGroup)
-            .options(selectinload(PromptGroup.topic))
+            .options(
+                selectinload(PromptGroup.topic),
+                selectinload(PromptGroup.country),
+            )
             .where(PromptGroup.id == group_id)
         )
         result = await self._session.execute(stmt)
@@ -77,11 +94,14 @@ class PromptGroupService:
         """Get all groups for a user with prompt counts.
 
         Returns list of (group, prompt_count) tuples, ordered by creation date.
-        Eagerly loads topic relationship.
+        Eagerly loads topic and country relationships.
         """
         stmt = (
             select(PromptGroup, func.count(PromptGroupBinding.id).label("prompt_count"))
-            .options(selectinload(PromptGroup.topic))
+            .options(
+                selectinload(PromptGroup.topic),
+                selectinload(PromptGroup.country),
+            )
             .outerjoin(
                 PromptGroupBinding, PromptGroup.id == PromptGroupBinding.group_id
             )
@@ -98,9 +118,10 @@ class PromptGroupService:
         user_id: str,
         title: Optional[str] = None,
         brand: Optional[dict] = None,
-        competitors: Optional[List[dict]] = None
+        competitors: Optional[List[dict]] = None,
+        country_id: Optional[int] = None,
     ) -> PromptGroup:
-        """Update a group's title, brand, and/or competitors.
+        """Update a group's title, brand, competitors, and/or country.
 
         Args:
             group_id: The group ID to update
@@ -108,10 +129,12 @@ class PromptGroupService:
             title: Optional new title (None = no change)
             brand: Optional brand dict (None = no change)
             competitors: Optional competitors list (None = no change, [] = clear)
+            country_id: Optional new country ID (None = no change)
 
         Raises:
             GroupNotFoundError: If group doesn't exist
             GroupAccessDeniedError: If user doesn't own the group
+            CountryLockedError: If trying to change a locked country
         """
         group = await self.get_by_id_for_user(group_id, user_id)
 
@@ -124,9 +147,16 @@ class PromptGroupService:
         if competitors is not None:
             group.competitors = competitors if competitors else None
 
+        if country_id is not None:
+            if group.country_locked:
+                raise CountryLockedError(group_id)
+            group.country_id = country_id
+
         group.updated_at = datetime.now(timezone.utc)
         await self._session.flush()
-        return group
+
+        # Reload with relationships for the response
+        return await self.get_by_id(group.id)
 
     async def delete_group(self, group_id: int, user_id: str) -> None:
         """Delete a group.

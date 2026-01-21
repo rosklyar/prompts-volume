@@ -66,6 +66,22 @@ class GroupHasNoTopicError(PromptGroupError):
         super().__init__(f"Group {group_id} has no topic binding")
 
 
+class CountryLockedError(PromptGroupError):
+    """Raised when trying to change a locked country."""
+
+    def __init__(self, group_id: int):
+        self.group_id = group_id
+        super().__init__(f"Country is locked for group {group_id} (bound to topic)")
+
+
+class CountryResolutionError(PromptGroupError):
+    """Raised when country cannot be resolved."""
+
+    def __init__(self, message: str):
+        self.message = message
+        super().__init__(message)
+
+
 def to_http_exception(error: PromptGroupError) -> HTTPException:
     """Convert domain exception to HTTP exception."""
     if isinstance(error, GroupNotFoundError):
@@ -82,6 +98,10 @@ def to_http_exception(error: PromptGroupError) -> HTTPException:
         return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error))
     if isinstance(error, GroupHasNoTopicError):
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error))
+    if isinstance(error, CountryLockedError):
+        return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error))
+    if isinstance(error, CountryResolutionError):
+        return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error))
     return HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(error)
     )

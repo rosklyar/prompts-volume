@@ -23,7 +23,8 @@ async def get_onboarding_status(
 ):
     """Check if current user has completed onboarding.
 
-    Returns completion status, skip status, and whether preferences exist.
+    Returns completion status and whether preferences exist.
+    Onboarding is required and cannot be skipped.
     """
     try:
         status_data = await onboarding_service.get_onboarding_status(current_user.id)
@@ -64,28 +65,6 @@ async def complete_onboarding(
 
         # Build response
         return _build_preferences_response(prefs)
-    except OnboardingError as e:
-        raise to_http_exception(e)
-
-
-@router.post("/skip", response_model=OnboardingStatusResponse)
-async def skip_onboarding(
-    current_user: CurrentUser,
-    onboarding_service: OnboardingServiceDep,
-):
-    """Skip onboarding for now (can complete later via settings).
-
-    User can still set preferences later through the settings page.
-    """
-    try:
-        prefs = await onboarding_service.skip_onboarding(current_user.id)
-        return OnboardingStatusResponse(
-            is_completed=prefs.onboarding_completed_at is not None,
-            is_skipped=prefs.onboarding_skipped_at is not None,
-            completed_at=prefs.onboarding_completed_at,
-            skipped_at=prefs.onboarding_skipped_at,
-            has_preferences=prefs.default_brand is not None,
-        )
     except OnboardingError as e:
         raise to_http_exception(e)
 
@@ -140,20 +119,14 @@ async def update_preferences(
 
 def _build_preferences_response(prefs) -> UserPreferencesResponse:
     """Build UserPreferencesResponse from UserPreferences model."""
-    # Handle None case (new user with no preferences)
-    if prefs is None:
-        return UserPreferencesResponse(
-            default_country_id=None,
-            default_business_domain_id=None,
-            default_brand=None,
-            default_competitors=[],
-            onboarding_status=OnboardingStatusResponse(
-                is_completed=False,
-                is_skipped=False,
-                completed_at=None,
-                skipped_at=None,
-                has_preferences=False,
-            ),
+    # Handle None case (new user with no preferences - shouldn't happen after onboarding)
+    if prefs is None or prefs.default_country_id is None:
+        # Return a minimal response for users who haven't completed onboarding
+        # This should only happen for legacy users
+        from fastapi import HTTPException, status
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Onboarding not completed. Please complete onboarding first.",
         )
 
     # Convert JSONB to Pydantic models
@@ -172,9 +145,7 @@ def _build_preferences_response(prefs) -> UserPreferencesResponse:
         default_competitors=competitors,
         onboarding_status=OnboardingStatusResponse(
             is_completed=prefs.onboarding_completed_at is not None,
-            is_skipped=prefs.onboarding_skipped_at is not None,
             completed_at=prefs.onboarding_completed_at,
-            skipped_at=prefs.onboarding_skipped_at,
             has_preferences=prefs.default_brand is not None,
         ),
     )

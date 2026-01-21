@@ -51,7 +51,7 @@ class AIAssistant(EvalsBase):
 class PromptEvaluation(EvalsBase):
     """Track evaluations of prompts by different AI assistants.
 
-    Note: Multiple evaluations can exist for the same (prompt_id, assistant_id)
+    Note: Multiple evaluations can exist for the same (prompt_id, assistant_id, country_id)
     combination to support retry scenarios when evaluations timeout or fail.
     """
 
@@ -67,6 +67,13 @@ class PromptEvaluation(EvalsBase):
     # AI Assistant identifier
     assistant_id: Mapped[int] = mapped_column(
         ForeignKey("ai_assistants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    # Country identifier for geo-differentiated answers
+    country_id: Mapped[int] = mapped_column(
+        Integer,  # No ForeignKey - countries table is in prompts_db
         nullable=False,
         index=True
     )
@@ -106,8 +113,13 @@ class PromptEvaluation(EvalsBase):
     # Relationships (within evals_db only)
     assistant: Mapped["AIAssistant"] = relationship()
 
+    # Composite index for efficient lookups by (prompt, assistant, country)
+    __table_args__ = (
+        Index("ix_prompt_eval_prompt_assistant_country", "prompt_id", "assistant_id", "country_id"),
+    )
+
     def __repr__(self) -> str:
-        return f"<PromptEvaluation(id={self.id}, prompt_id={self.prompt_id}, assistant_id={self.assistant_id}, status='{self.status.value}')>"
+        return f"<PromptEvaluation(id={self.id}, prompt_id={self.prompt_id}, assistant_id={self.assistant_id}, country_id={self.country_id}, status='{self.status.value}')>"
 
 
 class ConsumedEvaluation(EvalsBase):
@@ -169,6 +181,13 @@ class GroupReport(EvalsBase):
         nullable=False,
         index=True,
     )  # No FK - user is in users_db
+
+    # Country snapshot at report generation time
+    country_id: Mapped[int] = mapped_column(
+        Integer,  # No ForeignKey - countries table is in prompts_db
+        nullable=False,
+        index=True,
+    )
 
     # Report metadata
     title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
@@ -269,7 +288,8 @@ class BrightDataBatch(EvalsBase):
 
     When user requests fresh execution with BRIGHTDATA_ANSWERS=true,
     a batch is registered here. When the webhook arrives, we look up
-    the batch to find which prompt_ids were requested.
+    the batch to find which prompt_ids were requested and which country
+    was used for scraping.
     """
 
     __tablename__ = "brightdata_batches"
@@ -296,6 +316,11 @@ class BrightDataBatch(EvalsBase):
         index=True,
         server_default="1",  # Default to ChatGPT
     )
+    country_id: Mapped[int] = mapped_column(
+        Integer,  # No ForeignKey - countries table is in prompts_db
+        nullable=False,
+        index=True,
+    )
     status: Mapped[BrightDataBatchStatus] = mapped_column(
         Enum(
             BrightDataBatchStatus,
@@ -316,7 +341,7 @@ class BrightDataBatch(EvalsBase):
     )
 
     def __repr__(self) -> str:
-        return f"<BrightDataBatch(id={self.id}, batch_id='{self.batch_id}', status='{self.status.value}')>"
+        return f"<BrightDataBatch(id={self.id}, batch_id='{self.batch_id}', country_id={self.country_id}, status='{self.status.value}')>"
 
 
 # =============================================================================

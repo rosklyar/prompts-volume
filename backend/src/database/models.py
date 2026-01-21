@@ -205,6 +205,18 @@ class PromptGroup(Base):
         nullable=True,
         index=True,
     )
+    country_id: Mapped[int] = mapped_column(
+        ForeignKey("countries.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    country_locked: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+        comment="True if country is locked from topic binding",
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -240,6 +252,7 @@ class PromptGroup(Base):
 
     # Relationships
     topic: Mapped[Optional["Topic"]] = relationship()
+    country: Mapped["Country"] = relationship()
     bindings: Mapped[List["PromptGroupBinding"]] = relationship(
         back_populates="group",
         cascade="all, delete-orphan"

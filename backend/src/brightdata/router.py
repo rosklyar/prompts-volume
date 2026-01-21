@@ -105,8 +105,9 @@ async def receive_brightdata_webhook(
     prompts = await _get_prompts_by_ids(prompts_session, batch.prompt_ids)
     text_to_prompt_id = {p.prompt_text: p.id for p in prompts}
 
-    # Get assistant_id from batch (set during trigger)
+    # Get assistant_id and country_id from batch (set during trigger)
     assistant_id = batch.assistant_id
+    country_id = batch.country_id
 
     processed = 0
     failed = 0
@@ -130,10 +131,11 @@ async def receive_brightdata_webhook(
             for c in (item.citations or [])
         ]
 
-        # Create PromptEvaluation record
+        # Create PromptEvaluation record with country_id
         evaluation = PromptEvaluation(
             prompt_id=prompt_id,
             assistant_id=assistant_id,
+            country_id=country_id,
             status=EvaluationStatus.COMPLETED,
             claimed_at=now,
             completed_at=now,
@@ -145,7 +147,7 @@ async def receive_brightdata_webhook(
         )
         evals_session.add(evaluation)
         processed += 1
-        logger.info(f"Created evaluation for prompt {prompt_id}")
+        logger.info(f"Created evaluation for prompt {prompt_id} with country_id={country_id}")
 
     # Commit all evaluations
     await evals_session.commit()

@@ -36,6 +36,7 @@ def _request_fresh_and_webhook(
     client, simulate_webhook, auth_headers, prompt_ids: list[int], prompts_dict: dict[int, str],
     response_template: str = "Response mentioning TestBrand",
     citations: list[dict] | None = None,
+    country_id: int = 1,  # Default to Ukraine (from seed data)
 ) -> str:
     """Request fresh execution and simulate webhook completion.
 
@@ -47,6 +48,7 @@ def _request_fresh_and_webhook(
         prompts_dict: Dict mapping prompt_id -> prompt_text
         response_template: Template for response text (will have prompt_id appended)
         citations: Optional citations to include
+        country_id: Country ID for scraping (default: 1 = Ukraine)
 
     Returns:
         batch_id from the request
@@ -54,7 +56,7 @@ def _request_fresh_and_webhook(
     # Request fresh execution
     request_resp = client.post(
         "/execution/api/v1/request-fresh",
-        json={"prompt_ids": prompt_ids},
+        json={"prompt_ids": prompt_ids, "country_id": country_id},
         headers=auth_headers,
     )
     assert request_resp.status_code == 200, f"Request fresh failed: {request_resp.json()}"
@@ -336,7 +338,7 @@ def test_enhanced_comparison_time_estimations(client, create_verified_user, simu
     # === STEP 4: Request fresh - get time estimates ===
     request_resp = client.post(
         "/execution/api/v1/request-fresh",
-        json={"prompt_ids": [prompt_id]},
+        json={"prompt_ids": [prompt_id], "country_id": 1},
         headers=auth_headers,
     )
     assert request_resp.status_code == 200

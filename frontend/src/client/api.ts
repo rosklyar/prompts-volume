@@ -273,6 +273,12 @@ export const promptsApi = {
 
 // ===== Group Types =====
 
+export interface CountryInfo {
+  id: number
+  name: string
+  iso_code: string
+}
+
 export interface GroupSummary {
   id: number
   title: string
@@ -281,6 +287,8 @@ export interface GroupSummary {
   competitor_count: number
   topic_id: number
   topic_title: string
+  country: CountryInfo
+  country_locked: boolean
   created_at: string
   updated_at: string
 }
@@ -298,6 +306,8 @@ export interface GroupDetail {
   topic_id: number
   topic_title: string
   topic_description: string
+  country: CountryInfo
+  country_locked: boolean
   created_at: string
   updated_at: string
   brand: BrandInfo
@@ -396,13 +406,15 @@ export const groupsApi = {
     title: string,
     topic: TopicInput | null,
     brand: BrandInfo,
-    competitors?: CompetitorInfo[]
+    competitors?: CompetitorInfo[],
+    countryId?: number
   ): Promise<GroupSummary> {
     const body: {
       title: string
       brand: BrandInfo
       topic?: TopicInput
       competitors?: CompetitorInfo[]
+      country_id?: number
     } = { title, brand }
 
     // Only include topic if provided
@@ -412,6 +424,11 @@ export const groupsApi = {
 
     if (competitors && competitors.length > 0) {
       body.competitors = competitors
+    }
+
+    // Include country_id if provided (required when no topic)
+    if (countryId !== undefined) {
+      body.country_id = countryId
     }
 
     const response = await fetchWithAuth("/prompt-groups/api/v1/groups", {
@@ -428,6 +445,7 @@ export const groupsApi = {
       title?: string
       brand?: BrandInfo
       competitors?: CompetitorInfo[] | null
+      country_id?: number
     }
   ): Promise<GroupSummary> {
     const response = await fetchWithAuth(
@@ -925,16 +943,22 @@ export const executionApi = {
   /**
    * Request fresh execution for prompts
    * @param promptIds - Array of prompt IDs to request fresh evaluation for
+   * @param countryId - Country ID for scraping (determines geo-location for results)
    * @param assistantId - AI Assistant ID (default: 1 for ChatGPT)
    */
   async requestFresh(
     promptIds: number[],
+    countryId: number,
     assistantId: number = 1
   ): Promise<RequestFreshExecutionResponse> {
     const response = await fetchWithAuth("/execution/api/v1/request-fresh", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt_ids: promptIds, assistant_id: assistantId }),
+      body: JSON.stringify({
+        prompt_ids: promptIds,
+        country_id: countryId,
+        assistant_id: assistantId,
+      }),
     })
     return response.json()
   },
@@ -971,16 +995,6 @@ export const onboardingApi = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request),
-    })
-    return response.json()
-  },
-
-  /**
-   * Skip onboarding (can complete later via settings)
-   */
-  async skip(): Promise<OnboardingStatusResponse> {
-    const response = await fetchWithAuth("/onboarding/api/v1/skip", {
-      method: "POST",
     })
     return response.json()
   },

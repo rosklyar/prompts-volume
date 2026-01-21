@@ -28,6 +28,7 @@ import type { PromptSelection, PromptSelectionInfo } from "@/types/billing"
 import { getGroupColor } from "./constants"
 import { BatchUploadModal } from "./BatchUploadModal"
 import { AddFromTopicModal } from "./AddFromTopicModal"
+import { CountrySelector } from "./CountrySelector"
 import { ScheduleToggle } from "./ScheduleToggle"
 
 interface PromptWithAnswer extends PromptInGroup {
@@ -52,6 +53,7 @@ interface GroupCardProps {
   onLoadReport: (selections: PromptSelection[], assistantId: number) => void
   onBrandChange: (brand: BrandInfo) => void
   onCompetitorsChange: (competitors: CompetitorInfo[]) => void
+  onCountryChange: (countryId: number) => void
   isExpanded: boolean
   onToggleExpand: () => void
 }
@@ -71,6 +73,7 @@ export function GroupCard({
   onLoadReport,
   onBrandChange,
   onCompetitorsChange,
+  onCountryChange,
   isExpanded,
   onToggleExpand,
 }: GroupCardProps) {
@@ -79,6 +82,7 @@ export function GroupCard({
   const [brandEditorFocus, setBrandEditorFocus] = useState<"brand" | "competitors">("brand")
   const [showBatchUpload, setShowBatchUpload] = useState(false)
   const [showAddFromTopic, setShowAddFromTopic] = useState(false)
+  const [showCountrySelector, setShowCountrySelector] = useState(false)
   const [isReportCollapsed, setIsReportCollapsed] = useState(true)
   const [showReportModal, setShowReportModal] = useState(false)
   const colors = getGroupColor(colorIndex)
@@ -204,36 +208,72 @@ export function GroupCard({
                   onSave={onUpdateTitle}
                 />
               </div>
-              {/* Badges */}
+              {/* Badges - fixed widths for vertical alignment across cards */}
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-white/80 text-gray-500 uppercase tracking-wider">
-                  {prompts.length} prompt{prompts.length !== 1 ? "s" : ""}
-                </span>
-                {brand && (
+                {/* Prompts count - fixed width for alignment */}
+                <div className="w-[90px] flex-shrink-0">
+                  <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-white/80 text-gray-500 uppercase tracking-wider inline-block">
+                    {prompts.length} prompt{prompts.length !== 1 ? "s" : ""}
+                  </span>
+                </div>
+                {/* Country badge - fixed width for alignment (fits "XX" + lock icon) */}
+                <div className="w-[52px] flex-shrink-0">
+                  {group.country && (
+                    group.country_locked ? (
+                      <span
+                        className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 uppercase tracking-wider inline-flex items-center gap-1"
+                        title={`Country: ${group.country.name} (locked from topic)`}
+                      >
+                        {group.country.iso_code}
+                        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        </svg>
+                      </span>
+                    ) : (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setShowCountrySelector(true)
+                        }}
+                        className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 uppercase tracking-wider inline-flex items-center gap-1 transition-all hover:scale-105 hover:bg-blue-100"
+                        title={`Country: ${group.country.name} - Click to change`}
+                      >
+                        {group.country.iso_code}
+                      </button>
+                    )
+                  )}
+                </div>
+                {/* Brand badge - min width for alignment */}
+                <div className="min-w-[60px] flex-shrink-0">
+                  {brand && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setBrandEditorFocus("brand")
+                        setShowBrandEditor(true)
+                      }}
+                      className="text-[10px] font-semibold px-2.5 py-1 rounded-full uppercase tracking-wider transition-all hover:scale-105"
+                      style={{ backgroundColor: `${colors.accent}15`, color: colors.accent }}
+                      title="Edit brand"
+                    >
+                      {brand.name}
+                    </button>
+                  )}
+                </div>
+                {/* Competitors badge - fixed width for alignment */}
+                <div className="w-[110px] flex-shrink-0">
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
-                      setBrandEditorFocus("brand")
+                      setBrandEditorFocus("competitors")
                       setShowBrandEditor(true)
                     }}
-                    className="text-[10px] font-semibold px-2.5 py-1 rounded-full uppercase tracking-wider transition-all hover:scale-105"
-                    style={{ backgroundColor: `${colors.accent}15`, color: colors.accent }}
-                    title="Edit brand"
+                    className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-gray-100 text-gray-500 uppercase tracking-wider transition-all hover:bg-gray-200 hover:text-gray-600 inline-block"
+                    title="Edit competitors"
                   >
-                    {brand.name}
+                    {competitors.length} competitor{competitors.length !== 1 ? "s" : ""}
                   </button>
-                )}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setBrandEditorFocus("competitors")
-                    setShowBrandEditor(true)
-                  }}
-                  className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-gray-100 text-gray-500 uppercase tracking-wider transition-all hover:bg-gray-200 hover:text-gray-600"
-                  title="Edit competitors"
-                >
-                  {competitors.length} competitor{competitors.length !== 1 ? "s" : ""}
-                </button>
+                </div>
                 {/* Pending report request badge */}
                 {hasPendingRequest && pendingStatus && (
                   <span
@@ -295,29 +335,31 @@ export function GroupCard({
                   )}
               </button>
 
-              {/* Add from topic button - only show if group has topic */}
-              {group.topic_id && (
-                <button
-                  onClick={() => setShowAddFromTopic(true)}
-                  className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-white/80 transition-colors"
-                  aria-label="Add prompts from topic"
-                  title="Add prompts from topic"
-                >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
+              {/* Add from topic button - always reserve space for consistent alignment */}
+              <div className="w-8 flex-shrink-0">
+                {group.topic_id && (
+                  <button
+                    onClick={() => setShowAddFromTopic(true)}
+                    className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-white/80 transition-colors"
+                    aria-label="Add prompts from topic"
+                    title="Add prompts from topic"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                </button>
-              )}
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                  </button>
+                )}
+              </div>
 
               {/* Batch upload button */}
               <button
@@ -488,6 +530,17 @@ export function GroupCard({
           accentColor={colors.accent}
           onClose={() => setShowBrandEditor(false)}
           initialFocus={brandEditorFocus}
+        />
+      )}
+
+      {/* Country Selector Modal */}
+      {showCountrySelector && group.country && !group.country_locked && (
+        <CountrySelector
+          currentCountry={group.country}
+          accentColor={colors.accent}
+          onCountryChange={onCountryChange}
+          isUpdating={false}
+          onClose={() => setShowCountrySelector(false)}
         />
       )}
 

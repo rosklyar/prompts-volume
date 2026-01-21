@@ -5,12 +5,25 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 
 from src.auth.deps import CurrentUser
-from src.prompt_groups.exceptions import PromptGroupError, to_http_exception
+from src.geography.services.country_resolver import (
+    CountryLockedError as ResolverCountryLockedError,
+    CountryResolutionError as ResolverCountryResolutionError,
+    CountryResolver,
+    InvalidCountryError as ResolverInvalidCountryError,
+)
+from src.prompt_groups.exceptions import (
+    CountryLockedError,
+    CountryResolutionError,
+    InvalidCountryError,
+    PromptGroupError,
+    to_http_exception,
+)
 from src.prompt_groups.models.api_models import (
     AddPromptsResultResponse,
     AddPromptsToGroupRequest,
     AvailablePromptResponse,
     AvailablePromptsListResponse,
+    CountryInfo,
     CreateGroupRequest,
     GroupDetailResponse,
     GroupListResponse,
@@ -24,6 +37,7 @@ from src.prompt_groups.services import (
     PromptGroupBindingService,
     PromptGroupService,
     TopicResolutionService,
+    get_country_resolver,
     get_prompt_group_binding_service,
     get_prompt_group_service,
     get_topic_resolution_service,
@@ -40,6 +54,9 @@ PromptGroupBindingServiceDep = Annotated[
 TopicResolutionServiceDep = Annotated[
     TopicResolutionService, Depends(get_topic_resolution_service)
 ]
+CountryResolverDep = Annotated[
+    CountryResolver, Depends(get_country_resolver)
+]
 
 
 @router.get("/groups", response_model=GroupListResponse)
@@ -49,7 +66,7 @@ async def get_user_groups(
 ):
     """Get all prompt groups for the current user.
 
-    Returns groups with prompt counts, brand, and topic info, ordered by creation date.
+    Returns groups with prompt counts, brand, topic, and country info, ordered by creation date.
     """
     try:
         groups_with_counts = await group_service.get_user_groups(current_user.id)
@@ -63,6 +80,12 @@ async def get_user_groups(
                 competitor_count=len(group.competitors) if group.competitors else 0,
                 topic_id=group.topic_id,
                 topic_title=group.topic.title if group.topic else None,
+                country=CountryInfo(
+                    id=group.country.id,
+                    name=group.country.name,
+                    iso_code=group.country.iso_code,
+                ),
+                country_locked=group.country_locked,
                 created_at=group.created_at,
                 updated_at=group.updated_at,
             )
@@ -82,10 +105,13 @@ async def create_group(
     current_user: CurrentUser,
     group_service: PromptGroupServiceDep,
     topic_resolver: TopicResolutionServiceDep,
+    country_resolver: CountryResolverDep,
 ):
-    """Create a new prompt group with optional topic binding, brand, and optional competitors.
+    """Create a new prompt group with mandatory country, optional topic binding, brand, and competitors.
 
-    If topic is not provided, prompts added to this group will require admin approval.
+    Country resolution:
+    - If topic is provided: country is taken from the topic (locked)
+    - If no topic: country_id must be provided or will use user's default preference
     """
     try:
         # Resolve topic if provided (validates existing or creates new)
@@ -95,6 +121,13 @@ async def create_group(
             topic_id = await topic_resolver.resolve(request.topic)
             topic = await topic_resolver.get_topic(topic_id)
             topic_title = topic.title
+
+        # Resolve country (topic > explicit > user preference)
+        country_resolution = await country_resolver.resolve_for_group(
+            topic_id=topic_id,
+            explicit_country_id=request.country_id,
+            user_id=current_user.id,
+        )
 
         # Convert Pydantic models to dicts for storage
         brand_data = request.brand.model_dump()
@@ -106,6 +139,7 @@ async def create_group(
             current_user.id,
             request.title,
             brand=brand_data,
+            country_resolution=country_resolution,
             topic_id=topic_id,
             competitors=competitors_data,
         )
@@ -117,9 +151,19 @@ async def create_group(
             competitor_count=len(request.competitors) if request.competitors else 0,
             topic_id=topic_id,
             topic_title=topic_title,
+            country=CountryInfo(
+                id=group.country.id,
+                name=group.country.name,
+                iso_code=group.country.iso_code,
+            ),
+            country_locked=group.country_locked,
             created_at=group.created_at,
             updated_at=group.updated_at,
         )
+    except ResolverCountryResolutionError as e:
+        raise to_http_exception(CountryResolutionError(str(e)))
+    except ResolverInvalidCountryError as e:
+        raise to_http_exception(InvalidCountryError(e.country_id))
     except PromptGroupError as e:
         raise to_http_exception(e)
 
@@ -131,7 +175,7 @@ async def get_group_details(
     group_service: PromptGroupServiceDep,
     binding_service: PromptGroupBindingServiceDep,
 ):
-    """Get detailed information about a group including topic, brand, competitors, and prompts."""
+    """Get detailed information about a group including topic, country, brand, competitors, and prompts."""
     try:
         group = await group_service.get_by_id_for_user(group_id, current_user.id)
         prompts_data = await binding_service.get_group_with_prompts(group)
@@ -150,6 +194,12 @@ async def get_group_details(
             topic_id=group.topic_id,
             topic_title=group.topic.title if group.topic else None,
             topic_description=group.topic.description if group.topic else None,
+            country=CountryInfo(
+                id=group.country.id,
+                name=group.country.name,
+                iso_code=group.country.iso_code,
+            ),
+            country_locked=group.country_locked,
             created_at=group.created_at,
             updated_at=group.updated_at,
             brand=brand,
@@ -166,9 +216,23 @@ async def update_group(
     request: UpdateGroupRequest,
     current_user: CurrentUser,
     group_service: PromptGroupServiceDep,
+    country_resolver: CountryResolverDep,
 ):
-    """Update a group's title, brand, and/or competitors (topic cannot be changed)."""
+    """Update a group's title, brand, competitors, and/or country (topic cannot be changed).
+
+    Country can only be changed if country_locked is false.
+    """
     try:
+        # Validate country if provided
+        if request.country_id is not None:
+            # Get current group to check if locked
+            current_group = await group_service.get_by_id_for_user(group_id, current_user.id)
+            await country_resolver.validate_country_update(
+                request.country_id,
+                current_group.country_locked,
+                group_id,
+            )
+
         # Convert models to dict format if provided
         brand_data = None
         if request.brand is not None:
@@ -184,6 +248,7 @@ async def update_group(
             title=request.title,
             brand=brand_data,
             competitors=competitors_data,
+            country_id=request.country_id,
         )
 
         # Fetch prompt count by getting user groups
@@ -200,9 +265,19 @@ async def update_group(
             competitor_count=len(group.competitors) if group.competitors else 0,
             topic_id=group.topic_id,
             topic_title=group.topic.title if group.topic else None,
+            country=CountryInfo(
+                id=group.country.id,
+                name=group.country.name,
+                iso_code=group.country.iso_code,
+            ),
+            country_locked=group.country_locked,
             created_at=group.created_at,
             updated_at=group.updated_at,
         )
+    except ResolverCountryLockedError as e:
+        raise to_http_exception(CountryLockedError(e.group_id))
+    except ResolverInvalidCountryError as e:
+        raise to_http_exception(InvalidCountryError(e.country_id))
     except PromptGroupError as e:
         raise to_http_exception(e)
 

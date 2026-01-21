@@ -93,7 +93,7 @@ def test_json_export_happy_path(client, create_verified_user, simulate_webhook):
     # Add prompts to group
     add_response = client.post(
         f"/prompt-groups/api/v1/groups/{group_id}/prompts",
-        json={"prompt_ids": prompt_ids},
+        json={"prompt_ids": prompt_ids, "country_id": 1},
         headers=auth_headers,
     )
     assert add_response.status_code == 200, f"Add prompts failed: {add_response.json()}"
@@ -101,7 +101,7 @@ def test_json_export_happy_path(client, create_verified_user, simulate_webhook):
     # Request fresh execution
     request_resp = client.post(
         "/execution/api/v1/request-fresh",
-        json={"prompt_ids": prompt_ids},
+        json={"prompt_ids": prompt_ids, "country_id": 1},
         headers=auth_headers,
     )
     assert request_resp.status_code == 200, f"Request fresh failed: {request_resp.json()}"
