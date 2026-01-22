@@ -5,6 +5,7 @@
 
 import { useReportHistory, formatReportTime } from "@/hooks/useReports"
 import { formatCredits } from "@/hooks/useBilling"
+import { getAssistantLogo } from "@/utils/assistantLogos"
 
 interface ReportHistoryPanelProps {
   groupId: number
@@ -48,7 +49,7 @@ export function ReportHistoryPanel({
           {[1, 2, 3].map((i) => (
             <div
               key={i}
-              className="flex-shrink-0 w-[140px] h-[72px] rounded-lg bg-gray-100 animate-pulse"
+              className="flex-shrink-0 w-[175px] h-[72px] rounded-lg bg-gray-100 animate-pulse"
               style={{ animationDelay: `${i * 100}ms` }}
             />
           ))}
@@ -129,7 +130,7 @@ export function ReportHistoryPanel({
               onClick={() => handleCardClick(report.id)}
               className={`
                 flex-shrink-0 relative group
-                w-[140px] px-3 py-2.5 rounded-lg
+                w-[175px] px-3 py-2.5 rounded-lg
                 text-left transition-all duration-200
                 hover:shadow-md
                 ${isSelected ? "shadow-md" : "hover:scale-[1.02]"}
@@ -149,25 +150,46 @@ export function ReportHistoryPanel({
                 />
               )}
 
-              {/* Header row with timestamp and assistant badge */}
-              <div className="flex items-center justify-between gap-1 mb-1.5">
-                <p
-                  className="text-xs font-medium truncate"
-                  style={{ color: isSelected ? accentColor : "#374151" }}
-                >
-                  {formatReportTime(report.created_at)}
-                </p>
-                {/* Assistant badge */}
-                <span
-                  className="text-[8px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 uppercase tracking-wide"
-                  style={{
-                    backgroundColor: isSelected ? `${accentColor}20` : "#f3f4f6",
-                    color: isSelected ? accentColor : "#6b7280",
-                  }}
-                >
-                  {report.assistant_name}
-                </span>
-              </div>
+              {/* Assistant badge row */}
+              {(() => {
+                const assistantName = report.assistant_name || "ChatGPT"
+                const logo = getAssistantLogo(assistantName)
+                return (
+                  <div className="flex items-center gap-1.5 mb-1">
+                    {logo ? (
+                      <img
+                        src={logo}
+                        alt={assistantName}
+                        className="w-4 h-4"
+                      />
+                    ) : (
+                      <span
+                        className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold"
+                        style={{
+                          backgroundColor: isSelected ? `${accentColor}20` : "#e5e7eb",
+                          color: isSelected ? accentColor : "#6b7280",
+                        }}
+                      >
+                        {assistantName.charAt(0)}
+                      </span>
+                    )}
+                    <span
+                      className="text-[10px] font-medium"
+                      style={{ color: isSelected ? accentColor : "#6b7280" }}
+                    >
+                      {assistantName}
+                    </span>
+                  </div>
+                )
+              })()}
+
+              {/* Timestamp row */}
+              <p
+                className="text-xs font-medium truncate mb-1"
+                style={{ color: isSelected ? accentColor : "#374151" }}
+              >
+                {formatReportTime(report.created_at)}
+              </p>
 
               {/* Stats row */}
               <div className="flex items-center gap-2 text-[10px] text-gray-500">

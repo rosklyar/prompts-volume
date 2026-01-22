@@ -15,10 +15,11 @@
  * - Completed: report ready to view
  */
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useReportData } from "@/hooks/useExecution"
 import { useReportRequest } from "@/hooks/useReportRequest"
 import { useAssistants } from "@/hooks/useAssistants"
+import { getAssistantLogo } from "@/utils/assistantLogos"
 import type { PromptStatus, PromptReportData } from "@/types/execution"
 import type { PromptSelection } from "@/types/billing"
 
@@ -94,6 +95,21 @@ export function ReportModal(props: ReportModalProps) {
 
   // Collapsible prompt details state
   const [showDetails, setShowDetails] = useState(false)
+
+  // Custom dropdown state
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setDropdownOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
 
   // Fetch report data for the selected assistant
   const {
@@ -318,23 +334,72 @@ export function ReportModal(props: ReportModalProps) {
               <label className="block text-sm font-medium text-gray-600 mb-2 font-['DM_Sans']">
                 AI Assistant
               </label>
-              <select
-                value={assistantId}
-                onChange={(e) => setAssistantId(Number(e.target.value))}
-                disabled={hasPending || !!generateSuccess}
-                className="
-                  w-full px-3 py-2.5 rounded-lg border border-gray-200
-                  bg-white text-gray-700 text-sm font-['DM_Sans']
-                  focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-50
-                  disabled:opacity-50 disabled:cursor-not-allowed
-                "
-              >
-                {assistantsData?.assistants.map((assistant) => (
-                  <option key={assistant.id} value={assistant.id}>
-                    {assistant.name}
-                  </option>
-                ))}
-              </select>
+              <div className="relative" ref={dropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => !generateSuccess && setDropdownOpen(!dropdownOpen)}
+                  disabled={!!generateSuccess}
+                  className="
+                    w-full px-3 py-2.5 rounded-lg border border-gray-200
+                    bg-white text-gray-700 text-sm font-['DM_Sans']
+                    text-left flex items-center gap-2
+                    focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-50
+                    disabled:opacity-50 disabled:cursor-not-allowed
+                  "
+                >
+                  {(() => {
+                    const selectedAssistant = assistantsData?.assistants.find((a) => a.id === assistantId)
+                    const logo = selectedAssistant ? getAssistantLogo(selectedAssistant.name) : null
+                    return (
+                      <>
+                        {logo && <img src={logo} alt="" className="w-5 h-5" />}
+                        <span className="flex-1">{selectedAssistant?.name ?? "Select..."}</span>
+                        <svg
+                          className={`w-4 h-4 text-gray-400 transition-transform ${dropdownOpen ? "rotate-180" : ""}`}
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </>
+                    )
+                  })()}
+                </button>
+
+                {dropdownOpen && (
+                  <div className="absolute top-full left-0 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 py-1">
+                    {assistantsData?.assistants.map((assistant) => {
+                      const logo = getAssistantLogo(assistant.name)
+                      const isSelected = assistant.id === assistantId
+                      return (
+                        <button
+                          key={assistant.id}
+                          type="button"
+                          onClick={() => {
+                            setAssistantId(assistant.id)
+                            setDropdownOpen(false)
+                          }}
+                          className={`
+                            w-full px-3 py-2 flex items-center gap-2
+                            text-sm font-['DM_Sans'] text-left
+                            hover:bg-gray-50 transition-colors
+                            ${isSelected ? "bg-gray-50" : ""}
+                          `}
+                        >
+                          {logo && <img src={logo} alt="" className="w-5 h-5" />}
+                          <span className={isSelected ? "font-medium" : ""}>{assistant.name}</span>
+                          {isSelected && (
+                            <svg className="w-4 h-4 ml-auto text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Summary Card - fixed height to prevent layout shift */}
