@@ -149,13 +149,25 @@ export function ReportHistoryPanel({
                 />
               )}
 
-              {/* Timestamp */}
-              <p
-                className="text-xs font-medium mb-1.5 truncate"
-                style={{ color: isSelected ? accentColor : "#374151" }}
-              >
-                {formatReportTime(report.created_at)}
-              </p>
+              {/* Header row with timestamp and assistant badge */}
+              <div className="flex items-center justify-between gap-1 mb-1.5">
+                <p
+                  className="text-xs font-medium truncate"
+                  style={{ color: isSelected ? accentColor : "#374151" }}
+                >
+                  {formatReportTime(report.created_at)}
+                </p>
+                {/* Assistant badge */}
+                <span
+                  className="text-[8px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 uppercase tracking-wide"
+                  style={{
+                    backgroundColor: isSelected ? `${accentColor}20` : "#f3f4f6",
+                    color: isSelected ? accentColor : "#6b7280",
+                  }}
+                >
+                  {report.assistant_name}
+                </span>
+              </div>
 
               {/* Stats row */}
               <div className="flex items-center gap-2 text-[10px] text-gray-500">

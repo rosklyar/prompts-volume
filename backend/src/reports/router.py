@@ -112,11 +112,13 @@ async def get_report_data(
     )
     from src.database.models import Prompt, PromptGroupBinding
 
-    # Verify user owns the group
+    # Verify user owns the group and get country_id
     try:
-        await group_service.get_by_id_for_user(group_id, current_user.id)
+        group = await group_service.get_by_id_for_user(group_id, current_user.id)
     except Exception:
         raise to_http_exception(GroupNotFoundError(group_id))
+
+    country_id = group.country_id
 
     # Get comparison service for duplicate detection
     comparison_service = ComparisonService(prompts_session, evals_session)
@@ -146,15 +148,19 @@ async def get_report_data(
     )
     prompts_map = {p.id: p for p in prompts_result.scalars().all()}
 
-    # Get all completed evaluations for these prompts filtered by assistant
+    # Get all completed evaluations for these prompts filtered by assistant and country
     # Ordered by completed_at DESC so first in each group is the latest
+    eval_conditions = [
+        PromptEvaluation.prompt_id.in_(prompt_ids),
+        PromptEvaluation.assistant_id == assistant_id,
+        PromptEvaluation.status == EvaluationStatus.COMPLETED,
+    ]
+    if country_id is not None:
+        eval_conditions.append(PromptEvaluation.country_id == country_id)
+
     evals_result = await evals_session.execute(
         select(PromptEvaluation)
-        .where(
-            PromptEvaluation.prompt_id.in_(prompt_ids),
-            PromptEvaluation.assistant_id == assistant_id,
-            PromptEvaluation.status == EvaluationStatus.COMPLETED,
-        )
+        .where(*eval_conditions)
         .order_by(PromptEvaluation.completed_at.desc())
     )
     all_evals = list(evals_result.scalars().all())
@@ -233,14 +239,14 @@ async def get_report_data(
         )
 
     # Check if generating a report now would be a duplicate
-    # (same evaluation IDs as the latest report)
+    # (same evaluation IDs as the latest report for this country)
     would_be_duplicate = False
     current_eval_ids = {
         e.id for e in latest_eval_by_prompt.values()
     }
     if current_eval_ids:
         latest_report_eval_ids = await comparison_service.get_latest_report_evaluation_ids(
-            group_id, current_user.id
+            group_id, current_user.id, country_id=country_id
         )
         if latest_report_eval_ids is not None:
             would_be_duplicate = current_eval_ids == latest_report_eval_ids
@@ -282,14 +288,19 @@ async def generate_report(
     except Exception as e:
         raise to_http_exception(GroupNotFoundError(group_id))
 
-    # Get latest report for validation
-    latest_report = await report_service.get_latest_report(group_id, current_user.id)
+    country_id = group.country_id
 
-    # Get available options for validation
+    # Get latest report for validation (filtered by country)
+    latest_report = await report_service.get_latest_report(
+        group_id, current_user.id, country_id=country_id
+    )
+
+    # Get available options for validation (filtered by country)
     prompt_selection_info = await selection_analyzer.analyze_selections(
         group_id=group_id,
         user_id=current_user.id,
         last_report=latest_report,
+        country_id=country_id,
     )
 
     # Validate user's selections
@@ -338,6 +349,7 @@ async def generate_report(
             title=request.title,
             brand_snapshot=group.brand,
             competitors_snapshot=group.competitors,
+            assistant_id=request.assistant_id,
         )
     except DuplicateReportError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
@@ -483,6 +495,8 @@ async def list_reports(
                 prompts_with_data=r.prompts_with_data,
                 prompts_awaiting=r.prompts_awaiting,
                 total_cost=r.total_cost,
+                assistant_id=r.assistant_id,
+                assistant_name=r.assistant.name if r.assistant else "ChatGPT",
             )
             for r in reports
         ],
@@ -667,14 +681,19 @@ async def compare_with_latest_report(
     except Exception as e:
         raise to_http_exception(GroupNotFoundError(group_id))
 
-    # Get latest report
-    latest_report = await report_service.get_latest_report(group_id, current_user.id)
+    country_id = group.country_id
 
-    # Analyze selections for all prompts
+    # Get latest report for this country
+    latest_report = await report_service.get_latest_report(
+        group_id, current_user.id, country_id=country_id
+    )
+
+    # Analyze selections for all prompts (filtered by country)
     prompt_selections = await selection_analyzer.analyze_selections(
         group_id=group_id,
         user_id=current_user.id,
         last_report=latest_report,
+        country_id=country_id,
     )
 
     # Calculate stats

@@ -309,7 +309,7 @@ class ReportService:
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[GroupReport], int]:
-        """List reports for a group."""
+        """List reports for a group with assistant info."""
         # Count total (in evals_db)
         count_query = select(func.count(GroupReport.id)).where(
             GroupReport.group_id == group_id,
@@ -318,13 +318,14 @@ class ReportService:
         count_result = await self._evals_session.execute(count_query)
         total = count_result.scalar() or 0
 
-        # Get reports (from evals_db)
+        # Get reports with assistant relationship (from evals_db)
         query = (
             select(GroupReport)
             .where(
                 GroupReport.group_id == group_id,
                 GroupReport.user_id == user_id,
             )
+            .options(selectinload(GroupReport.assistant))
             .order_by(GroupReport.created_at.desc())
             .limit(limit)
             .offset(offset)
@@ -335,10 +336,23 @@ class ReportService:
         return reports, total
 
     async def get_latest_report(
-        self, group_id: int, user_id: str
+        self,
+        group_id: int,
+        user_id: str,
+        *,
+        country_id: int | None = None,
     ) -> GroupReport | None:
-        """Get the most recent report for a group."""
-        return await self._comparison_service.get_latest_report(group_id, user_id)
+        """Get the most recent report for a group.
+
+        Args:
+            group_id: The prompt group ID
+            user_id: The user ID
+            country_id: Optional country filter. If provided, only returns
+                       reports for that specific country.
+        """
+        return await self._comparison_service.get_latest_report(
+            group_id, user_id, country_id=country_id
+        )
 
     def detect_brand_changes(
         self,
@@ -389,6 +403,8 @@ class ReportService:
         title: str | None = None,
         brand_snapshot: dict | None = None,
         competitors_snapshot: list[dict] | None = None,
+        *,
+        assistant_id: int = 1,
     ) -> GroupReport:
         """Generate a report with explicit evaluation selections.
 
@@ -402,6 +418,7 @@ class ReportService:
             title: Optional report title
             brand_snapshot: Current brand config to snapshot
             competitors_snapshot: Current competitors config to snapshot
+            assistant_id: AI Assistant ID used for this report (default: 1 for ChatGPT)
 
         Returns:
             The created GroupReport
@@ -441,6 +458,7 @@ class ReportService:
                 user_id=user_id,
                 title=title,
                 country_id=country_id,
+                assistant_id=assistant_id,
                 total_prompts=0,
                 prompts_with_data=0,
                 prompts_awaiting=0,
@@ -456,12 +474,12 @@ class ReportService:
         # Build selection map: prompt_id -> evaluation_id (or None)
         selection_map = {s.prompt_id: s.evaluation_id for s in selections}
 
-        # Check for duplicate report
+        # Check for duplicate report (filtered by country)
         selected_eval_ids_set = {
             s.evaluation_id for s in selections if s.evaluation_id is not None
         }
         latest_eval_ids = await self._comparison_service.get_latest_report_evaluation_ids(
-            group_id, user_id
+            group_id, user_id, country_id=country_id
         )
         if latest_eval_ids is not None and selected_eval_ids_set == latest_eval_ids:
             raise DuplicateReportError(
@@ -509,6 +527,7 @@ class ReportService:
             user_id=user_id,
             title=title,
             country_id=country_id,
+            assistant_id=assistant_id,
             total_prompts=len(prompts),
             prompts_with_data=prompts_with_data,
             prompts_awaiting=prompts_awaiting,

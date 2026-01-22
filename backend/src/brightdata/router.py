@@ -13,6 +13,7 @@ from src.brightdata.deps import WebhookAuthDep
 from src.brightdata.models.api_models import WebhookResponse
 from src.brightdata.services.batch_service import BrightDataBatchService
 from src.brightdata.strategies import AssistantStrategyFactory, IndexBasedPromptMatcher
+from src.reports.services.report_request_service import ReportRequestService
 from src.database.evals_models import (
     BrightDataBatchStatus,
     EvaluationStatus,
@@ -159,7 +160,6 @@ async def receive_brightdata_webhook(
 
     # Check if this batch is part of a manual report request
     try:
-        from src.reports.services.report_request_service import ReportRequestService
         request_service = ReportRequestService(prompts_session, evals_session)
         await request_service.on_brightdata_completed(batch_id)
     except Exception as e:

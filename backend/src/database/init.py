@@ -300,18 +300,25 @@ async def _seed_prompts(session: AsyncSession) -> None:
 
 async def _seed_ai_assistants(session: AsyncSession) -> None:
     """Seed initial AI assistants into evals_db."""
-    # Check if ChatGPT already exists
-    result = await session.execute(
-        select(AIAssistant).where(AIAssistant.name == "ChatGPT")
-    )
-    existing = result.scalar_one_or_none()
+    assistants_config = [
+        (1, "ChatGPT"),
+        (2, "Perplexity"),
+    ]
 
-    if existing is None:
-        chatgpt = AIAssistant(
-            id=1,
-            name="ChatGPT",
-        )
-        session.add(chatgpt)
+    # Check existing assistants
+    result = await session.execute(
+        select(AIAssistant).where(AIAssistant.id.in_([a[0] for a in assistants_config]))
+    )
+    existing_ids = {a.id for a in result.scalars().all()}
+
+    assistants_to_add = [
+        AIAssistant(id=id_, name=name)
+        for id_, name in assistants_config
+        if id_ not in existing_ids
+    ]
+
+    if assistants_to_add:
+        session.add_all(assistants_to_add)
         await session.flush()
 
         # Reset sequence to continue from the highest ID

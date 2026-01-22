@@ -31,15 +31,30 @@ class ComparisonService:
         self._evals_session = evals_session
 
     async def get_latest_report(
-        self, group_id: int, user_id: str
+        self,
+        group_id: int,
+        user_id: str,
+        *,
+        country_id: int | None = None,
     ) -> GroupReport | None:
-        """Get the most recent report for a group."""
+        """Get the most recent report for a group.
+
+        Args:
+            group_id: The prompt group ID
+            user_id: The user ID
+            country_id: Optional country filter. If provided, only returns
+                       reports for that specific country.
+        """
+        conditions = [
+            GroupReport.group_id == group_id,
+            GroupReport.user_id == user_id,
+        ]
+        if country_id is not None:
+            conditions.append(GroupReport.country_id == country_id)
+
         query = (
             select(GroupReport)
-            .where(
-                GroupReport.group_id == group_id,
-                GroupReport.user_id == user_id,
-            )
+            .where(*conditions)
             .order_by(GroupReport.created_at.desc())
             .limit(1)
         )
@@ -47,14 +62,24 @@ class ComparisonService:
         return result.scalar_one_or_none()
 
     async def get_latest_report_evaluation_ids(
-        self, group_id: int, user_id: str
+        self,
+        group_id: int,
+        user_id: str,
+        *,
+        country_id: int | None = None,
     ) -> set[int] | None:
         """Get evaluation IDs from user's latest report for the group.
+
+        Args:
+            group_id: The prompt group ID
+            user_id: The user ID
+            country_id: Optional country filter. If provided, only considers
+                       reports for that specific country.
 
         Returns None if no previous report exists.
         Returns set of evaluation_ids (excluding None values).
         """
-        latest = await self.get_latest_report(group_id, user_id)
+        latest = await self.get_latest_report(group_id, user_id, country_id=country_id)
         if not latest:
             return None
 

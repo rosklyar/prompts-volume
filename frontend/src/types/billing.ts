@@ -169,6 +169,8 @@ export interface ReportSummary {
   prompts_with_data: number
   prompts_awaiting: number
   total_cost: number
+  assistant_id: number
+  assistant_name: string
 }
 
 export interface ReportListResponse {
