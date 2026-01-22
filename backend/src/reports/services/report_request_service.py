@@ -302,6 +302,7 @@ class ReportRequestService:
                 title=None,  # Auto-generated
                 brand_snapshot=group.brand if group else None,
                 competitors_snapshot=group.competitors if group else None,
+                assistant_id=request.assistant_id,
             )
 
             # Mark as completed
