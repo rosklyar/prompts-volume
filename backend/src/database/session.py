@@ -29,8 +29,8 @@ def get_engine() -> AsyncEngine:
             settings.database_url,
             echo=settings.database_echo,
             pool_pre_ping=True,
-            pool_size=3,
-            max_overflow=5,
+            pool_size=1,
+            max_overflow=4,
             pool_recycle=1800,  # Recycle connections every 30 minutes
             pool_timeout=10,    # Fail fast if no connection available
             connect_args={
