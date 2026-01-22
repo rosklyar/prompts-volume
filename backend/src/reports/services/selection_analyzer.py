@@ -70,6 +70,8 @@ class SelectionAnalyzerService:
         group_id: int,
         user_id: str,
         last_report: GroupReport | None,
+        *,
+        country_id: int | None = None,
     ) -> list[PromptSelectionInfo]:
         """Analyze available options for each prompt in the group.
 
@@ -78,6 +80,13 @@ class SelectionAnalyzerService:
         2. Find all evaluations newer than that cutoff
         3. Check which are fresh (not consumed by user)
         4. Apply default selection strategy
+
+        Args:
+            group_id: The prompt group ID
+            user_id: The user ID
+            last_report: The most recent report for the group (if any)
+            country_id: Optional country filter. If provided, only returns
+                       evaluations for that specific country.
         """
         # Get all prompts in the group
         prompts_data = await self._get_prompts_in_group(group_id)
@@ -93,14 +102,18 @@ class SelectionAnalyzerService:
             last_report_evals = await self._get_report_evaluation_info(last_report.id)
 
         # Get ALL completed evaluations - any can be selected for report generation
-        all_evals = await self._get_all_evaluations_with_assistants(prompt_ids)
+        all_evals = await self._get_all_evaluations_with_assistants(
+            prompt_ids, country_id=country_id
+        )
 
         # Get consumed evaluation IDs for this user
         all_eval_ids = [e["id"] for evals in all_evals.values() for e in evals]
         consumed_ids = await self._get_consumed_evaluation_ids(user_id, all_eval_ids)
 
         # Get in-progress prompts
-        in_progress_prompts = await self._get_in_progress_prompts(prompt_ids)
+        in_progress_prompts = await self._get_in_progress_prompts(
+            prompt_ids, country_id=country_id
+        )
 
         # Build selection info for each prompt
         result = []
@@ -179,8 +192,15 @@ class SelectionAnalyzerService:
     async def _get_all_evaluations_with_assistants(
         self,
         prompt_ids: list[int],
+        *,
+        country_id: int | None = None,
     ) -> dict[int, list[dict]]:
         """Get all completed evaluations for each prompt, with assistant info.
+
+        Args:
+            prompt_ids: List of prompt IDs to check
+            country_id: Optional country filter. If provided, only returns
+                       evaluations for that specific country.
 
         Returns ALL completed evaluations - any can be selected for report generation.
         """
@@ -188,6 +208,13 @@ class SelectionAnalyzerService:
             return {}
 
         # Get all completed evaluations for these prompts with assistant info
+        conditions = [
+            PromptEvaluation.prompt_id.in_(prompt_ids),
+            PromptEvaluation.status == EvaluationStatus.COMPLETED,
+        ]
+        if country_id is not None:
+            conditions.append(PromptEvaluation.country_id == country_id)
+
         query = (
             select(
                 PromptEvaluation.id,
@@ -197,10 +224,7 @@ class SelectionAnalyzerService:
                 AIAssistant.name.label("assistant_name"),
             )
             .join(AIAssistant, PromptEvaluation.assistant_id == AIAssistant.id)
-            .where(
-                PromptEvaluation.prompt_id.in_(prompt_ids),
-                PromptEvaluation.status == EvaluationStatus.COMPLETED,
-            )
+            .where(*conditions)
             .order_by(PromptEvaluation.completed_at.desc())
         )
         result = await self._evals_session.execute(query)
@@ -234,17 +258,32 @@ class SelectionAnalyzerService:
         result = await self._evals_session.execute(query)
         return set(result.scalars().all())
 
-    async def _get_in_progress_prompts(self, prompt_ids: list[int]) -> set[int]:
-        """Get prompt IDs that have IN_PROGRESS evaluations."""
+    async def _get_in_progress_prompts(
+        self,
+        prompt_ids: list[int],
+        *,
+        country_id: int | None = None,
+    ) -> set[int]:
+        """Get prompt IDs that have IN_PROGRESS evaluations.
+
+        Args:
+            prompt_ids: List of prompt IDs to check
+            country_id: Optional country filter. If provided, only considers
+                       in-progress evaluations for that specific country.
+        """
         if not prompt_ids:
             return set()
 
+        conditions = [
+            PromptEvaluation.prompt_id.in_(prompt_ids),
+            PromptEvaluation.status == EvaluationStatus.IN_PROGRESS,
+        ]
+        if country_id is not None:
+            conditions.append(PromptEvaluation.country_id == country_id)
+
         query = (
             select(PromptEvaluation.prompt_id)
-            .where(
-                PromptEvaluation.prompt_id.in_(prompt_ids),
-                PromptEvaluation.status == EvaluationStatus.IN_PROGRESS,
-            )
+            .where(*conditions)
             .distinct()
         )
         result = await self._evals_session.execute(query)

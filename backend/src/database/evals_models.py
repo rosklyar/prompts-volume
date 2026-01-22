@@ -182,6 +182,14 @@ class GroupReport(EvalsBase):
         index=True,
     )  # No FK - user is in users_db
 
+    # AI Assistant used for this report
+    assistant_id: Mapped[int] = mapped_column(
+        ForeignKey("ai_assistants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+        server_default="1",  # Default to ChatGPT for backwards compatibility
+    )
+
     # Country snapshot at report generation time
     country_id: Mapped[int] = mapped_column(
         Integer,  # No ForeignKey - countries table is in prompts_db
@@ -210,6 +218,7 @@ class GroupReport(EvalsBase):
     competitors_snapshot: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
 
     # Relationships (within evals_db only)
+    assistant: Mapped["AIAssistant"] = relationship()
     items: Mapped[List["GroupReportItem"]] = relationship(
         back_populates="report",
         cascade="all, delete-orphan"
@@ -338,6 +347,14 @@ class BrightDataBatch(EvalsBase):
     completed_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
+    )
+
+    # Index-based prompt matching for reliable webhook correlation
+    # Format: {"1": prompt_id_1, "2": prompt_id_2, ...} (string keys for JSON)
+    index_to_prompt_id: Mapped[Optional[dict]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="Map of 1-based index to prompt_id for webhook matching"
     )
 
     def __repr__(self) -> str:

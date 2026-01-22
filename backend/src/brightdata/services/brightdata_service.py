@@ -4,7 +4,7 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.brightdata.models.domain import BrightDataPromptInput, BrightDataTriggerRequest
+from src.brightdata.models.domain import BrightDataTriggerRequest
 from src.brightdata.services.batch_service import BrightDataBatchService
 from src.brightdata.services.brightdata_client import BrightDataHttpClient
 from src.brightdata.strategies import AssistantStrategyFactory
@@ -17,6 +17,7 @@ class BrightDataService:
 
     Encapsulates all Bright Data triggering logic:
     - Batch registration in database
+    - Index generation for prompt correlation
     - Request building
     - HTTP client calls
     """
@@ -57,15 +58,28 @@ class BrightDataService:
             logger.debug("No prompts to trigger")
             return
 
-        # Get URL strategy for the selected assistant
+        # Get strategy for the selected assistant
         strategy = AssistantStrategyFactory.get_strategy(assistant_id)
-        assistant_url = strategy.get_url()
-        logger.info(f"Using {strategy.get_assistant_name()} URL: {assistant_url} for country={country_iso_code}")
+        logger.info(
+            f"Using {strategy.get_assistant_name()} "
+            f"(dataset: {strategy.get_dataset_id()}) for country={country_iso_code}"
+        )
 
-        # Always register batch in database (for webhook correlation and pending tracking)
+        # Generate index-to-prompt_id mapping (1-based indices, string keys for JSON)
         prompt_ids = list(prompts.keys())
+        index_to_prompt_id = {
+            str(i + 1): prompt_id
+            for i, prompt_id in enumerate(prompt_ids)
+        }
+
+        # Register batch in database with index mapping
         await self._batch_service.register_batch(
-            batch_id, prompt_ids, user_id, country_id, assistant_id=assistant_id
+            batch_id,
+            prompt_ids,
+            user_id,
+            country_id,
+            assistant_id=assistant_id,
+            index_to_prompt_id=index_to_prompt_id,
         )
 
         if not self._client:
@@ -73,18 +87,22 @@ class BrightDataService:
             return
 
         try:
-
-            # Build request inputs with strategy-provided URL
+            # Build request inputs using strategy, with 1-based index for each prompt
             inputs = [
-                BrightDataPromptInput(
-                    url=assistant_url,
+                strategy.build_input_item(
                     prompt=text,
                     country=country_iso_code,
+                    index=i + 1,  # 1-based index
                 )
-                for text in prompts.values()
+                for i, text in enumerate(prompts.values())
             ]
 
-            webhook_url = f"{self._webhook_base_url}/evaluations/api/v1/webhook/{batch_id}"
+            # Build webhook URL with assistant key for routing
+            assistant_key = strategy.get_assistant_key()
+            webhook_url = (
+                f"{self._webhook_base_url}/evaluations/api/v1/webhook/"
+                f"{assistant_key}/{batch_id}"
+            )
 
             trigger_request = BrightDataTriggerRequest(
                 batch_id=batch_id,
@@ -93,8 +111,11 @@ class BrightDataService:
                 webhook_auth_header=f"Basic {self._webhook_secret}",
             )
 
-            await self._client.trigger_batch(trigger_request)
-            logger.info(f"Bright Data batch {batch_id} triggered successfully for country={country_iso_code}")
+            await self._client.trigger_batch(trigger_request, strategy)
+            logger.info(
+                f"Bright Data batch {batch_id} triggered successfully "
+                f"for {strategy.get_assistant_name()}, country={country_iso_code}"
+            )
 
         except Exception as e:
             logger.exception(f"Failed to trigger Bright Data batch: {e}")

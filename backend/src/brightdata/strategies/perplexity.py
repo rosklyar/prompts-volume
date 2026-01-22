@@ -1,4 +1,4 @@
-"""ChatGPT strategy for BrightData scraping."""
+"""Perplexity strategy for BrightData scraping."""
 
 from typing import Any
 
@@ -6,44 +6,40 @@ from src.brightdata.strategies.base import AssistantConfig, AssistantStrategy, P
 
 
 _CONFIG = AssistantConfig(
-    assistant_id=1,
-    assistant_name="ChatGPT",
-    assistant_key="chatgpt",
-    base_url="https://chatgpt.com/",
-    dataset_id="gd_m7aof0k82r803d5bjm",
+    assistant_id=2,
+    assistant_name="Perplexity",
+    assistant_key="perplexity",
+    base_url="https://www.perplexity.ai",
+    dataset_id="gd_m7dhdot1vw9a7gc1n",
 )
 
 _OUTPUT_FIELDS = [
-    "prompt",
+    "url",
     "answer_text",
-    "links_attached",
+    "prompt",
+    "is_shopping_data",
+    "shopping_data",
     "citations",
-    "shopping",
-    "search_sources",
     "web_search_query",
-    "input",
-    "timestamp",
-    "model",
-    "recommendations",
-    "index",  # Added for index-based matching
+    "sources",
+    "index",
 ]
 
 
-class ChatGPTStrategy(AssistantStrategy):
-    """Strategy for ChatGPT assistant scraping."""
+class PerplexityStrategy(AssistantStrategy):
+    """Strategy for Perplexity assistant scraping."""
 
-    # Legacy class-level attributes for backward compatibility
     ASSISTANT_ID = _CONFIG.assistant_id
     ASSISTANT_NAME = _CONFIG.assistant_name
     URL = _CONFIG.base_url
 
     @property
     def config(self) -> AssistantConfig:
-        """Return ChatGPT configuration."""
+        """Return Perplexity configuration."""
         return _CONFIG
 
     def get_output_fields(self) -> list[str]:
-        """Return ChatGPT-specific output fields."""
+        """Return Perplexity-specific output fields."""
         return _OUTPUT_FIELDS
 
     def build_input_item(
@@ -52,41 +48,47 @@ class ChatGPTStrategy(AssistantStrategy):
         country: str,
         index: int,
     ) -> dict[str, Any]:
-        """Build ChatGPT input item for BrightData API.
+        """Build Perplexity input item for BrightData API.
 
-        ChatGPT uses web_search and require_sources fields.
+        Perplexity uses simpler format with export_markdown_file flag.
         """
         return {
             "url": self.config.base_url,
             "prompt": prompt,
             "country": country,
-            "web_search": True,
-            "require_sources": False,
-            "additional_prompt": "",
             "index": index,
+            "export_markdown_file": False,
         }
 
     def parse_webhook_item(self, raw_item: dict[str, Any]) -> ParsedWebhookItem:
-        """Parse ChatGPT webhook response into normalized format."""
-        # Extract index (ChatGPT returns it in 'input' or at top level)
+        """Parse Perplexity webhook response into normalized format."""
+        # Extract index
         index: int | None = None
         if "index" in raw_item:
             index = int(raw_item["index"])
-        elif "input" in raw_item and isinstance(raw_item["input"], dict):
-            index = raw_item["input"].get("index")
-            if index is not None:
-                index = int(index)
 
-        # Extract citations and normalize
+        # Perplexity uses 'citations' list with url/title/domain structure
         raw_citations = raw_item.get("citations") or []
         citations = [
             {
                 "url": c.get("url", ""),
-                "text": c.get("title", ""),
+                "text": c.get("title", c.get("text", "")),
                 "domain": c.get("domain", ""),
             }
             for c in raw_citations
         ]
+
+        # Also check 'sources' which may contain additional citation-like data
+        raw_sources = raw_item.get("sources") or []
+        for s in raw_sources:
+            if isinstance(s, dict) and s.get("url"):
+                # Avoid duplicates
+                if not any(c["url"] == s.get("url") for c in citations):
+                    citations.append({
+                        "url": s.get("url", ""),
+                        "text": s.get("title", s.get("name", "")),
+                        "domain": s.get("domain", ""),
+                    })
 
         return ParsedWebhookItem(
             index=index,

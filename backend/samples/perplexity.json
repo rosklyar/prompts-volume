@@ -1,0 +1,270 @@
+[
+  {
+    "url": "https://www.perplexity.ai/search/porekomendui-macbook-dlia-robo-7kG_MLX2SGOdHfu1m.vneQ",
+    "answer_text": "Для роботи з фото найкраще обрати MacBook Pro з чіпами M3 Pro/Max або M4 Pro/Max, оскільки вони забезпечують високу продуктивність у Photoshop, Lightroom та інших редакторах. Ці моделі мають Liquid Retina XDR дисплей з точною передачею кольорів, що критично для фотографів. Рекомендується версія 14\" або 16\" з 16+ ГБ RAM та 512+ ГБ SSD.[4][5]\n\n## Основні моделі\n- **MacBook Pro 14\" (M4 Pro/Max)**: Ідеальний баланс портативності та потужності для ретуші, пакетної обробки та AI-фільтрів. Екран з ProMotion (120 Гц) і яскравістю до 1600 ніт забезпечує точність кольорів.[6]\n- **MacBook Pro 16\" (M4 Max)**: Для інтенсивної роботи з RAW-файлами великих розмірів або 8K-зображеннями. Більший екран полегшує багатозадачність.[2][3]\n- **MacBook Air 15\" M3 (альтернатива)**: Достатньо для легкої обробки, якщо бюджет обмежений, але поступається Pro у GPU та екрані.[4]\n\n## Ключові характеристики\n- **Процесор**: M4 серії для швидкого рендерингу та Neural Engine для AI-інструментів.\n- **Екран**: Мінімум 1000 ніт яскравості, P3 колірний простір, True Tone.\n- **Пам'ять**: 24+ ГБ unified memory для великих каталогів фото.[1][8]\n\n## Поради щодо вибору\nОберіть конфігурацію з SD-кардрідом, якщо працюєте з камерами напряму. У 2026 році чекайте M5/M6 оновлень, але поточні M4 вже оптимальні.[3][5]",
+    "prompt": "Порекомендуй MacBook для роботи з фото",
+    "index": 1,
+    "sources": [
+      {
+        "title": "Как выбрать MacBook дизайнеру? - GetApp",
+        "url": "https://get-app.com.ua/ru/yak-obraty-macbook-dyzaineru/",
+        "description": null,
+        "position": 1
+      },
+      {
+        "title": "Какой Apple Mac подойдет для фотографа?",
+        "url": "https://poltava.to/news/61528/",
+        "description": null,
+        "position": 2
+      },
+      {
+        "title": "Что известно о большом обновлении MacBook Pro 2026?",
+        "url": "https://jabko.ua/rus/blog/news/scho-vidomo-pro-velyke-onovlennya-macbook-pro-2026",
+        "description": null,
+        "position": 3
+      },
+      {
+        "title": "Який MacBook найкращий для фотографа?",
+        "url": "https://bilyayivka.city/articles/371255/yakij-macbook-najkraschij-dlya-fotografa",
+        "description": null,
+        "position": 4
+      },
+      {
+        "title": "Какой MacBook купить в 2026 году - Mr.Fix",
+        "url": "https://www.mrfix.ua/post/kakoj-macbook-kupit-v-2025-godu/",
+        "description": null,
+        "position": 5
+      },
+      {
+        "title": "MacBook Pro 14 оптимален для работы с фото",
+        "url": "https://vchaspik.ua/otdohni/tehnika/23/517818-macbook-pro-14-optimalen-dlya-raboty-s-foto-i-videokontentom",
+        "description": null,
+        "position": 6
+      },
+      {
+        "title": "Apple готовит доступный MacBook в 2026 году",
+        "url": "https://applefun.com.ua/ru/blog/apple/apple-gotovit-dostupnyy-macbook-v-2026-godu-chto-uzhe-izvestno",
+        "description": null,
+        "position": 7
+      },
+      {
+        "title": "Я профессиональный фотограф. Какой MacBook мне ...",
+        "url": "https://www.reddit.com/r/mac/comments/1jhbepv/im_a_professional_photographer_which_macbook/",
+        "description": null,
+        "position": 8
+      },
+      {
+        "title": "Найкращі фоторедактори для Mac у 2026 році",
+        "url": "https://skylum.com/uk/blog/best-photo-editing-software-for-mac",
+        "description": null,
+        "position": 9
+      },
+      {
+        "title": "Выбор макбука для работы, фото и общения 2023 [1]",
+        "url": "https://forum.ixbt.com/topic.cgi?id=79%3A9880",
+        "description": null,
+        "position": 10
+      }
+    ],
+    "web_search_query": [
+      "MacBook для роботи з фото 2026"
+    ],
+    "citations": [
+      {
+        "url": "https://get-app.com.ua/ru/yak-obraty-macbook-dyzaineru/",
+        "title": "Как выбрать MacBook дизайнеру? - GetApp",
+        "domain": "https://get-app.com.ua/",
+        "position": "1"
+      },
+      {
+        "url": "https://poltava.to/news/61528/",
+        "title": "Какой Apple Mac подойдет для фотографа?",
+        "domain": "https://poltava.to/",
+        "position": "2"
+      },
+      {
+        "url": "https://jabko.ua/rus/blog/news/scho-vidomo-pro-velyke-onovlennya-macbook-pro-2026",
+        "title": "Что известно о большом обновлении MacBook Pro 2026?",
+        "domain": "https://jabko.ua/",
+        "position": "3"
+      },
+      {
+        "url": "https://bilyayivka.city/articles/371255/yakij-macbook-najkraschij-dlya-fotografa",
+        "title": "Який MacBook найкращий для фотографа?",
+        "domain": "https://bilyayivka.city/",
+        "position": "4"
+      },
+      {
+        "url": "https://www.mrfix.ua/post/kakoj-macbook-kupit-v-2025-godu/",
+        "title": "Какой MacBook купить в 2026 году - Mr.Fix",
+        "domain": "https://www.mrfix.ua/",
+        "position": "5"
+      },
+      {
+        "url": "https://vchaspik.ua/otdohni/tehnika/23/517818-macbook-pro-14-optimalen-dlya-raboty-s-foto-i-videokontentom",
+        "title": "MacBook Pro 14 оптимален для работы с фото",
+        "domain": "https://vchaspik.ua/",
+        "position": "6"
+      },
+      {
+        "url": "https://applefun.com.ua/ru/blog/apple/apple-gotovit-dostupnyy-macbook-v-2026-godu-chto-uzhe-izvestno",
+        "title": "Apple готовит доступный MacBook в 2026 году",
+        "domain": "https://applefun.com.ua/",
+        "position": "7"
+      },
+      {
+        "url": "https://www.reddit.com/r/mac/comments/1jhbepv/im_a_professional_photographer_which_macbook/",
+        "title": "Я профессиональный фотограф. Какой MacBook мне ...",
+        "domain": "https://www.reddit.com/",
+        "position": "8"
+      },
+      {
+        "url": "https://skylum.com/uk/blog/best-photo-editing-software-for-mac",
+        "title": "Найкращі фоторедактори для Mac у 2026 році",
+        "domain": "https://skylum.com/",
+        "position": "9"
+      },
+      {
+        "url": "https://forum.ixbt.com/topic.cgi?id=79%3A9880",
+        "title": "Выбор макбука для работы, фото и общения 2023 [1]",
+        "domain": "https://forum.ixbt.com/",
+        "position": "10"
+      }
+    ],
+    "shopping_data": null
+  },
+  {
+    "url": "https://www.perplexity.ai/search/de-kupiti-noutbuk-asus-4u3Q9yGQS3mG91awBKf8zQ",
+    "answer_text": "Ноутбук ASUS можна купити як у великих інтернет‑магазинах України, так і в офіційному магазині ASUS, або в місцевих магазинах техніки.[1][2][3][6]\n\n### Офіційний інтернет‑магазин ASUS\n\nУ власному онлайн‑магазині ASUS Україна продаються ноутбуки Vivobook, Zenbook, ProArt, ігрові ROG та TUF з міжнародною гарантією.[6][8]\nТам можна купити ноутбук ASUS з такими умовами:\n\n- безкоштовна доставка по Україні при покупці від 2500 грн[6]\n- офіційна гарантія та підтримка від ASUS[6]\n- можливість замовити зі знижками та акціями[6]\n\nПосилання: `asus.com/ua-ua/store/laptops/`.[8]\n\n### Великі інтернет‑магазини України\n\nУ багатьох популярних магазинах є широкий вибір ноутбуків ASUS, з доставкою в будь‑яке місто.[2][3][5][9][1]\n\n**Foxtrot**  \n- ноутбуки ASUS у розділі “Ноутбуки ASUS”[1]\n- фізичні магазини та самовивіз у багатьох містах, включаючи Закарпаття[1]\n- можливість оплати частинами, розстрочка, кредит[1]\n\n**Rozetka**  \n- великий вибір моделей ASUS: Vivobook, Zenbook, ROG та TUF[9]\n- доставка по всій Україні, відділення Нової пошти[9]\n- гнучкі способи оплати[9]\n\n**MOYO**  \n- ноутбуки ASUS у розділі “Ноутбуки Asus”[2]\n- доставка по Україні, включаючи малі населені пункти[2]\n- можливість обміну/повернення 14 днів[2]\n\n**Eldorado та Цитрус**  \n- також продають ноутбуки ASUS за різними цінами[3][5][7]\n- пропонують оплату частинами, розстрочку, знижки[5][3]\n\n### Де шукати в Закарпатті (місцево)\n\nУ містах області (Ужгород, Мукачево, Берегове, Хуст тощо) є:\n\n- телеком/IT‑мережі (наприклад, магазини Foxtrot, магазини туристів, технічні точки)[1]\n- магазини, які спеціалізуються на комп’ютерах та ноутбуках[1]\n\nМожна зайти в будь‑який магазин техніки та поцікавитись, чи є в них ноутбуки ASUS, або замовити в інтернеті з доставкою у відділення Нової пошти/Meest у місті.[2][1]\n\n### Якщо бюджет обмежений: б/у та розпродажі\n\n- На OLX та аналогічних сайтах теж можна купити ноутбук ASUS, але вже б/у[10]\n- Іноді відділи розпродажів у магазинах (Rozetka, технічні магазини тощо) пропонують знижки на деякі моделі ASUS[9][1]\n\nГарніше варто купувати новий ноутбук у офіційному магазині або великому магазині, щоб мати гарантію та підтримку.[6][1]",
+    "prompt": "Де купити ноутбук ASUS",
+    "index": 2,
+    "sources": [
+      {
+        "title": "Ноутбуки ASUS ᐈ купити ноутбук Асус в Києві та Україні",
+        "url": "https://www.foxtrot.com.ua/uk/shop/noutbuki_asus.html",
+        "description": null,
+        "position": 1
+      },
+      {
+        "title": "ᐉ НОУТБУКИ ASUS – купить ноутбук Асус в Киеве и Украине",
+        "url": "https://www.moyo.ua/comp-and-periphery/notebooks/asus/",
+        "description": null,
+        "position": 2
+      },
+      {
+        "title": "Ноутбуки ASUS — купить ноутбук Асус в Киеве и Украине",
+        "url": "https://eldorado.ua/notebooks/c1039096/producer=asus/",
+        "description": null,
+        "position": 3
+      },
+      {
+        "title": "Ноутбук Asus купити недорого в Україні - Київ",
+        "url": "https://dkt.ua/noutbuki-asus/",
+        "description": null,
+        "position": 4
+      },
+      {
+        "title": "Ноутбуки Asus (Асус) в Украине по цене от 9899 грн. ...",
+        "url": "https://www.ctrs.com.ua/ru/noutbuki-i-ultrabuki/brand-asus/",
+        "description": null,
+        "position": 5
+      },
+      {
+        "title": "Офіційний онлайн-магазин ASUS Україна",
+        "url": "https://www.asus.com/ua-ua/store/",
+        "description": null,
+        "position": 6
+      },
+      {
+        "title": "Ноутбуки Asus (Асус)",
+        "url": "https://www.ctrs.com.ua/noutbuki-i-ultrabuki/brand-asus/",
+        "description": null,
+        "position": 7
+      },
+      {
+        "title": "Ноутбуки | Офіційний магазин ASUS Україна",
+        "url": "https://www.asus.com/ua-ua/store/laptops/",
+        "description": null,
+        "position": 8
+      },
+      {
+        "title": "Купить ноутбук Asus в Киеве",
+        "url": "https://rozetka.com.ua/ua/notebooks/c80004/producer=asus/",
+        "description": null,
+        "position": 9
+      },
+      {
+        "title": "Ноутбуки Asus купити недорого в Україні на ...",
+        "url": "https://www.olx.ua/uk/elektronika/noutbuki-i-aksesuary/noutbuki/asus/",
+        "description": null,
+        "position": 10
+      }
+    ],
+    "web_search_query": [
+      "Де купити ноутбук ASUS"
+    ],
+    "citations": [
+      {
+        "url": "https://www.foxtrot.com.ua/uk/shop/noutbuki_asus.html",
+        "title": "Ноутбуки ASUS ᐈ купити ноутбук Асус в Києві та Україні",
+        "domain": "https://www.foxtrot.com.ua/",
+        "position": "1"
+      },
+      {
+        "url": "https://www.moyo.ua/comp-and-periphery/notebooks/asus/",
+        "title": "ᐉ НОУТБУКИ ASUS – купить ноутбук Асус в Киеве и Украине",
+        "domain": "https://www.moyo.ua/",
+        "position": "2"
+      },
+      {
+        "url": "https://eldorado.ua/notebooks/c1039096/producer=asus/",
+        "title": "Ноутбуки ASUS — купить ноутбук Асус в Киеве и Украине",
+        "domain": "https://eldorado.ua/",
+        "position": "3"
+      },
+      {
+        "url": "https://dkt.ua/noutbuki-asus/",
+        "title": "Ноутбук Asus купити недорого в Україні - Київ",
+        "domain": "https://dkt.ua/",
+        "position": "4"
+      },
+      {
+        "url": "https://www.ctrs.com.ua/ru/noutbuki-i-ultrabuki/brand-asus/",
+        "title": "Ноутбуки Asus (Асус) в Украине по цене от 9899 грн. ...",
+        "domain": "https://www.ctrs.com.ua/",
+        "position": "5"
+      },
+      {
+        "url": "https://www.asus.com/ua-ua/store/",
+        "title": "Офіційний онлайн-магазин ASUS Україна",
+        "domain": "https://www.asus.com/",
+        "position": "6"
+      },
+      {
+        "url": "https://www.ctrs.com.ua/noutbuki-i-ultrabuki/brand-asus/",
+        "title": "Ноутбуки Asus (Асус)",
+        "domain": "https://www.ctrs.com.ua/",
+        "position": "7"
+      },
+      {
+        "url": "https://www.asus.com/ua-ua/store/laptops/",
+        "title": "Ноутбуки | Офіційний магазин ASUS Україна",
+        "domain": "https://www.asus.com/",
+        "position": "8"
+      },
+      {
+        "url": "https://rozetka.com.ua/ua/notebooks/c80004/producer=asus/",
+        "title": "Купить ноутбук Asus в Киеве",
+        "domain": "https://rozetka.com.ua/",
+        "position": "9"
+      },
+      {
+        "url": "https://www.olx.ua/uk/elektronika/noutbuki-i-aksesuary/noutbuki/asus/",
+        "title": "Ноутбуки Asus купити недорого в Україні на ...",
+        "domain": "https://www.olx.ua/",
+        "position": "10"
+      }
+    ],
+    "shopping_data": null
+  }
+]

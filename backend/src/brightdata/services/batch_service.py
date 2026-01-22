@@ -28,6 +28,7 @@ class BrightDataBatchService:
         country_id: int,
         *,
         assistant_id: int = 1,
+        index_to_prompt_id: dict[str, int] | None = None,
     ) -> BrightDataBatch:
         """Register a new batch for webhook correlation.
 
@@ -37,6 +38,7 @@ class BrightDataBatchService:
             user_id: User who requested the batch
             country_id: Country ID used for scraping
             assistant_id: AI assistant ID for this batch (default: 1 = ChatGPT)
+            index_to_prompt_id: Mapping of 1-based string index to prompt_id for webhook matching
 
         Returns:
             Created BrightDataBatch record
@@ -48,6 +50,7 @@ class BrightDataBatchService:
             assistant_id=assistant_id,
             country_id=country_id,
             status=BrightDataBatchStatus.PENDING,
+            index_to_prompt_id=index_to_prompt_id,
         )
         self._session.add(batch)
         await self._session.flush()

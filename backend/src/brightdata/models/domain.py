@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
 class BrightDataPromptInput:
-    """Single prompt input for Bright Data API."""
+    """Single prompt input for Bright Data API (legacy format)."""
 
-    url: str  # Always "https://chatgpt.com/"
+    url: str
     prompt: str
     country: str
     web_search: bool = True
@@ -19,9 +20,12 @@ class BrightDataPromptInput:
 
 @dataclass
 class BrightDataTriggerRequest:
-    """Request to trigger Bright Data batch."""
+    """Request to trigger Bright Data batch.
+
+    Inputs are pre-built dicts from strategy.build_input_item().
+    """
 
     batch_id: str
-    inputs: list[BrightDataPromptInput]
+    inputs: list[dict[str, Any]]  # Pre-built by strategy
     webhook_url: str
     webhook_auth_header: str

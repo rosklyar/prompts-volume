@@ -170,6 +170,8 @@ class ReportSummaryResponse(BaseModel):
     prompts_with_data: int
     prompts_awaiting: int
     total_cost: Decimal
+    assistant_id: int
+    assistant_name: str
 
 
 class ReportListResponse(BaseModel):
