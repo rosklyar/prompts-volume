@@ -27,6 +27,7 @@ dependencies = [
     "email-validator>=2.3.0",
     "bcrypt>=5.0.0",
     "apscheduler>=3.11.2",
+    "brightdata-sdk>=0.2.0",
 ]
 
 [[tool.uv.index]]
