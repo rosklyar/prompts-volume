@@ -1,6 +1,9 @@
 """Service for generating and managing reports."""
 
+import logging
 from decimal import Decimal
+
+logger = logging.getLogger(__name__)
 
 
 class DuplicateReportError(Exception):
@@ -332,6 +335,15 @@ class ReportService:
         )
         result = await self._evals_session.execute(query)
         reports = list(result.scalars().all())
+
+        # Verify assistant relationships are loaded
+        for report in reports:
+            if report.assistant is None:
+                logger.warning(
+                    "Report %s has assistant_id=%s but assistant relationship is None",
+                    report.id,
+                    report.assistant_id,
+                )
 
         return reports, total
 

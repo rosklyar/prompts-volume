@@ -74,6 +74,10 @@ async def seed_evals_data(
     # 3. Seed Laptop Evaluations (requires prompts and assistants)
     await _seed_laptop_evaluations(prompts_session, evals_session)
 
+    # 4. Seed Perplexity Evaluations for a subset of prompts
+    await _seed_perplexity_phone_evaluations(prompts_session, evals_session)
+    await _seed_perplexity_laptop_evaluations(prompts_session, evals_session)
+
     await evals_session.commit()
 
 
@@ -480,6 +484,177 @@ async def _seed_laptop_evaluations(
         evaluation = PromptEvaluation(
             prompt_id=prompt.id,
             assistant_id=1,  # ChatGPT
+            country_id=1,  # Ukraine
+            status=EvaluationStatus.COMPLETED,
+            answer=answer_json,
+            created_at=created_at,
+            claimed_at=claimed_at,
+            completed_at=completed_at,
+        )
+        evaluations.append(evaluation)
+
+    # 5. Bulk insert
+    if evaluations:
+        evals_session.add_all(evaluations)
+        await evals_session.flush()
+
+        # 6. Reset sequence
+        await evals_session.execute(
+            text(
+                "SELECT setval('prompt_evaluations_id_seq', "
+                "(SELECT MAX(id) FROM prompt_evaluations))"
+            )
+        )
+
+
+async def _seed_perplexity_phone_evaluations(
+    prompts_session: AsyncSession,
+    evals_session: AsyncSession,
+) -> None:
+    """Seed Perplexity phone evaluations for a subset of prompts to test multi-assistant reports."""
+    # 1. Idempotency check - check for Perplexity (assistant_id=2) phone evaluations
+    result = await evals_session.execute(
+        select(PromptEvaluation)
+        .where(PromptEvaluation.assistant_id == 2)
+        .limit(1)
+    )
+    if result.scalar_one_or_none() is not None:
+        return  # Already seeded
+
+    # 2. Load JSON data (reuse phones.json)
+    json_path = Path(__file__).parent.parent / "data" / "results" / "phones.json"
+    if not json_path.exists():
+        return  # No data file
+
+    with open(json_path, "r", encoding="utf-8") as f:
+        phones_data = json.load(f)
+
+    # 3. Get phone prompts from prompts_db (ordered by ID)
+    result = await prompts_session.execute(
+        select(Prompt)
+        .where(Prompt.topic_id == 1)
+        .order_by(Prompt.id.asc())
+    )
+    prompts = result.scalars().all()
+
+    # 4. Build evaluations for first 10 prompts with Perplexity
+    evaluations = []
+    for idx, phone_data in enumerate(phones_data[:10]):  # Only first 10
+        if idx >= len(prompts):
+            break
+
+        prompt = prompts[idx]
+        answers = phone_data.get("answers", [])
+        if not answers:
+            continue
+
+        answer = answers[0]
+
+        # Use fresh timestamp (current time - 30 minutes)
+        completed_at = datetime.now() - timedelta(minutes=30)
+        claimed_at = completed_at - timedelta(minutes=30)
+        created_at = completed_at - timedelta(minutes=30)
+
+        # Build answer JSON with slightly modified response
+        answer_json = {
+            "response": f"[Perplexity] {answer['response']}",
+            "citations": answer.get("citations", []),
+            "timestamp": completed_at.isoformat(),
+        }
+
+        evaluation = PromptEvaluation(
+            prompt_id=prompt.id,
+            assistant_id=2,  # Perplexity
+            country_id=1,  # Ukraine
+            status=EvaluationStatus.COMPLETED,
+            answer=answer_json,
+            created_at=created_at,
+            claimed_at=claimed_at,
+            completed_at=completed_at,
+        )
+        evaluations.append(evaluation)
+
+    # 5. Bulk insert
+    if evaluations:
+        evals_session.add_all(evaluations)
+        await evals_session.flush()
+
+        # 6. Reset sequence
+        await evals_session.execute(
+            text(
+                "SELECT setval('prompt_evaluations_id_seq', "
+                "(SELECT MAX(id) FROM prompt_evaluations))"
+            )
+        )
+
+
+async def _seed_perplexity_laptop_evaluations(
+    prompts_session: AsyncSession,
+    evals_session: AsyncSession,
+) -> None:
+    """Seed Perplexity laptop evaluations for a subset of prompts to test multi-assistant reports."""
+    # 1. Idempotency check - check for Perplexity (assistant_id=2) laptop evaluations
+    result = await prompts_session.execute(
+        select(Prompt.id).where(Prompt.topic_id == 2).limit(1)
+    )
+    first_laptop_prompt_id = result.scalar_one_or_none()
+
+    if first_laptop_prompt_id:
+        result = await evals_session.execute(
+            select(PromptEvaluation)
+            .where(
+                PromptEvaluation.prompt_id == first_laptop_prompt_id,
+                PromptEvaluation.assistant_id == 2,
+            )
+            .limit(1)
+        )
+        if result.scalar_one_or_none() is not None:
+            return  # Already seeded
+
+    # 2. Load JSON data (reuse laptops.json)
+    json_path = Path(__file__).parent.parent / "data" / "results" / "laptops.json"
+    if not json_path.exists():
+        return  # No data file
+
+    with open(json_path, "r", encoding="utf-8") as f:
+        laptops_data = json.load(f)
+
+    # 3. Get laptop prompts from prompts_db (ordered by ID)
+    result = await prompts_session.execute(
+        select(Prompt)
+        .where(Prompt.topic_id == 2)
+        .order_by(Prompt.id.asc())
+    )
+    prompts = result.scalars().all()
+
+    # 4. Build evaluations for first 10 prompts with Perplexity
+    evaluations = []
+    for idx, laptop_data in enumerate(laptops_data[:10]):  # Only first 10
+        if idx >= len(prompts):
+            break
+
+        prompt = prompts[idx]
+        answers = laptop_data.get("answers", [])
+        if not answers:
+            continue
+
+        answer = answers[0]
+
+        # Use fresh timestamp (current time - 30 minutes)
+        completed_at = datetime.now() - timedelta(minutes=30)
+        claimed_at = completed_at - timedelta(minutes=30)
+        created_at = completed_at - timedelta(minutes=30)
+
+        # Build answer JSON with slightly modified response
+        answer_json = {
+            "response": f"[Perplexity] {answer['response']}",
+            "citations": answer.get("citations", []),
+            "timestamp": completed_at.isoformat(),
+        }
+
+        evaluation = PromptEvaluation(
+            prompt_id=prompt.id,
+            assistant_id=2,  # Perplexity
             country_id=1,  # Ukraine
             status=EvaluationStatus.COMPLETED,
             answer=answer_json,

@@ -496,7 +496,7 @@ async def list_reports(
                 prompts_awaiting=r.prompts_awaiting,
                 total_cost=r.total_cost,
                 assistant_id=r.assistant_id,
-                assistant_name=r.assistant.name if r.assistant else "ChatGPT",
+                assistant_name=r.assistant.name,  # Relationship must be loaded via selectinload
             )
             for r in reports
         ],

@@ -18,14 +18,18 @@ import {
   Check,
   Sparkles
 } from "lucide-react"
-import { useCountries, useBusinessDomains } from "@/hooks/useTopics"
+import { useCountries, useBusinessDomains, useTopicsFiltered } from "@/hooks/useTopics"
 import { useCompleteOnboarding } from "@/hooks/useOnboarding"
+import { useCreateGroup, useAddPromptsToGroup } from "@/hooks/useGroups"
 import { normalizeDomain } from "@/lib/domain"
+import { TopicSelectionStep } from "./TopicSelectionStep"
+import { PromptSelectionStep } from "./PromptSelectionStep"
 import type { CompetitorInfo } from "@/types/groups"
+import type { Topic } from "@/types/admin"
 
-type OnboardingStep = 1 | 2 | 3 | 4 | 5
+type OnboardingStep = 1 | 2 | 3 | 4 | 5 | 6 | 7
 
-const TOTAL_STEPS = 5
+const TOTAL_STEPS = 7
 
 interface BrandData {
   name: string
@@ -59,6 +63,8 @@ export function LinearOnboarding() {
   const navigate = useNavigate()
   const hasSubmittedRef = useRef(false)
   const completeOnboarding = useCompleteOnboarding()
+  const createGroup = useCreateGroup()
+  const addPromptsToGroup = useAddPromptsToGroup()
 
   // Step state
   const [currentStep, setCurrentStep] = useState<OnboardingStep>(1)
@@ -78,14 +84,24 @@ export function LinearOnboarding() {
   const [newCompVariations, setNewCompVariations] = useState("")
   const [newCompVariationsTouched, setNewCompVariationsTouched] = useState(false)
 
+  // Topic/Prompt selection state (steps 5-6)
+  const [selectedTopics, setSelectedTopics] = useState<Topic[]>([])
+  const [selectedPromptsByTopic, setSelectedPromptsByTopic] = useState<Record<number, number[]>>({})
+  const [isCreatingGroups, setIsCreatingGroups] = useState(false)
+  const [groupsCreatedCount, setGroupsCreatedCount] = useState(0)
+
   // Error state
   const [error, setError] = useState<string | null>(null)
 
   // Reference data
   const { data: countriesData, isLoading: isLoadingCountries } = useCountries()
   const { data: businessDomainsData, isLoading: isLoadingDomains } = useBusinessDomains()
+  const { data: topicsData, isLoading: isLoadingTopics } = useTopicsFiltered(countryId, businessDomainId)
 
-  const isPending = completeOnboarding.isPending
+  const isPending = completeOnboarding.isPending || isCreatingGroups
+
+  // Check if topic steps should be shown
+  const shouldShowTopicSteps = countryId !== undefined && businessDomainId !== undefined
 
   // Navigation
   const goNext = useCallback(() => {
@@ -146,6 +162,52 @@ export function LinearOnboarding() {
     setCompetitors(competitors.filter((_, i) => i !== index))
   }
 
+  // Topic selection handlers
+  const handleToggleTopic = useCallback((topic: Topic) => {
+    setSelectedTopics((prev) => {
+      const isSelected = prev.some((t) => t.id === topic.id)
+      if (isSelected) {
+        // Also clear selected prompts for this topic
+        setSelectedPromptsByTopic((prevPrompts) => {
+          const { [topic.id]: _removed, ...rest } = prevPrompts
+          void _removed // silence unused var warning
+          return rest
+        })
+        return prev.filter((t) => t.id !== topic.id)
+      } else {
+        return [...prev, topic]
+      }
+    })
+  }, [])
+
+  // Prompt selection handlers
+  const handleTogglePrompt = useCallback((topicId: number, promptId: number) => {
+    setSelectedPromptsByTopic((prev) => {
+      const currentIds = prev[topicId] || []
+      const isSelected = currentIds.includes(promptId)
+      return {
+        ...prev,
+        [topicId]: isSelected
+          ? currentIds.filter((id) => id !== promptId)
+          : [...currentIds, promptId],
+      }
+    })
+  }, [])
+
+  const handleSelectAllForTopic = useCallback((topicId: number, promptIds: number[]) => {
+    setSelectedPromptsByTopic((prev) => ({
+      ...prev,
+      [topicId]: promptIds,
+    }))
+  }, [])
+
+  const handleDeselectAllForTopic = useCallback((topicId: number) => {
+    setSelectedPromptsByTopic((prev) => ({
+      ...prev,
+      [topicId]: [],
+    }))
+  }, [])
+
   // Validation per step
   const canProceed = useCallback(() => {
     switch (currentStep) {
@@ -153,22 +215,81 @@ export function LinearOnboarding() {
       case 2: return countryId !== undefined // Industry is optional
       case 3: return brand.name.trim().length > 0
       case 4: return true // Competitors - optional
+      case 5: return true // Topics - can always proceed (skip or with selection)
+      case 6: return true // Prompts - can always proceed
       default: return true
     }
   }, [currentStep, countryId, brand.name])
 
+  // Create groups from selected topics and prompts
+  const createGroupsFromSelection = useCallback(async () => {
+    const topicsWithPrompts = selectedTopics.filter(
+      (topic) => (selectedPromptsByTopic[topic.id] || []).length > 0
+    )
+
+    if (topicsWithPrompts.length === 0) {
+      return 0
+    }
+
+    const brandInfo = {
+      name: brand.name.trim(),
+      domain: normalizeDomain(brand.domain) || null,
+      variations: brand.variations
+        .split(",")
+        .map((v) => v.trim())
+        .filter(Boolean),
+    }
+
+    let createdCount = 0
+
+    for (const topic of topicsWithPrompts) {
+      const promptIds = selectedPromptsByTopic[topic.id] || []
+      if (promptIds.length === 0) continue
+
+      try {
+        // Create group with topic title as name
+        const group = await createGroup.mutateAsync({
+          title: topic.title,
+          topic: { existing_topic_id: topic.id },
+          brand: brandInfo,
+          competitors: competitors.length > 0 ? competitors : undefined,
+          countryId,
+        })
+
+        // Add selected prompts
+        await addPromptsToGroup.mutateAsync({
+          groupId: group.id,
+          promptIds,
+        })
+
+        createdCount++
+      } catch {
+        // Continue with other groups even if one fails
+        console.error(`Failed to create group for topic ${topic.title}`)
+      }
+    }
+
+    return createdCount
+  }, [selectedTopics, selectedPromptsByTopic, brand, competitors, countryId, createGroup, addPromptsToGroup])
+
   // Submit handler
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = useCallback(async () => {
     if (hasSubmittedRef.current) return
     hasSubmittedRef.current = true
+    setIsCreatingGroups(true)
 
-    const variations = brand.variations
-      .split(",")
-      .map((v) => v.trim())
-      .filter(Boolean)
+    try {
+      // First create groups if there are selected prompts
+      const groupsCreated = await createGroupsFromSelection()
+      setGroupsCreatedCount(groupsCreated)
 
-    completeOnboarding.mutate(
-      {
+      const variations = brand.variations
+        .split(",")
+        .map((v) => v.trim())
+        .filter(Boolean)
+
+      // Complete onboarding
+      await completeOnboarding.mutateAsync({
         default_country_id: countryId!,
         default_business_domain_id: businessDomainId,
         default_brand: {
@@ -177,27 +298,54 @@ export function LinearOnboarding() {
           variations,
         },
         default_competitors: competitors.length > 0 ? competitors : undefined,
-      },
-      {
-        onSuccess: () => {
-          navigate({ to: "/" })
-        },
-        onError: (err) => {
-          hasSubmittedRef.current = false
-          setError(err.message || "Failed to save preferences")
-        },
-      }
-    )
-  }, [brand, competitors, countryId, businessDomainId, completeOnboarding, navigate])
+      })
 
-  // Handle step 4 continue -> submit
+      // Go to complete step
+      setCurrentStep(7)
+    } catch (err) {
+      hasSubmittedRef.current = false
+      setError(err instanceof Error ? err.message : "Failed to save preferences")
+    } finally {
+      setIsCreatingGroups(false)
+    }
+  }, [brand, competitors, countryId, businessDomainId, completeOnboarding, createGroupsFromSelection])
+
+  // Handle step 4 continue -> go to topics or submit
   const handleStep4Continue = useCallback(() => {
+    if (shouldShowTopicSteps) {
+      setCurrentStep(5) // Go to topic selection
+    } else {
+      handleSubmit() // No topics available, submit directly
+    }
+  }, [shouldShowTopicSteps, handleSubmit])
+
+  // Handle step 5 continue -> go to prompts or submit
+  const handleStep5Continue = useCallback(() => {
+    if (selectedTopics.length > 0) {
+      setCurrentStep(6) // Go to prompt selection
+    } else {
+      handleSubmit() // No topics selected, skip prompts
+    }
+  }, [selectedTopics, handleSubmit])
+
+  // Handle step 6 continue -> submit
+  const handleStep6Continue = useCallback(() => {
+    handleSubmit()
+  }, [handleSubmit])
+
+  // Skip handler for topic/prompt steps
+  const handleSkipTopics = useCallback(() => {
+    setSelectedTopics([])
+    setSelectedPromptsByTopic({})
     handleSubmit()
   }, [handleSubmit])
 
   // Get country and domain names for summary
   const selectedCountry = countriesData?.countries.find((c) => c.id === countryId)
   const selectedDomain = businessDomainsData?.business_domains.find((d) => d.id === businessDomainId)
+
+  // Calculate visible steps (4 base + topic steps if applicable)
+  const visibleSteps = shouldShowTopicSteps ? 6 : 4 // Exclude complete step from indicator
 
   return (
     <div className="min-h-screen bg-[#FDFBF7] font-['DM_Sans']">
@@ -211,8 +359,11 @@ export function LinearOnboarding() {
         </div>
 
         {/* Step indicator */}
-        {currentStep < 5 && (
-          <StepIndicator currentStep={currentStep} totalSteps={4} />
+        {currentStep < 7 && (
+          <StepIndicator
+            currentStep={shouldShowTopicSteps ? currentStep : Math.min(currentStep, 4)}
+            totalSteps={visibleSteps}
+          />
         )}
 
         {/* Main card */}
@@ -486,15 +637,38 @@ export function LinearOnboarding() {
               </div>
             )}
 
-            {/* Step 5: Complete */}
+            {/* Step 5: Topic Selection */}
             {currentStep === 5 && (
+              <TopicSelectionStep
+                topics={topicsData?.topics || []}
+                isLoading={isLoadingTopics}
+                selectedTopics={selectedTopics}
+                onToggleTopic={handleToggleTopic}
+              />
+            )}
+
+            {/* Step 6: Prompt Selection */}
+            {currentStep === 6 && (
+              <PromptSelectionStep
+                selectedTopics={selectedTopics}
+                selectedPromptsByTopic={selectedPromptsByTopic}
+                onTogglePrompt={handleTogglePrompt}
+                onSelectAllForTopic={handleSelectAllForTopic}
+                onDeselectAllForTopic={handleDeselectAllForTopic}
+              />
+            )}
+
+            {/* Step 7: Complete */}
+            {currentStep === 7 && (
               <div className="text-center animate-in fade-in duration-300">
                 {isPending ? (
                   <>
                     <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
                       <div className="w-8 h-8 border-3 border-gray-300 border-t-[#C4553D] rounded-full animate-spin" />
                     </div>
-                    <p className="text-gray-600">Saving your preferences...</p>
+                    <p className="text-gray-600">
+                      {isCreatingGroups ? "Creating your monitoring groups..." : "Saving your preferences..."}
+                    </p>
                   </>
                 ) : (
                   <>
@@ -527,6 +701,12 @@ export function LinearOnboarding() {
                             {competitors.length === 0 ? "None" : competitors.length}
                           </span>
                         </div>
+                        {groupsCreatedCount > 0 && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-400">Groups created:</span>
+                            <span className="text-[#C4553D] font-medium">{groupsCreatedCount}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -549,8 +729,8 @@ export function LinearOnboarding() {
               <p className="mt-4 text-sm text-red-600 text-center">{error}</p>
             )}
 
-            {/* Navigation buttons (steps 2-4) */}
-            {currentStep >= 2 && currentStep <= 4 && (
+            {/* Navigation buttons (steps 2-6) */}
+            {currentStep >= 2 && currentStep <= 6 && (
               <div className="flex items-center justify-between mt-8 pt-6 border-t border-gray-100">
                 <button
                   onClick={goBack}
@@ -561,16 +741,36 @@ export function LinearOnboarding() {
                   <ChevronLeft className="w-4 h-4" />
                   Back
                 </button>
-                <button
-                  onClick={currentStep === 4 ? handleStep4Continue : goNext}
-                  disabled={!canProceed() || isPending}
-                  className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white
-                    bg-[#C4553D] rounded-xl hover:bg-[#B34835] transition-colors
-                    disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {currentStep === 4 ? "Finish Setup" : "Continue"}
-                  <ChevronRight className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-3">
+                  {/* Skip link for steps 5-6 */}
+                  {(currentStep === 5 || currentStep === 6) && (
+                    <button
+                      onClick={handleSkipTopics}
+                      disabled={isPending}
+                      className="text-sm text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50"
+                    >
+                      Skip this step
+                    </button>
+                  )}
+                  <button
+                    onClick={
+                      currentStep === 4
+                        ? handleStep4Continue
+                        : currentStep === 5
+                          ? handleStep5Continue
+                          : currentStep === 6
+                            ? handleStep6Continue
+                            : goNext
+                    }
+                    disabled={!canProceed() || isPending}
+                    className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white
+                      bg-[#C4553D] rounded-xl hover:bg-[#B34835] transition-colors
+                      disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {currentStep === 6 ? "Finish Setup" : "Continue"}
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             )}
           </div>
