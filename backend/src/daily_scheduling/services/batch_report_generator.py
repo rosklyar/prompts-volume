@@ -79,6 +79,7 @@ class BatchReportGenerator:
                     result.group_id,
                     result.user_id,
                     result.fresh_prompt_selections or {},
+                    assistant_id=result.assistant_id,
                 )
 
                 await self._batch_repo.update_group_result_status(
@@ -118,6 +119,8 @@ class BatchReportGenerator:
         group_id: int,
         user_id: str,
         fresh_prompt_selections: dict[int, int],
+        *,
+        assistant_id: int = 1,
     ) -> int:
         """Generate a report for a single group.
 
@@ -126,6 +129,7 @@ class BatchReportGenerator:
             user_id: The user ID
             fresh_prompt_selections: Map of prompt_id -> evaluation_id
                 for prompts that were fresh at scheduling time
+            assistant_id: AI assistant ID for this report
 
         Returns:
             The generated report ID
@@ -148,6 +152,7 @@ class BatchReportGenerator:
         selections = await self._build_selections(
             prompt_ids,
             fresh_prompt_selections,
+            assistant_id=assistant_id,
         )
 
         # Generate report
@@ -158,6 +163,7 @@ class BatchReportGenerator:
             title="Scheduled Report",
             brand_snapshot=group.brand,
             competitors_snapshot=group.competitors,
+            assistant_id=assistant_id,
         )
 
         return report.id
@@ -166,11 +172,13 @@ class BatchReportGenerator:
         self,
         prompt_ids: list[int],
         fresh_prompt_selections: dict[int, int],
+        *,
+        assistant_id: int = 1,
     ) -> list[PromptSelection]:
         """Build evaluation selections for report.
 
         For prompts with pre-recorded fresh evaluation: use that ID.
-        For prompts needing refresh: use latest completed evaluation.
+        For prompts needing refresh: use latest completed evaluation for this assistant.
         For prompts with no data: use None (will be marked AWAITING).
         """
         # Convert dict keys from str to int if needed (JSON serialization)
@@ -185,7 +193,10 @@ class BatchReportGenerator:
 
         latest_evals: dict[int, int] = {}
         if prompts_needing_lookup:
-            latest_evals = await self._get_latest_evaluations(prompts_needing_lookup)
+            latest_evals = await self._get_latest_evaluations(
+                prompts_needing_lookup,
+                assistant_id=assistant_id,
+            )
 
         # Build selections
         selections: list[PromptSelection] = []
@@ -210,8 +221,10 @@ class BatchReportGenerator:
     async def _get_latest_evaluations(
         self,
         prompt_ids: list[int],
+        *,
+        assistant_id: int = 1,
     ) -> dict[int, int]:
-        """Get latest completed evaluation ID for each prompt."""
+        """Get latest completed evaluation ID for each prompt for specific assistant."""
         if not prompt_ids:
             return {}
 
@@ -223,6 +236,7 @@ class BatchReportGenerator:
             .where(
                 PromptEvaluation.prompt_id.in_(prompt_ids),
                 PromptEvaluation.status == EvaluationStatus.COMPLETED,
+                PromptEvaluation.assistant_id == assistant_id,
             )
             .group_by(PromptEvaluation.prompt_id)
             .subquery()
@@ -235,6 +249,7 @@ class BatchReportGenerator:
                 (PromptEvaluation.prompt_id == subq.c.prompt_id) &
                 (PromptEvaluation.id == subq.c.max_id),
             )
+            .where(PromptEvaluation.assistant_id == assistant_id)
         )
 
         result = await self._evals_session.execute(query)

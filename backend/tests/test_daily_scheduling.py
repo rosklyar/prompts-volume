@@ -86,8 +86,20 @@ def _create_group_with_schedule(
     auth_headers,
     title: str,
     topic_id: int = 1,
+    assistant_ids: list[int] | None = None,
 ) -> int:
-    """Create a group with schedule enabled."""
+    """Create a group with schedule enabled.
+
+    Args:
+        client: Test client
+        auth_headers: Auth headers for the user
+        title: Group title
+        topic_id: Topic ID (default: 1)
+        assistant_ids: List of assistant IDs for scheduled runs (default: [1] = ChatGPT only)
+    """
+    if assistant_ids is None:
+        assistant_ids = [1]  # Default to ChatGPT
+
     # Create group
     group_response = client.post(
         "/prompt-groups/api/v1/groups",
@@ -101,14 +113,15 @@ def _create_group_with_schedule(
     assert group_response.status_code == 201, f"Group creation failed: {group_response.json()}"
     group_id = group_response.json()["id"]
 
-    # Enable schedule
+    # Enable schedule with assistant_ids
     schedule_response = client.put(
         f"/prompt-groups/api/v1/groups/{group_id}/schedule",
-        json={"enabled": True},
+        json={"enabled": True, "assistant_ids": assistant_ids},
         headers=auth_headers,
     )
     assert schedule_response.status_code == 200, f"Enable schedule failed: {schedule_response.json()}"
     assert schedule_response.json()["enabled"] is True
+    assert schedule_response.json()["assistant_ids"] == assistant_ids
 
     return group_id
 
@@ -412,3 +425,206 @@ def test_daily_batch_with_fresh_and_stale_prompts(
     assert reports_resp.status_code == 200, f"Get reports failed: {reports_resp.json()}"
     user2_reports = reports_resp.json()["reports"]
     assert len(user2_reports) >= 1
+
+
+def test_daily_batch_with_selected_assistants(
+    client,
+    test_engine,
+    create_verified_user,
+    simulate_webhook,
+):
+    """Test daily batch with 2 of 3 assistants selected.
+
+    Scenario:
+    - Group with 2 prompts, schedule enabled for ChatGPT (1) and Gemini (3)
+    - Perplexity (2) NOT selected
+
+    Expected:
+    - BrightData batches triggered for chatgpt and gemini, NOT perplexity
+    - 2 DailyBatchGroupResult records created (one per assistant)
+    - 2 GroupReport records created (one per assistant)
+    """
+    # Create session maker for async operations
+    session_maker = _make_session_maker(test_engine)
+
+    # === STEP 1: Create user ===
+    user_email = f"user-multi-{uuid.uuid4()}@example.com"
+    user_headers = create_verified_user(user_email, "testpassword123", "Multi User")
+
+    # === STEP 2: Get available prompts ===
+    prompts = _get_prompts_for_topic(client, user_headers)
+    assert len(prompts) >= 2, "Need at least 2 prompts for test"
+
+    p1, p2 = prompts[0], prompts[1]
+    prompts_dict = {p["id"]: p["prompt_text"] for p in prompts}
+
+    # === STEP 3: Create group with ChatGPT (1) and Gemini (3) ===
+    group_id = _create_group_with_schedule(
+        client, user_headers, "MultiAssistantGroup",
+        assistant_ids=[1, 3],  # ChatGPT and Gemini, NOT Perplexity
+    )
+
+    # === STEP 4: Add prompts to group ===
+    add_resp = client.post(
+        f"/prompt-groups/api/v1/groups/{group_id}/prompts",
+        json={"prompt_ids": [p1["id"], p2["id"]]},
+        headers=user_headers,
+    )
+    assert add_resp.status_code == 200, f"Add to group failed: {add_resp.json()}"
+
+    # === STEP 5: Make all evaluations stale ===
+    asyncio.get_event_loop().run_until_complete(
+        _make_evaluations_stale_async(
+            session_maker,
+            [p1["id"], p2["id"]],
+            hours_ago=48,
+        )
+    )
+
+    # === STEP 6: Trigger daily batch ===
+    batch_id = asyncio.get_event_loop().run_until_complete(
+        _trigger_daily_batch_async(session_maker)
+    )
+    assert batch_id is not None, "Daily batch was not created"
+
+    # Helper to run async in sync context
+    def run_async(coro):
+        return asyncio.get_event_loop().run_until_complete(coro)
+
+    # === STEP 7: Verify batch created correctly ===
+    batch = run_async(_get_daily_batch_async(session_maker, batch_id))
+    assert batch is not None, "Batch not found"
+    assert set(batch.group_ids) == {group_id}
+    # 2 prompts * 2 assistants = 4 total prompt evaluations
+    assert batch.total_prompts == 4
+    # All prompts need refresh for both assistants
+    assert batch.prompts_needing_refresh == 4
+
+    # Get BrightData batch IDs
+    brightdata_batch_ids = batch.batch_ids
+    # Should have batches for 2 assistants (chatgpt and gemini)
+    assert len(brightdata_batch_ids) >= 2, f"Expected at least 2 batches, got {len(brightdata_batch_ids)}"
+
+    # === STEP 8: Verify 2 group results created (one per assistant) ===
+    group_results = run_async(_get_group_results_async(session_maker, batch_id))
+    assert len(group_results) == 2, f"Expected 2 group results, got {len(group_results)}"
+
+    # Verify assistant_ids are 1 and 3 (NOT 2)
+    assistant_ids_in_results = {r.assistant_id for r in group_results}
+    assert assistant_ids_in_results == {1, 3}, f"Expected assistants {{1, 3}}, got {assistant_ids_in_results}"
+
+    # All should be PENDING initially
+    for result in group_results:
+        assert result.status == DailyBatchGroupStatus.PENDING
+        assert result.group_id == group_id
+        assert result.prompts_in_group == 2
+
+    # === STEP 9: Simulate webhooks for each batch ===
+    for bd_batch_id in brightdata_batch_ids:
+        webhook_items = [
+            {"prompt": prompts_dict[p1["id"]], "answer_text": f"Answer for {p1['id']}", "citations": []},
+            {"prompt": prompts_dict[p2["id"]], "answer_text": f"Answer for {p2['id']}", "citations": []},
+        ]
+        webhook_resp = simulate_webhook(bd_batch_id, webhook_items)
+        assert webhook_resp.status_code == 200, f"Webhook failed: {webhook_resp.json()}"
+
+    # === STEP 10: Trigger report generation ===
+    report_count = run_async(_trigger_report_generation_async(session_maker, batch_id))
+    assert report_count == 2, f"Expected 2 reports, got {report_count}"
+
+    # === STEP 11: Verify batch completed ===
+    batch = run_async(_get_daily_batch_async(session_maker, batch_id))
+    assert batch.status == DailyBatchStatus.COMPLETED
+    assert batch.completed_at is not None
+
+    # === STEP 12: Verify group results completed ===
+    group_results = run_async(_get_group_results_async(session_maker, batch_id))
+    for result in group_results:
+        assert result.status == DailyBatchGroupStatus.COMPLETED
+        assert result.report_id is not None
+
+    # === STEP 13: Verify 2 reports exist for the group ===
+    reports = run_async(_get_reports_for_groups_async(session_maker, [group_id]))
+    assert len(reports) == 2, f"Expected 2 reports, got {len(reports)}"
+
+    # Verify reports are for assistants 1 and 3
+    report_assistant_ids = {r.assistant_id for r in reports}
+    assert report_assistant_ids == {1, 3}, f"Expected assistants {{1, 3}}, got {report_assistant_ids}"
+
+    # Each report should have correct prompt count
+    for report in reports:
+        assert report.total_prompts == 2
+        assert report.group_id == group_id
+
+    # === STEP 14: Verify schedule config via API ===
+    schedule_resp = client.get(
+        f"/prompt-groups/api/v1/groups/{group_id}/schedule",
+        headers=user_headers,
+    )
+    assert schedule_resp.status_code == 200
+    schedule_data = schedule_resp.json()
+    assert schedule_data["enabled"] is True
+    assert set(schedule_data["assistant_ids"]) == {1, 3}
+
+
+def test_schedule_requires_assistant_ids_when_enabled(client, create_verified_user):
+    """Test that enabling schedule requires assistant_ids."""
+    user_email = f"user-validation-{uuid.uuid4()}@example.com"
+    user_headers = create_verified_user(user_email, "testpassword123", "Validation User")
+
+    # Create a group
+    group_response = client.post(
+        "/prompt-groups/api/v1/groups",
+        json={
+            "title": "ValidationGroup",
+            "topic": {"existing_topic_id": 1},
+            "brand": {"name": "ValidationBrand", "domain": "validation.com", "variations": []},
+        },
+        headers=user_headers,
+    )
+    assert group_response.status_code == 201
+    group_id = group_response.json()["id"]
+
+    # Try to enable schedule without assistant_ids - should fail
+    schedule_response = client.put(
+        f"/prompt-groups/api/v1/groups/{group_id}/schedule",
+        json={"enabled": True},  # Missing assistant_ids
+        headers=user_headers,
+    )
+    assert schedule_response.status_code == 422, "Should require assistant_ids when enabling"
+
+    # Try with empty assistant_ids - should fail
+    schedule_response = client.put(
+        f"/prompt-groups/api/v1/groups/{group_id}/schedule",
+        json={"enabled": True, "assistant_ids": []},
+        headers=user_headers,
+    )
+    assert schedule_response.status_code == 422, "Should require at least 1 assistant"
+
+    # Try with invalid assistant_id - should fail
+    schedule_response = client.put(
+        f"/prompt-groups/api/v1/groups/{group_id}/schedule",
+        json={"enabled": True, "assistant_ids": [99]},
+        headers=user_headers,
+    )
+    assert schedule_response.status_code == 422, "Should reject invalid assistant ID"
+
+    # Try with valid assistant_ids - should succeed
+    schedule_response = client.put(
+        f"/prompt-groups/api/v1/groups/{group_id}/schedule",
+        json={"enabled": True, "assistant_ids": [1, 2]},
+        headers=user_headers,
+    )
+    assert schedule_response.status_code == 200
+    assert schedule_response.json()["enabled"] is True
+    assert schedule_response.json()["assistant_ids"] == [1, 2]
+
+    # Disable schedule - assistant_ids not required
+    schedule_response = client.put(
+        f"/prompt-groups/api/v1/groups/{group_id}/schedule",
+        json={"enabled": False},
+        headers=user_headers,
+    )
+    assert schedule_response.status_code == 200
+    assert schedule_response.json()["enabled"] is False
+    assert schedule_response.json()["assistant_ids"] is None

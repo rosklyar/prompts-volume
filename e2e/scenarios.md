@@ -45,3 +45,18 @@ Run these scenarios using Playwright MCP tools after docker-compose and frontend
 9. Click "Continue", then "Finish Setup"
 10. Verify: dashboard loads with "$5.00" balance shown
 
+## Scenario 6: Generate Gemini Report
+
+**Prerequisites:** User logged in, group with prompts exists
+
+1. Navigate to Dashboard (http://localhost:5173)
+2. Login as admin@example.com if not already logged in
+3. Create a new group or open an existing group with prompts
+4. Click "Generate Report" on the group
+5. Select "Gemini" from AI Assistant dropdown
+6. Verify: Gemini logo appears next to the selection
+7. Click "Generate" button
+8. Verify: Report generation starts (loading indicator shown)
+9. Wait for report to complete
+10. Verify: Report appears in history with Gemini logo and assistant name "Gemini"
+

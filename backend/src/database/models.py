@@ -6,7 +6,7 @@ from typing import List, Optional
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint, text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.database.session import Base
@@ -248,6 +248,11 @@ class PromptGroup(Base):
     schedule_last_run_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
+    )
+    schedule_assistant_ids: Mapped[Optional[List[int]]] = mapped_column(
+        ARRAY(Integer),
+        nullable=True,
+        comment="Assistant IDs for scheduled runs. NULL = disabled",
     )
 
     # Relationships

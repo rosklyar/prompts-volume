@@ -396,16 +396,22 @@ async def set_group_schedule(
     """Enable or disable daily scheduled reports for a group.
 
     When enabled, reports will be generated automatically at 6 AM UTC.
+    Requires assistant_ids when enabling to specify which assistants to use.
     """
     try:
         group = await group_service.get_by_id_for_user(group_id, current_user.id)
 
-        # Update schedule_enabled
-        await group_service.update_schedule(group_id, request.enabled)
+        # Update schedule_enabled and assistant_ids
+        await group_service.update_schedule(
+            group_id,
+            request.enabled,
+            assistant_ids=request.assistant_ids,
+        )
 
         return ScheduleConfigResponse(
             group_id=group_id,
             enabled=request.enabled,
+            assistant_ids=request.assistant_ids if request.enabled else None,
             last_run_at=group.schedule_last_run_at,
         )
     except PromptGroupError as e:
@@ -425,6 +431,7 @@ async def get_group_schedule(
         return ScheduleConfigResponse(
             group_id=group_id,
             enabled=group.schedule_enabled,
+            assistant_ids=group.schedule_assistant_ids if group.schedule_enabled else None,
             last_run_at=group.schedule_last_run_at,
         )
     except PromptGroupError as e:

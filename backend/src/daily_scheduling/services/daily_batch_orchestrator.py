@@ -2,6 +2,7 @@
 
 import logging
 import uuid
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,18 +20,30 @@ from src.database.evals_models import DailyBatchStatus
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class GroupAssistantAnalysis:
+    """Analysis for a (group, assistant) pair."""
+
+    group_id: int
+    user_id: str
+    assistant_id: int
+    prompts_in_group: int
+    prompts_needing_refresh: list[int]
+    fresh_prompt_selections: dict[int, int]
+
+
 class DailyBatchOrchestrator:
     """Orchestrates the daily scheduled batch processing.
 
     Single Responsibility: Coordinate the entire daily batch lifecycle.
 
     Flow:
-    1. Collect enabled groups
-    2. Aggregate prompts and check freshness
+    1. Collect enabled groups (with assistant_ids)
+    2. Aggregate prompts and check freshness PER (group, assistant)
     3. Trigger BrightData batches for prompts needing refresh
-    4. Create DailyScheduleBatch and DailyBatchGroupResult records
+    4. Create DailyScheduleBatch and DailyBatchGroupResult records (one per group+assistant)
     5. Wait for webhooks or timeout
-    6. Generate reports
+    6. Generate reports (one per group+assistant)
 
     Open/Closed: Can add new scheduling strategies without modifying core logic.
     """
@@ -104,48 +117,55 @@ class DailyBatchOrchestrator:
             group_ids = [g.group_id for g in enabled_groups]
             groups_prompts = await self._group_collector.get_all_prompts_for_groups(group_ids)
 
-            # 4. Analyze freshness for each group
-            group_analyses: list[GroupPromptAnalysis] = []
+            # 4. Analyze freshness for each (group, assistant) pair
+            group_assistant_analyses: list[GroupAssistantAnalysis] = []
             for group in enabled_groups:
                 prompts = groups_prompts.get(group.group_id, [])
-                analysis = await self._prompt_aggregator.analyze_group_prompts(
-                    group.group_id,
-                    group.user_id,
-                    prompts,
-                )
-                group_analyses.append(analysis)
+                for assistant_id in group.assistant_ids:
+                    analysis = await self._prompt_aggregator.analyze_group_prompts(
+                        group.group_id,
+                        group.user_id,
+                        prompts,
+                        assistant_id=assistant_id,
+                    )
+                    group_assistant_analyses.append(GroupAssistantAnalysis(
+                        group_id=group.group_id,
+                        user_id=group.user_id,
+                        assistant_id=assistant_id,
+                        prompts_in_group=len(prompts),
+                        prompts_needing_refresh=analysis.prompts_needing_refresh,
+                        fresh_prompt_selections=analysis.fresh_prompt_selections,
+                    ))
 
-            # 5. Create group result records
-            for group, analysis in zip(enabled_groups, group_analyses):
-                prompts = groups_prompts.get(group.group_id, [])
+            # 5. Create group result records - one per (group, assistant)
+            for analysis in group_assistant_analyses:
                 await self._batch_repo.create_group_result(
                     batch_id=batch_id,
-                    group_id=group.group_id,
-                    user_id=group.user_id,
-                    prompts_in_group=len(prompts),
+                    group_id=analysis.group_id,
+                    user_id=analysis.user_id,
+                    assistant_id=analysis.assistant_id,
+                    prompts_in_group=analysis.prompts_in_group,
                     prompts_needing_refresh=len(analysis.prompts_needing_refresh),
                     prompts_already_fresh=len(analysis.fresh_prompt_selections),
                     fresh_prompt_selections=analysis.fresh_prompt_selections or None,
                 )
 
-            # 6. Trigger BrightData grouped by country
-            # Note: Same prompt may be triggered multiple times for different countries
-            brightdata_batch_ids = await self._trigger_brightdata_batches_by_country(
+            # 6. Trigger BrightData grouped by (country, assistant)
+            brightdata_batch_ids = await self._trigger_brightdata_batches_by_country_assistant(
                 list(enabled_groups),
-                group_analyses,
+                group_assistant_analyses,
                 groups_prompts,
             )
 
-            # Get unique prompts count for stats
-            unique_prompts = self._prompt_aggregator.get_unique_prompts_needing_refresh(
-                group_analyses
+            # Calculate stats - unique prompts per assistant
+            total_prompts_per_assistant = self._count_total_prompts_per_assistant(
+                group_assistant_analyses
             )
-
-            # 7. Update batch with stats and batch IDs
-            total_prompts = sum(len(prompts) for prompts in groups_prompts.values())
-            prompts_needing = len(unique_prompts)
+            total_prompts = sum(total_prompts_per_assistant.values())
+            prompts_needing = self._count_unique_prompts_needing_refresh(group_assistant_analyses)
             prompts_fresh = total_prompts - prompts_needing
 
+            # 7. Update batch with stats and batch IDs
             await self._batch_repo.set_batch_group_ids(batch_id, group_ids)
             await self._batch_repo.set_batch_brightdata_ids(batch_id, brightdata_batch_ids)
             await self._batch_repo.set_batch_prompt_stats(
@@ -189,30 +209,38 @@ class DailyBatchOrchestrator:
             await self._evals_session.commit()
             raise
 
-    async def _build_prompts_for_refresh(
+    def _count_total_prompts_per_assistant(
         self,
-        prompt_ids: set[int],
-        groups_prompts: dict[int, list[dict]],
-    ) -> dict[int, str]:
-        """Build dict of prompt_id -> prompt_text for prompts needing refresh."""
-        prompts_dict: dict[int, str] = {}
-        for prompts in groups_prompts.values():
-            for p in prompts:
-                if p["prompt_id"] in prompt_ids:
-                    prompts_dict[p["prompt_id"]] = p["prompt_text"]
-        return prompts_dict
+        analyses: list[GroupAssistantAnalysis],
+    ) -> dict[int, int]:
+        """Count total prompts per assistant across all groups."""
+        counts: dict[int, int] = {}
+        for a in analyses:
+            if a.assistant_id not in counts:
+                counts[a.assistant_id] = 0
+            counts[a.assistant_id] += a.prompts_in_group
+        return counts
 
-    def _build_prompts_by_country(
+    def _count_unique_prompts_needing_refresh(
+        self,
+        analyses: list[GroupAssistantAnalysis],
+    ) -> int:
+        """Count unique (prompt, assistant) pairs needing refresh."""
+        unique_pairs: set[tuple[int, int]] = set()
+        for a in analyses:
+            for prompt_id in a.prompts_needing_refresh:
+                unique_pairs.add((prompt_id, a.assistant_id))
+        return len(unique_pairs)
+
+    def _build_prompts_by_country_assistant(
         self,
         enabled_groups: list[EnabledGroup],
-        group_analyses: list[GroupPromptAnalysis],
+        analyses: list[GroupAssistantAnalysis],
         groups_prompts: dict[int, list[dict]],
-    ) -> dict[tuple[int, str], dict[int, str]]:
-        """Build prompts grouped by country for BrightData triggering.
+    ) -> dict[tuple[int, str, int], dict[int, str]]:
+        """Build prompts grouped by (country_id, country_iso_code, assistant_id).
 
-        Returns dict mapping (country_id, country_iso_code) -> (prompt_id -> prompt_text).
-        If the same prompt is in groups with different countries, it will be triggered
-        for each country separately.
+        Returns dict mapping (country_id, country_iso_code, assistant_id) -> (prompt_id -> prompt_text).
         """
         # Build mapping from group_id to country info
         group_to_country: dict[int, tuple[int, str]] = {
@@ -226,38 +254,42 @@ class DailyBatchOrchestrator:
             for p in prompts:
                 prompt_texts[p["prompt_id"]] = p["prompt_text"]
 
-        # Group prompts by country based on which groups need them
-        country_prompts: dict[tuple[int, str], dict[int, str]] = {}
+        # Group prompts by (country, assistant)
+        country_assistant_prompts: dict[tuple[int, str, int], dict[int, str]] = {}
 
-        for analysis in group_analyses:
+        for analysis in analyses:
             country_key = group_to_country.get(analysis.group_id)
             if not country_key:
                 continue
+
+            key = (country_key[0], country_key[1], analysis.assistant_id)
 
             for prompt_id in analysis.prompts_needing_refresh:
                 if prompt_id not in prompt_texts:
                     continue
 
-                if country_key not in country_prompts:
-                    country_prompts[country_key] = {}
+                if key not in country_assistant_prompts:
+                    country_assistant_prompts[key] = {}
 
-                country_prompts[country_key][prompt_id] = prompt_texts[prompt_id]
+                country_assistant_prompts[key][prompt_id] = prompt_texts[prompt_id]
 
-        return country_prompts
+        return country_assistant_prompts
 
     async def _trigger_brightdata_batches(
         self,
         prompts: dict[int, str],
         *,
-        country_id: int | None = None,
-        country_iso_code: str | None = None,
+        country_id: int,
+        country_iso_code: str,
+        assistant_id: int = 1,
     ) -> list[str]:
         """Trigger BrightData batches for prompts.
 
         Args:
             prompts: Dict of prompt_id -> prompt_text
-            country_id: Country ID for scraping (required for new implementation)
-            country_iso_code: Country ISO code for scraping (required for new implementation)
+            country_id: Country ID for scraping
+            country_iso_code: Country ISO code for scraping
+            assistant_id: AI assistant ID to scrape
 
         Returns list of batch IDs.
         """
@@ -266,10 +298,6 @@ class DailyBatchOrchestrator:
 
         if self._brightdata_service is None:
             logger.warning("BrightDataService not configured, skipping trigger")
-            return []
-
-        if country_id is None or country_iso_code is None:
-            logger.error("Country info required for triggering BrightData batches")
             return []
 
         # Chunk prompts
@@ -290,33 +318,38 @@ class DailyBatchOrchestrator:
                 user_id="system",  # System-triggered
                 country_id=country_id,
                 country_iso_code=country_iso_code,
+                assistant_id=assistant_id,
             )
             batch_ids.append(batch_id)
-            logger.info(f"Triggered batch {batch_id} for country={country_iso_code} with {len(chunk)} prompts")
+            logger.info(
+                f"Triggered batch {batch_id} for country={country_iso_code}, "
+                f"assistant_id={assistant_id} with {len(chunk)} prompts"
+            )
 
         return batch_ids
 
-    async def _trigger_brightdata_batches_by_country(
+    async def _trigger_brightdata_batches_by_country_assistant(
         self,
         enabled_groups: list[EnabledGroup],
-        group_analyses: list[GroupPromptAnalysis],
+        analyses: list[GroupAssistantAnalysis],
         groups_prompts: dict[int, list[dict]],
     ) -> list[str]:
-        """Trigger BrightData batches grouped by country.
+        """Trigger BrightData batches grouped by (country, assistant).
 
         Returns list of all batch IDs.
         """
-        country_prompts = self._build_prompts_by_country(
-            enabled_groups, group_analyses, groups_prompts
+        country_assistant_prompts = self._build_prompts_by_country_assistant(
+            enabled_groups, analyses, groups_prompts
         )
 
         all_batch_ids: list[str] = []
 
-        for (country_id, country_iso_code), prompts in country_prompts.items():
+        for (country_id, country_iso_code, assistant_id), prompts in country_assistant_prompts.items():
             batch_ids = await self._trigger_brightdata_batches(
                 prompts,
                 country_id=country_id,
                 country_iso_code=country_iso_code,
+                assistant_id=assistant_id,
             )
             all_batch_ids.extend(batch_ids)
 

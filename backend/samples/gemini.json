@@ -1,0 +1,83 @@
+[
+  {
+    "url": "https://gemini.google.com/",
+    "prompt": "Порекомендуй MacBook для роботи з фото",
+    "answer_text": "Для роботи з фото рекомендую MacBook Pro з чіпами M3 Pro або M4 Pro. Ці моделі мають потужну графіку та чудовий Retina XDR дисплей з точною передачею кольорів. Для професійної фотографії найкраще підійде 14\" або 16\" MacBook Pro з мінімум 16 ГБ RAM та 512 ГБ SSD.\n\n**Рекомендовані моделі:**\n- MacBook Pro 14\" (M4 Pro) - баланс потужності та портативності\n- MacBook Pro 16\" (M4 Max) - для інтенсивної роботи з RAW\n- MacBook Air 15\" M3 - бюджетний варіант для легкої обробки",
+    "links_attached": [
+      {
+        "url": "https://www.apple.com/ua/shop/buy-mac/macbook-pro",
+        "title": "Купити MacBook Pro - Apple (UA)",
+        "domain": "https://www.apple.com/"
+      },
+      {
+        "url": "https://support.apple.com/uk-ua/111900",
+        "title": "Вибір правильного Mac для редагування фото",
+        "domain": "https://support.apple.com/"
+      }
+    ],
+    "citations": [
+      {
+        "url": "https://www.apple.com/ua/macbook-pro/",
+        "title": "MacBook Pro - Apple (UA)",
+        "domain": "https://www.apple.com/",
+        "position": "1"
+      },
+      {
+        "url": "https://www.ixbt.com/news/2024/macbook-pro-m4-review",
+        "title": "Огляд MacBook Pro M4",
+        "domain": "https://www.ixbt.com/",
+        "position": "2"
+      }
+    ],
+    "index": 1,
+    "timestamp": "2026-01-24T10:30:00.000Z",
+    "error": null,
+    "input": {
+      "url": "https://gemini.google.com/",
+      "prompt": "Порекомендуй MacBook для роботи з фото",
+      "country": "UA",
+      "index": 1
+    }
+  },
+  {
+    "url": "https://gemini.google.com/",
+    "prompt": "Де купити ноутбук ASUS",
+    "answer_text": "Ноутбук ASUS можна придбати в Україні через різні канали:\n\n**Офіційні джерела:**\n- Офіційний магазин ASUS: asus.com/ua-ua/store/\n- Авторизовані партнери\n\n**Великі інтернет-магазини:**\n- Rozetka - найбільший вибір\n- Foxtrot - є фізичні магазини\n- MOYO - доставка по Україні\n- Eldorado - знижки та акції\n\n**Переваги покупки в офіційних джерелах:**\n- Гарантія від виробника\n- Офіційна підтримка\n- Оригінальна продукція",
+    "links_attached": [
+      {
+        "url": "https://www.asus.com/ua-ua/store/laptops/",
+        "title": "Ноутбуки | Офіційний магазин ASUS Україна",
+        "domain": "https://www.asus.com/"
+      }
+    ],
+    "citations": [
+      {
+        "url": "https://www.asus.com/ua-ua/store/",
+        "title": "Офіційний онлайн-магазин ASUS Україна",
+        "domain": "https://www.asus.com/",
+        "position": "1"
+      },
+      {
+        "url": "https://rozetka.com.ua/ua/notebooks/c80004/producer=asus/",
+        "title": "Купити ноутбук Asus в Києві",
+        "domain": "https://rozetka.com.ua/",
+        "position": "2"
+      },
+      {
+        "url": "https://www.foxtrot.com.ua/uk/shop/noutbuki_asus.html",
+        "title": "Ноутбуки ASUS в Foxtrot",
+        "domain": "https://www.foxtrot.com.ua/",
+        "position": "3"
+      }
+    ],
+    "index": 2,
+    "timestamp": "2026-01-24T10:31:00.000Z",
+    "error": null,
+    "input": {
+      "url": "https://gemini.google.com/",
+      "prompt": "Де купити ноутбук ASUS",
+      "country": "UA",
+      "index": 2
+    }
+  }
+]

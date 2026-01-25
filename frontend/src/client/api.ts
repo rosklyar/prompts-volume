@@ -333,6 +333,7 @@ export interface RemovePromptsResult {
 export interface ScheduleConfig {
   group_id: number
   enabled: boolean
+  assistant_ids: number[] | null
   last_run_at: string | null
 }
 
@@ -504,14 +505,18 @@ export const groupsApi = {
 
   async setGroupSchedule(
     groupId: number,
-    enabled: boolean
+    enabled: boolean,
+    assistantIds?: number[]
   ): Promise<ScheduleConfig> {
     const response = await fetchWithAuth(
       `/prompt-groups/api/v1/groups/${groupId}/schedule`,
       {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled }),
+        body: JSON.stringify({
+          enabled,
+          assistant_ids: assistantIds,
+        }),
       }
     )
     return response.json()

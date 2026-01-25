@@ -484,6 +484,14 @@ class DailyBatchGroupResult(EvalsBase):
         index=True,
     )  # No FK - user is in users_db
 
+    # AI Assistant for this group result
+    assistant_id: Mapped[int] = mapped_column(
+        ForeignKey("ai_assistants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+        server_default="1",  # Default to ChatGPT for backwards compatibility
+    )
+
     # Status
     status: Mapped[DailyBatchGroupStatus] = mapped_column(
         Enum(
@@ -517,9 +525,10 @@ class DailyBatchGroupResult(EvalsBase):
     # Relationships
     batch: Mapped["DailyScheduleBatch"] = relationship(back_populates="group_results")
     report: Mapped[Optional["GroupReport"]] = relationship()
+    assistant: Mapped["AIAssistant"] = relationship()
 
     def __repr__(self) -> str:
-        return f"<DailyBatchGroupResult(id={self.id}, batch_id={self.batch_id}, group_id={self.group_id}, status='{self.status.value}')>"
+        return f"<DailyBatchGroupResult(id={self.id}, batch_id={self.batch_id}, group_id={self.group_id}, assistant_id={self.assistant_id}, status='{self.status.value}')>"
 
 
 # =============================================================================

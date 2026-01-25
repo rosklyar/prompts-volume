@@ -271,8 +271,15 @@ export function useSetGroupSchedule() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ groupId, enabled }: { groupId: number; enabled: boolean }) =>
-      groupsApi.setGroupSchedule(groupId, enabled),
+    mutationFn: ({
+      groupId,
+      enabled,
+      assistantIds,
+    }: {
+      groupId: number
+      enabled: boolean
+      assistantIds?: number[]
+    }) => groupsApi.setGroupSchedule(groupId, enabled, assistantIds),
     onSuccess: (data, { groupId }) => {
       // Update the schedule cache directly
       queryClient.setQueryData(groupKeys.schedule(groupId), data)
