@@ -1,6 +1,7 @@
 """Service for triggering Bright Data batch scraping."""
 
 import logging
+import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +11,12 @@ from src.brightdata.services.brightdata_client import BrightDataHttpClient
 from src.brightdata.strategies import AssistantStrategyFactory
 
 logger = logging.getLogger(__name__)
+
+
+def _chunk_dict(d: dict[int, str], chunk_size: int) -> list[dict[int, str]]:
+    """Split a dictionary into chunks."""
+    items = list(d.items())
+    return [dict(items[i:i + chunk_size]) for i in range(0, len(items), chunk_size)]
 
 
 class BrightDataService:
@@ -120,6 +127,53 @@ class BrightDataService:
         except Exception as e:
             logger.exception(f"Failed to trigger Bright Data batch: {e}")
             raise
+
+    async def trigger_batches_chunked(
+        self,
+        prompts: dict[int, str],
+        user_id: str,
+        country_id: int,
+        country_iso_code: str,
+        *,
+        assistant_id: int = 1,
+    ) -> list[str]:
+        """Trigger BrightData batches with prompts chunked to configured size.
+
+        Args:
+            prompts: Dict mapping prompt_id to prompt_text
+            user_id: User who requested the batch
+            country_id: Country ID for database storage
+            country_iso_code: ISO country code for BrightData API (e.g., "UA")
+            assistant_id: AI assistant ID to scrape (default: 1 = ChatGPT)
+
+        Returns:
+            List of batch IDs created (one per chunk).
+        """
+        if not prompts:
+            return []
+
+        from src.config.settings import settings
+
+        chunks = _chunk_dict(prompts, settings.brightdata_chunk_size)
+        batch_ids: list[str] = []
+
+        for chunk in chunks:
+            batch_id = str(uuid.uuid4())
+            await self.trigger_batch(
+                batch_id=batch_id,
+                prompts=chunk,
+                user_id=user_id,
+                country_id=country_id,
+                country_iso_code=country_iso_code,
+                assistant_id=assistant_id,
+            )
+            batch_ids.append(batch_id)
+            logger.info(
+                f"Triggered batch {batch_id} with {len(chunk)} prompts "
+                f"for country={country_iso_code}, assistant_id={assistant_id}"
+            )
+
+        return batch_ids
 
 
 def get_brightdata_service(evals_session: AsyncSession) -> BrightDataService:

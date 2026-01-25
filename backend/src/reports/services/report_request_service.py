@@ -1,7 +1,6 @@
 """Service for unified report request handling (manual + scheduled)."""
 
 import logging
-import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
@@ -156,24 +155,21 @@ class ReportRequestService:
                 # Stale
                 stale_or_absent_prompt_ids.append(prompt_id)
 
-        # Trigger BrightData for stale/absent prompts
+        # Trigger BrightData for stale/absent prompts (chunked)
         batch_ids: list[str] = []
         if stale_or_absent_prompt_ids and self._brightdata_service:
-            batch_id = str(uuid.uuid4())
             prompts_to_trigger = {
                 pid: prompts_map[pid]
                 for pid in stale_or_absent_prompt_ids
                 if pid in prompts_map
             }
-            await self._brightdata_service.trigger_batch(
-                batch_id=batch_id,
+            batch_ids = await self._brightdata_service.trigger_batches_chunked(
                 prompts=prompts_to_trigger,
                 user_id=user_id,
                 country_id=country_id,
                 country_iso_code=country_iso_code,
                 assistant_id=assistant_id,
             )
-            batch_ids.append(batch_id)
 
         # Create request
         request = await self._repo.create(

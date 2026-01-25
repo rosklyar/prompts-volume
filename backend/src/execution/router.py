@@ -1,7 +1,6 @@
 """API router for execution endpoints."""
 
 import logging
-import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -36,11 +35,6 @@ def _format_wait_time(seconds: int) -> str:
     else:
         hours = minutes // 60
         return f"~{hours} hour{'s' if hours > 1 else ''}"
-
-
-def _chunk_list(lst: list, chunk_size: int) -> list[list]:
-    """Split a list into chunks of specified size."""
-    return [lst[i:i + chunk_size] for i in range(0, len(lst), chunk_size)]
 
 
 @router.post("/request-fresh", response_model=RequestFreshExecutionResponse)
@@ -98,28 +92,16 @@ async def request_fresh_execution(
     wait_str = _format_wait_time(total_seconds)
     completion_at = datetime.now(timezone.utc) + timedelta(seconds=total_seconds)
 
-    # Process prompts in chunks
-    chunk_size = settings.brightdata_chunk_size
-    prompt_id_chunks = _chunk_list(new_prompt_ids, chunk_size)
-    batch_ids: list[str] = []
-
+    # Trigger Bright Data with chunked batches
     brightdata_service = get_brightdata_service(evals_session)
-
-    for chunk in prompt_id_chunks:
-        batch_id = str(uuid.uuid4())
-        batch_ids.append(batch_id)
-
-        # Trigger Bright Data with selected assistant for this chunk
-        prompt_dict = await prompt_service.get_by_ids(chunk)
-        await brightdata_service.trigger_batch(
-            batch_id,
-            prompt_dict,
-            str(current_user.id),
-            country_id=request.country_id,
-            country_iso_code=country.iso_code,
-            assistant_id=request.assistant_id,
-        )
-        logger.info(f"Triggered batch {batch_id} with {len(chunk)} prompts for country={country.iso_code}")
+    prompt_dict = await prompt_service.get_by_ids(new_prompt_ids)
+    batch_ids = await brightdata_service.trigger_batches_chunked(
+        prompts=prompt_dict,
+        user_id=str(current_user.id),
+        country_id=request.country_id,
+        country_iso_code=country.iso_code,
+        assistant_id=request.assistant_id,
+    )
 
     await evals_session.commit()
 
