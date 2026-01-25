@@ -498,6 +498,130 @@ def test_perplexity_webhook_report_generation(
     assert len(answer_text) > 0, "Expected non-empty answer text"
 
 
+def test_gemini_webhook_report_generation(
+    client,
+    test_engine,
+    create_verified_user,
+    simulate_webhook,
+):
+    """Test report generation with Gemini webhook data from real sample.
+
+    Uses actual sample data from backend/samples/gemini.json to verify:
+    1. Gemini webhook data is correctly parsed by GeminiStrategy
+    2. Citations from both 'citations' and 'links_attached' fields are merged
+    3. Report is generated with correct prompt counts
+    """
+    session_maker = _make_session_maker(test_engine)
+
+    def run_async(coro):
+        return asyncio.get_event_loop().run_until_complete(coro)
+
+    # === STEP 1: Create user ===
+    user_email = f"gemini-webhook-{uuid.uuid4()}@example.com"
+    auth_headers = create_verified_user(user_email, "testpassword123", "Gemini Test User")
+
+    # === STEP 2: Get available prompts ===
+    prompts = _get_prompts_for_topic(client, auth_headers)
+    assert len(prompts) >= 2, "Need at least 2 prompts for test"
+    p1, p2 = prompts[0], prompts[1]
+    prompt_ids = [p1["id"], p2["id"]]
+    prompts_dict = {p["id"]: p["prompt_text"] for p in [p1, p2]}
+
+    # === STEP 3: Create group with prompts ===
+    group_id = _create_group_with_prompts(
+        client, auth_headers, "GeminiWebhookTest", prompt_ids
+    )
+
+    # === STEP 4: Make all evaluations stale ===
+    run_async(_make_evaluations_stale(session_maker, prompt_ids, hours_ago=48))
+
+    # === STEP 5: Create report request (Gemini = assistant_id=3) ===
+    request_resp = client.post(
+        f"/reports/api/v1/groups/{group_id}/request",
+        json={"assistant_id": 3},
+        headers=auth_headers,
+    )
+    assert request_resp.status_code == 201, f"Create request failed: {request_resp.json()}"
+
+    request_data = request_resp.json()
+    request_id = request_data["id"]
+
+    # Verify initial state
+    assert request_data["status"] == "awaiting"
+    assert request_data["total_prompts"] == 2
+    assert request_data["prompts_requested"] == 2
+
+    # === STEP 6: Get batch ID and load sample data ===
+    request_obj = run_async(_get_report_request(session_maker, request_id))
+    assert request_obj is not None
+    assert len(request_obj.batch_ids) >= 1, "Expected at least 1 BrightData batch"
+
+    batch_id = request_obj.batch_ids[0]
+
+    # Load real Gemini sample data
+    gemini_sample = _load_sample_data("gemini.json")
+    assert len(gemini_sample) >= 2, "Gemini sample should have at least 2 items"
+
+    # Adapt sample to use test prompts
+    adapted_items = _adapt_sample_items_to_prompts(
+        gemini_sample, prompt_ids, prompts_dict
+    )
+
+    # === STEP 7: Simulate webhook with adapted sample data ===
+    webhook_resp = simulate_webhook(batch_id, adapted_items, assistant_key="gemini")
+    assert webhook_resp.status_code == 200, f"Webhook failed: {webhook_resp.json()}"
+
+    # === STEP 8: Verify request status moved to READY ===
+    request_obj = run_async(_get_report_request(session_maker, request_id))
+    assert request_obj.status == ReportRequestStatus.READY, f"Expected READY, got {request_obj.status}"
+
+    # === STEP 9: Trigger report generation ===
+    report_count = run_async(_check_and_process_ready_requests(session_maker))
+    assert report_count >= 1, "Expected at least 1 report generated"
+
+    # === STEP 10: Verify request completed ===
+    request_obj = run_async(_get_report_request(session_maker, request_id))
+    assert request_obj.status == ReportRequestStatus.COMPLETED
+    assert request_obj.report_id is not None
+
+    # === STEP 11: Verify report was generated ===
+    report = run_async(_get_report_for_group(session_maker, group_id))
+    assert report is not None
+    assert report.id == request_obj.report_id
+    assert report.total_prompts == 2
+    assert report.prompts_with_data == 2
+    assert report.prompts_awaiting == 0
+
+    # === STEP 12: Verify evaluations have correct data ===
+    evaluations = run_async(_get_evaluations_for_prompts(session_maker, prompt_ids, assistant_id=3))
+    assert len(evaluations) >= 2, f"Expected 2+ evaluations, got {len(evaluations)}"
+
+    # Verify at least one evaluation has expected answer structure
+    eval_with_answer = None
+    for ev in evaluations:
+        if ev.answer and ev.answer.get("response"):
+            eval_with_answer = ev
+            break
+
+    assert eval_with_answer is not None, "Expected at least one evaluation with answer"
+    assert "response" in eval_with_answer.answer
+    assert "citations" in eval_with_answer.answer
+
+    # Verify citations are present (Gemini merges citations + links_attached)
+    # Both sample items have citations and links_attached
+    citations = eval_with_answer.answer.get("citations", [])
+    if citations:
+        # Check normalized structure
+        first_citation = citations[0]
+        assert "url" in first_citation
+        assert "text" in first_citation
+        assert "domain" in first_citation
+
+    # Verify answer text is from sample
+    answer_text = eval_with_answer.answer.get("response", "")
+    assert len(answer_text) > 0, "Expected non-empty answer text"
+
+
 def _modify_sample_for_day2(sample_items: list[dict]) -> list[dict]:
     """Modify sample data to simulate different responses on Day 2.
 

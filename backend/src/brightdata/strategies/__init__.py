@@ -9,6 +9,7 @@ from src.brightdata.strategies.base import (
 )
 from src.brightdata.strategies.chatgpt import ChatGPTStrategy
 from src.brightdata.strategies.factory import AssistantStrategyFactory
+from src.brightdata.strategies.gemini import GeminiStrategy
 from src.brightdata.strategies.perplexity import PerplexityStrategy
 
 __all__ = [
@@ -17,6 +18,7 @@ __all__ = [
     "AssistantStrategyFactory",
     "AssistantUrlStrategy",
     "ChatGPTStrategy",
+    "GeminiStrategy",
     "IndexBasedPromptMatcher",
     "ParsedWebhookItem",
     "PerplexityStrategy",

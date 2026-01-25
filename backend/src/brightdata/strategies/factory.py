@@ -2,6 +2,7 @@
 
 from src.brightdata.strategies.base import AssistantStrategy
 from src.brightdata.strategies.chatgpt import ChatGPTStrategy
+from src.brightdata.strategies.gemini import GeminiStrategy
 from src.brightdata.strategies.perplexity import PerplexityStrategy
 
 
@@ -15,11 +16,13 @@ class AssistantStrategyFactory:
     _strategies: dict[int, type[AssistantStrategy]] = {
         ChatGPTStrategy.ASSISTANT_ID: ChatGPTStrategy,
         PerplexityStrategy.ASSISTANT_ID: PerplexityStrategy,
+        GeminiStrategy.ASSISTANT_ID: GeminiStrategy,
     }
 
     _strategies_by_key: dict[str, type[AssistantStrategy]] = {
         "chatgpt": ChatGPTStrategy,
         "perplexity": PerplexityStrategy,
+        "gemini": GeminiStrategy,
     }
 
     @classmethod
