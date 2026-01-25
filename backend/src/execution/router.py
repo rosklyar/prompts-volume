@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.deps import CurrentUser
 from src.brightdata.services.batch_service import BrightDataBatchService
-from src.brightdata.services.brightdata_service import get_brightdata_service
+from src.brightdata.service_factory import create_brightdata_service
 from src.config.settings import settings
 from src.database.evals_session import get_evals_session
 from src.database.session import get_async_session
@@ -93,7 +93,7 @@ async def request_fresh_execution(
     completion_at = datetime.now(timezone.utc) + timedelta(seconds=total_seconds)
 
     # Trigger Bright Data with chunked batches
-    brightdata_service = get_brightdata_service(evals_session)
+    brightdata_service = create_brightdata_service(evals_session)
     prompt_dict = await prompt_service.get_by_ids(new_prompt_ids)
     batch_ids = await brightdata_service.trigger_batches_chunked(
         prompts=prompt_dict,

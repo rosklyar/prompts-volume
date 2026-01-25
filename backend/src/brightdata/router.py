@@ -9,11 +9,12 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.brightdata.debug_storage import webhook_debug_storage
 from src.brightdata.deps import WebhookAuthDep
 from src.brightdata.models.api_models import WebhookResponse
-from src.brightdata.services.batch_service import BrightDataBatchService
+from src.brightdata.service_factory import create_batch_service
 from src.brightdata.strategies import AssistantStrategyFactory, IndexBasedPromptMatcher
-from src.reports.services.report_request_service import ReportRequestService
+from src.daily_scheduling.services.batch_completion_service import BatchCompletionService
 from src.database.evals_models import (
     BrightDataBatchStatus,
     EvaluationStatus,
@@ -21,14 +22,11 @@ from src.database.evals_models import (
 )
 from src.database.evals_session import get_evals_session
 from src.database.session import get_async_session
+from src.reports.services.report_request_service import ReportRequestService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/evaluations/api/v1", tags=["brightdata"])
-
-# In-memory storage for raw webhook payloads (for debugging)
-_last_webhook_payloads: list[dict] = []
-MAX_STORED_PAYLOADS = 10
 
 
 async def _parse_webhook_body(request: Request) -> list[Any]:
@@ -75,19 +73,13 @@ async def receive_brightdata_webhook(
 
     # Store raw payload for debugging
     logger.info(f"Webhook full payload: {json.dumps(body, indent=2, default=str)}")
-    _last_webhook_payloads.append({
-        "batch_id": batch_id,
-        "assistant_key": assistant_key,
-        "payload": body,
-    })
-    if len(_last_webhook_payloads) > MAX_STORED_PAYLOADS:
-        _last_webhook_payloads.pop(0)
+    webhook_debug_storage.add(batch_id, assistant_key, body)
 
     if not isinstance(body, list):
         raise HTTPException(status_code=400, detail="Expected array of results")
 
     # Get batch from database
-    batch_service = BrightDataBatchService(evals_session)
+    batch_service = create_batch_service(evals_session)
     batch = await batch_service.get_batch(batch_id)
     if not batch:
         logger.warning(f"Batch {batch_id} not found in database")
@@ -151,12 +143,8 @@ async def receive_brightdata_webhook(
     await evals_session.commit()
 
     # Check if this batch is part of a daily scheduled batch
-    try:
-        from src.daily_scheduling.services.batch_completion_service import BatchCompletionService
-        completion_service = BatchCompletionService(evals_session)
-        await completion_service.on_brightdata_batch_completed(batch_id)
-    except Exception as e:
-        logger.warning(f"Failed to check daily batch completion: {e}")
+    completion_service = BatchCompletionService(evals_session)
+    await completion_service.on_brightdata_batch_completed(batch_id)
 
     # Check if this batch is part of a manual report request
     try:
@@ -182,6 +170,6 @@ async def get_debug_webhook_payloads() -> dict:
     Useful for understanding the structure of Bright Data responses.
     """
     return {
-        "count": len(_last_webhook_payloads),
-        "payloads": _last_webhook_payloads,
+        "count": webhook_debug_storage.count(),
+        "payloads": webhook_debug_storage.get_all(),
     }

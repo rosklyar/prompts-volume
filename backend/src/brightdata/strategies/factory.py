@@ -10,7 +10,7 @@ class AssistantStrategyFactory:
     """Factory for creating assistant-specific strategies.
 
     Maps assistant IDs and keys (from database) to their corresponding strategy
-    implementations. New assistants can be added by registering their strategies.
+    implementations. Caches instances since strategies are stateless.
     """
 
     _strategies: dict[int, type[AssistantStrategy]] = {
@@ -25,6 +25,8 @@ class AssistantStrategyFactory:
         "gemini": GeminiStrategy,
     }
 
+    _instances: dict[int, AssistantStrategy] = {}
+
     @classmethod
     def get_strategy(cls, assistant_id: int) -> AssistantStrategy:
         """Get the strategy for the given assistant ID.
@@ -33,19 +35,21 @@ class AssistantStrategyFactory:
             assistant_id: Database ID of the AI assistant.
 
         Returns:
-            Instance of the appropriate strategy.
+            Cached instance of the appropriate strategy.
 
         Raises:
             ValueError: If no strategy is registered for the given ID.
         """
-        strategy_cls = cls._strategies.get(assistant_id)
-        if strategy_cls is None:
-            registered = list(cls._strategies.keys())
-            raise ValueError(
-                f"Unknown assistant_id: {assistant_id}. "
-                f"Registered assistant IDs: {registered}"
-            )
-        return strategy_cls()
+        if assistant_id not in cls._instances:
+            strategy_cls = cls._strategies.get(assistant_id)
+            if strategy_cls is None:
+                registered = list(cls._strategies.keys())
+                raise ValueError(
+                    f"Unknown assistant_id: {assistant_id}. "
+                    f"Registered assistant IDs: {registered}"
+                )
+            cls._instances[assistant_id] = strategy_cls()
+        return cls._instances[assistant_id]
 
     @classmethod
     def get_strategy_by_key(cls, assistant_key: str) -> AssistantStrategy:
@@ -55,7 +59,7 @@ class AssistantStrategyFactory:
             assistant_key: URL-safe key of the AI assistant (e.g., "chatgpt", "perplexity").
 
         Returns:
-            Instance of the appropriate strategy.
+            Cached instance of the appropriate strategy.
 
         Raises:
             ValueError: If no strategy is registered for the given key.
@@ -67,7 +71,12 @@ class AssistantStrategyFactory:
                 f"Unknown assistant_key: {assistant_key}. "
                 f"Registered assistant keys: {registered}"
             )
-        return strategy_cls()
+        # Use assistant_id to share cached instance
+        instance = strategy_cls()
+        assistant_id = instance.config.assistant_id
+        if assistant_id not in cls._instances:
+            cls._instances[assistant_id] = instance
+        return cls._instances[assistant_id]
 
     @classmethod
     def register(

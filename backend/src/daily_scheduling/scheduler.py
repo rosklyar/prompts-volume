@@ -6,6 +6,19 @@ from datetime import datetime, timezone
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
+from sqlalchemy import select
+
+from src.database import get_session_maker
+from src.database.evals_models import DailyBatchStatus, DailyScheduleBatch
+from src.database.evals_session import get_evals_session_maker
+from src.database.users_session import get_users_session_maker
+from src.daily_scheduling.service_factory import (
+    create_batch_completion_service,
+    create_batch_report_generator,
+    create_daily_batch_orchestrator,
+    create_report_request_service,
+)
+from src.daily_scheduling.session_context import multi_session_context
 
 logger = logging.getLogger(__name__)
 
@@ -91,40 +104,22 @@ async def _start_daily_batch_job() -> None:
     """
     logger.info("Starting daily batch job...")
 
-    from src.brightdata.services.brightdata_service import get_brightdata_service
-    from src.database import get_session_maker
-    from src.database.evals_session import get_evals_session_maker
-    from src.database.users_session import get_users_session_maker
-    from src.billing.services import build_charge_service
-    from src.daily_scheduling.services.daily_batch_orchestrator import DailyBatchOrchestrator
-
-    prompts_session_maker = get_session_maker()
-    evals_session_maker = get_evals_session_maker()
-    users_session_maker = get_users_session_maker()
-
-    async with prompts_session_maker() as prompts_session:
-        async with evals_session_maker() as evals_session:
-            async with users_session_maker() as users_session:
-                brightdata_service = get_brightdata_service(evals_session)
-                charge_service = build_charge_service(evals_session, users_session)
-
-                orchestrator = DailyBatchOrchestrator(
-                    prompts_session,
-                    evals_session,
-                    charge_service=charge_service,
-                    brightdata_service=brightdata_service,
-                )
-
-                try:
-                    batch_id = await orchestrator.start_daily_batch()
-                    if batch_id:
-                        logger.info(f"Daily batch {batch_id} started successfully")
-                        await users_session.commit()
-                    else:
-                        logger.info("No groups to process in daily batch")
-                except Exception:
-                    logger.exception("Failed to start daily batch")
-                    await users_session.rollback()
+    async with multi_session_context(
+        prompts_maker=get_session_maker(),
+        evals_maker=get_evals_session_maker(),
+        users_maker=get_users_session_maker(),
+    ) as sessions:
+        orchestrator = create_daily_batch_orchestrator(sessions)
+        try:
+            batch_id = await orchestrator.start_daily_batch()
+            if batch_id:
+                logger.info(f"Daily batch {batch_id} started successfully")
+                await sessions.users.commit()
+            else:
+                logger.info("No groups to process in daily batch")
+        except Exception:
+            logger.exception("Failed to start daily batch")
+            await sessions.users.rollback()
 
 
 async def _check_batch_timeouts_job() -> None:
@@ -132,19 +127,17 @@ async def _check_batch_timeouts_job() -> None:
 
     Runs every 5 minutes.
     """
-    from src.database.evals_session import get_evals_session_maker
-    from src.daily_scheduling.services.batch_completion_service import BatchCompletionService
-
-    evals_session_maker = get_evals_session_maker()
-
-    async with evals_session_maker() as evals_session:
-        completion_service = BatchCompletionService(evals_session)
-
+    async with multi_session_context(
+        prompts_maker=get_session_maker(),
+        evals_maker=get_evals_session_maker(),
+        users_maker=get_users_session_maker(),
+    ) as sessions:
+        completion_service = create_batch_completion_service(sessions)
         try:
             count = await completion_service.check_timed_out_batches()
             if count > 0:
                 logger.info(f"Triggered report generation for {count} timed-out batches")
-                await evals_session.commit()
+                await sessions.evals.commit()
         except Exception:
             logger.exception("Failed to check timed-out batches")
 
@@ -154,51 +147,31 @@ async def _generate_reports_job() -> None:
 
     Runs every 5 minutes.
     """
-    from src.database import get_session_maker
-    from src.database.evals_session import get_evals_session_maker
-    from src.database.users_session import get_users_session_maker
-    from src.billing.services import build_charge_service
-    from src.daily_scheduling.services.batch_report_generator import BatchReportGenerator
-    from src.database.evals_models import DailyBatchStatus
+    async with multi_session_context(
+        prompts_maker=get_session_maker(),
+        evals_maker=get_evals_session_maker(),
+        users_maker=get_users_session_maker(),
+    ) as sessions:
+        # Find batches in GENERATING status
+        query = select(DailyScheduleBatch).where(
+            DailyScheduleBatch.status == DailyBatchStatus.GENERATING
+        )
+        result = await sessions.evals.execute(query)
+        batches = result.scalars().all()
 
-    prompts_session_maker = get_session_maker()
-    evals_session_maker = get_evals_session_maker()
-    users_session_maker = get_users_session_maker()
+        if not batches:
+            return
 
-    async with prompts_session_maker() as prompts_session:
-        async with evals_session_maker() as evals_session:
-            async with users_session_maker() as users_session:
-                from sqlalchemy import select
-                from src.database.evals_models import DailyScheduleBatch
+        report_generator = create_batch_report_generator(sessions)
 
-                # Find batches in GENERATING status
-                query = (
-                    select(DailyScheduleBatch)
-                    .where(DailyScheduleBatch.status == DailyBatchStatus.GENERATING)
-                )
-                result = await evals_session.execute(query)
-                batches = result.scalars().all()
-
-                if not batches:
-                    return
-
-                charge_service = build_charge_service(evals_session, users_session)
-                report_generator = BatchReportGenerator(
-                    prompts_session, evals_session, charge_service=charge_service
-                )
-
-                for batch in batches:
-                    try:
-                        count = await report_generator.generate_all_reports(batch.id)
-                        logger.info(f"Generated {count} reports for batch {batch.id}")
-                        await evals_session.commit()
-                        await users_session.commit()
-                        await prompts_session.commit()
-                    except Exception:
-                        logger.exception(f"Failed to generate reports for batch {batch.id}")
-                        await evals_session.rollback()
-                        await users_session.rollback()
-                        await prompts_session.rollback()
+        for batch in batches:
+            try:
+                count = await report_generator.generate_all_reports(batch.id)
+                logger.info(f"Generated {count} reports for batch {batch.id}")
+                await sessions.commit_all()
+            except Exception:
+                logger.exception(f"Failed to generate reports for batch {batch.id}")
+                await sessions.rollback_all()
 
 
 async def _check_report_request_timeouts_job() -> None:
@@ -207,41 +180,20 @@ async def _check_report_request_timeouts_job() -> None:
     Runs every 5 minutes. Generates reports with available data for requests
     that have exceeded their 6-hour timeout.
     """
-    from src.database import get_session_maker
-    from src.database.evals_session import get_evals_session_maker
-    from src.database.users_session import get_users_session_maker
-    from src.billing.services import build_charge_service
-    from src.reports.services.report_service import ReportService
-    from src.reports.services.report_request_service import ReportRequestService
-
-    prompts_session_maker = get_session_maker()
-    evals_session_maker = get_evals_session_maker()
-    users_session_maker = get_users_session_maker()
-
-    async with prompts_session_maker() as prompts_session:
-        async with evals_session_maker() as evals_session:
-            async with users_session_maker() as users_session:
-                charge_service = build_charge_service(evals_session, users_session)
-                report_service = ReportService(prompts_session, evals_session, charge_service)
-
-                request_service = ReportRequestService(
-                    prompts_session,
-                    evals_session,
-                    report_service=report_service,
-                )
-
-                try:
-                    count = await request_service.check_timed_out_requests()
-                    if count > 0:
-                        logger.info(f"Processed {count} timed-out report requests")
-                        await evals_session.commit()
-                        await users_session.commit()
-                        await prompts_session.commit()
-                except Exception:
-                    logger.exception("Failed to check timed-out report requests")
-                    await evals_session.rollback()
-                    await users_session.rollback()
-                    await prompts_session.rollback()
+    async with multi_session_context(
+        prompts_maker=get_session_maker(),
+        evals_maker=get_evals_session_maker(),
+        users_maker=get_users_session_maker(),
+    ) as sessions:
+        request_service = create_report_request_service(sessions)
+        try:
+            count = await request_service.check_timed_out_requests()
+            if count > 0:
+                logger.info(f"Processed {count} timed-out report requests")
+                await sessions.commit_all()
+        except Exception:
+            logger.exception("Failed to check timed-out report requests")
+            await sessions.rollback_all()
 
 
 async def _generate_ready_reports_job() -> None:
@@ -250,41 +202,20 @@ async def _generate_ready_reports_job() -> None:
     Runs every 2 minutes. Generates reports for requests where all
     BrightData batches have completed.
     """
-    from src.database import get_session_maker
-    from src.database.evals_session import get_evals_session_maker
-    from src.database.users_session import get_users_session_maker
-    from src.billing.services import build_charge_service
-    from src.reports.services.report_service import ReportService
-    from src.reports.services.report_request_service import ReportRequestService
-
-    prompts_session_maker = get_session_maker()
-    evals_session_maker = get_evals_session_maker()
-    users_session_maker = get_users_session_maker()
-
-    async with prompts_session_maker() as prompts_session:
-        async with evals_session_maker() as evals_session:
-            async with users_session_maker() as users_session:
-                charge_service = build_charge_service(evals_session, users_session)
-                report_service = ReportService(prompts_session, evals_session, charge_service)
-
-                request_service = ReportRequestService(
-                    prompts_session,
-                    evals_session,
-                    report_service=report_service,
-                )
-
-                try:
-                    count = await request_service.generate_ready_reports()
-                    if count > 0:
-                        logger.info(f"Generated {count} reports for ready requests")
-                        await evals_session.commit()
-                        await users_session.commit()
-                        await prompts_session.commit()
-                except Exception:
-                    logger.exception("Failed to generate ready reports")
-                    await evals_session.rollback()
-                    await users_session.rollback()
-                    await prompts_session.rollback()
+    async with multi_session_context(
+        prompts_maker=get_session_maker(),
+        evals_maker=get_evals_session_maker(),
+        users_maker=get_users_session_maker(),
+    ) as sessions:
+        request_service = create_report_request_service(sessions)
+        try:
+            count = await request_service.generate_ready_reports()
+            if count > 0:
+                logger.info(f"Generated {count} reports for ready requests")
+                await sessions.commit_all()
+        except Exception:
+            logger.exception("Failed to generate ready reports")
+            await sessions.rollback_all()
 
 
 async def trigger_daily_batch_manually() -> int | None:
@@ -294,31 +225,13 @@ async def trigger_daily_batch_manually() -> int | None:
 
     Returns the batch ID if created, None if no groups to process.
     """
-    from src.brightdata.services.brightdata_service import get_brightdata_service
-    from src.database import get_session_maker
-    from src.database.evals_session import get_evals_session_maker
-    from src.database.users_session import get_users_session_maker
-    from src.billing.services import build_charge_service
-    from src.daily_scheduling.services.daily_batch_orchestrator import DailyBatchOrchestrator
-
-    prompts_session_maker = get_session_maker()
-    evals_session_maker = get_evals_session_maker()
-    users_session_maker = get_users_session_maker()
-
-    async with prompts_session_maker() as prompts_session:
-        async with evals_session_maker() as evals_session:
-            async with users_session_maker() as users_session:
-                brightdata_service = get_brightdata_service(evals_session)
-                charge_service = build_charge_service(evals_session, users_session)
-
-                orchestrator = DailyBatchOrchestrator(
-                    prompts_session,
-                    evals_session,
-                    charge_service=charge_service,
-                    brightdata_service=brightdata_service,
-                )
-
-                batch_id = await orchestrator.start_daily_batch()
-                if batch_id:
-                    await users_session.commit()
-                return batch_id
+    async with multi_session_context(
+        prompts_maker=get_session_maker(),
+        evals_maker=get_evals_session_maker(),
+        users_maker=get_users_session_maker(),
+    ) as sessions:
+        orchestrator = create_daily_batch_orchestrator(sessions)
+        batch_id = await orchestrator.start_daily_batch()
+        if batch_id:
+            await sessions.users.commit()
+        return batch_id

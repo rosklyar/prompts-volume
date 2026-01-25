@@ -103,10 +103,10 @@ def get_report_request_service(
     charge_service: ChargeService = Depends(get_charge_service),
 ) -> ReportRequestService:
     """Dependency injection for ReportRequestService."""
-    from src.brightdata.services.brightdata_service import get_brightdata_service
+    from src.brightdata.service_factory import create_brightdata_service
 
     report_service = ReportService(prompts_session, evals_session, charge_service)
-    brightdata_service = get_brightdata_service(evals_session)
+    brightdata_service = create_brightdata_service(evals_session)
 
     return ReportRequestService(
         prompts_session,

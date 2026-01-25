@@ -8,7 +8,6 @@ import httpx
 
 from src.brightdata.models.domain import BrightDataTriggerRequest
 from src.brightdata.strategies.base import AssistantStrategy
-from src.config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -116,14 +115,3 @@ class BrightDataHttpClient:
             raise BrightDataAPIError(504, "Request timed out")
         except httpx.RequestError as e:
             raise BrightDataAPIError(500, f"Connection error: {str(e)}")
-
-
-def get_brightdata_client() -> BrightDataHttpClient | None:
-    """Get Bright Data client if configured."""
-    if not settings.brightdata_api_token:
-        return None
-    return BrightDataHttpClient(
-        api_token=settings.brightdata_api_token,
-        base_url=settings.brightdata_base_url,
-        timeout=settings.brightdata_timeout,
-    )

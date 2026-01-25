@@ -3,12 +3,11 @@
 import logging
 import uuid
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from src.brightdata.models.domain import BrightDataTriggerRequest
 from src.brightdata.services.batch_service import BrightDataBatchService
 from src.brightdata.services.brightdata_client import BrightDataHttpClient
 from src.brightdata.strategies import AssistantStrategyFactory
+from src.config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -152,8 +151,6 @@ class BrightDataService:
         if not prompts:
             return []
 
-        from src.config.settings import settings
-
         chunks = _chunk_dict(prompts, settings.brightdata_chunk_size)
         batch_ids: list[str] = []
 
@@ -174,20 +171,3 @@ class BrightDataService:
             )
 
         return batch_ids
-
-
-def get_brightdata_service(evals_session: AsyncSession) -> BrightDataService:
-    """Create BrightDataService with database session.
-
-    Note: This is NOT a FastAPI dependency - it creates the service
-    with an existing session. Use in endpoints that already have sessions.
-    """
-    from src.brightdata.services.brightdata_client import get_brightdata_client
-    from src.config.settings import settings
-
-    return BrightDataService(
-        client=get_brightdata_client(),
-        batch_service=BrightDataBatchService(evals_session),
-        webhook_base_url=settings.backend_webhook_base_url,
-        webhook_secret=settings.brightdata_webhook_secret,
-    )

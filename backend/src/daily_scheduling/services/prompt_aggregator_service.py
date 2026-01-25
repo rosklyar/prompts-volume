@@ -2,12 +2,11 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config.settings import settings
 from src.daily_scheduling.models.domain import GroupPromptAnalysis, PromptFreshnessInfo
-from src.database.evals_models import EvaluationStatus, PromptEvaluation
+from src.daily_scheduling.repositories.evaluation_query import EvaluationQueryRepository
 from src.execution.models.domain import FreshnessCategory
 from src.execution.services.freshness_service import FreshnessService
 
@@ -23,12 +22,17 @@ class PromptAggregatorService:
         evals_session: AsyncSession,
         *,
         freshness_service: FreshnessService | None = None,
+        evaluation_query: EvaluationQueryRepository | None = None,
     ) -> None:
         self._session = evals_session
+        self._evaluation_query = evaluation_query or EvaluationQueryRepository(
+            evals_session
+        )
         # Use tighter threshold for scheduled batches: fresh_threshold - batch_timeout
         # This ensures prompts are refreshed before they become stale after batch completes
         scheduled_threshold = (
-            settings.freshness_fresh_threshold_hours - settings.scheduled_batch_timeout_hours
+            settings.freshness_fresh_threshold_hours
+            - settings.scheduled_batch_timeout_hours
         )
         self._freshness = freshness_service or FreshnessService(
             fresh_threshold_hours=scheduled_threshold,
@@ -62,7 +66,9 @@ class PromptAggregatorService:
             )
 
         prompt_ids = [p["prompt_id"] for p in prompts]
-        freshness_map = await self._get_freshness_for_prompts(prompt_ids, assistant_id=assistant_id)
+        freshness_map = await self._get_freshness_for_prompts(
+            prompt_ids, assistant_id=assistant_id
+        )
 
         prompts_needing_refresh: list[int] = []
         fresh_prompt_selections: dict[int, int] = {}
@@ -103,7 +109,9 @@ class PromptAggregatorService:
             return {}
 
         # Get latest completed evaluation for each prompt
-        latest_evals = await self._get_latest_evaluations(prompt_ids, assistant_id=assistant_id)
+        latest_evals = await self._evaluation_query.get_latest_evaluations_with_timestamp(
+            prompt_ids, assistant_id=assistant_id
+        )
 
         now = datetime.now(timezone.utc)
         result: dict[int, PromptFreshnessInfo] = {}
@@ -131,53 +139,6 @@ class PromptAggregatorService:
                 )
 
         return result
-
-    async def _get_latest_evaluations(
-        self,
-        prompt_ids: list[int],
-        *,
-        assistant_id: int = 1,
-    ) -> dict[int, dict]:
-        """Get latest completed evaluation for each prompt.
-
-        Args:
-            prompt_ids: List of prompt IDs to check
-            assistant_id: The AI assistant ID to filter evaluations
-
-        Returns dict mapping prompt_id -> {id, completed_at}.
-        """
-        # Subquery to get max completed_at per prompt for specific assistant
-        subq = (
-            select(
-                PromptEvaluation.prompt_id,
-                func.max(PromptEvaluation.completed_at).label("max_completed"),
-            )
-            .where(
-                PromptEvaluation.prompt_id.in_(prompt_ids),
-                PromptEvaluation.status == EvaluationStatus.COMPLETED,
-                PromptEvaluation.assistant_id == assistant_id,
-            )
-            .group_by(PromptEvaluation.prompt_id)
-            .subquery()
-        )
-
-        # Join to get evaluation IDs
-        query = (
-            select(PromptEvaluation.prompt_id, PromptEvaluation.id, PromptEvaluation.completed_at)
-            .join(
-                subq,
-                (PromptEvaluation.prompt_id == subq.c.prompt_id) &
-                (PromptEvaluation.completed_at == subq.c.max_completed),
-            )
-            .where(PromptEvaluation.assistant_id == assistant_id)
-        )
-
-        result = await self._session.execute(query)
-
-        return {
-            row[0]: {"id": row[1], "completed_at": row[2]}
-            for row in result.all()
-        }
 
     def get_unique_prompts_needing_refresh(
         self,

@@ -3,6 +3,11 @@
 from typing import Any
 
 from src.brightdata.strategies.base import AssistantConfig, AssistantStrategy, ParsedWebhookItem
+from src.brightdata.strategies.citation_utils import (
+    extract_index,
+    merge_additional_sources,
+    normalize_citations,
+)
 
 
 _CONFIG = AssistantConfig(
@@ -61,40 +66,10 @@ class GeminiStrategy(AssistantStrategy):
 
     def parse_webhook_item(self, raw_item: dict[str, Any]) -> ParsedWebhookItem:
         """Parse Gemini webhook response into normalized format."""
-        # Extract index
-        index: int | None = None
-        if "index" in raw_item:
-            index = int(raw_item["index"])
-        elif "input" in raw_item and isinstance(raw_item["input"], dict):
-            index = raw_item["input"].get("index")
-            if index is not None:
-                index = int(index)
-
-        # Extract citations and normalize
-        raw_citations = raw_item.get("citations") or []
-        citations = [
-            {
-                "url": c.get("url", ""),
-                "text": c.get("title", c.get("text", "")),
-                "domain": c.get("domain", ""),
-            }
-            for c in raw_citations
-        ]
-
-        # Also check 'links_attached' which may contain additional citation-like data
-        raw_links = raw_item.get("links_attached") or []
-        for link in raw_links:
-            if isinstance(link, dict) and link.get("url"):
-                # Avoid duplicates
-                if not any(c["url"] == link.get("url") for c in citations):
-                    citations.append({
-                        "url": link.get("url", ""),
-                        "text": link.get("title", link.get("text", "")),
-                        "domain": link.get("domain", ""),
-                    })
-
+        citations = normalize_citations(raw_item.get("citations"))
+        citations = merge_additional_sources(citations, raw_item.get("links_attached"))
         return ParsedWebhookItem(
-            index=index,
+            index=extract_index(raw_item),
             prompt_text=raw_item.get("prompt", ""),
             answer_text=raw_item.get("answer_text", ""),
             citations=citations,
