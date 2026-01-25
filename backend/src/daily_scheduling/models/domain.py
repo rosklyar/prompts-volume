@@ -13,6 +13,7 @@ class EnabledGroup:
     title: str
     country_id: int
     country_iso_code: str
+    assistant_ids: list[int]
 
 
 @dataclass(frozen=True)

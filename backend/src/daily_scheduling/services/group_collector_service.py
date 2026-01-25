@@ -25,7 +25,8 @@ class GroupCollectorService:
     async def get_enabled_groups(self) -> Sequence[EnabledGroup]:
         """Get all groups with scheduling enabled.
 
-        Returns list of EnabledGroup with group_id, user_id, title, country info.
+        Returns list of EnabledGroup with group_id, user_id, title, country info, and assistant_ids.
+        Groups without schedule_assistant_ids are skipped with a warning.
         """
         query = (
             select(PromptGroup)
@@ -40,6 +41,9 @@ class GroupCollectorService:
             if not g.country:
                 logger.warning(f"Group {g.id} has no country, skipping from scheduled batch")
                 continue
+            if not g.schedule_assistant_ids:
+                logger.warning(f"Group {g.id} has no assistant_ids, skipping from scheduled batch")
+                continue
             enabled_groups.append(
                 EnabledGroup(
                     group_id=g.id,
@@ -47,6 +51,7 @@ class GroupCollectorService:
                     title=g.title,
                     country_id=g.country_id,
                     country_iso_code=g.country.iso_code,
+                    assistant_ids=g.schedule_assistant_ids,
                 )
             )
         return enabled_groups

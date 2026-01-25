@@ -154,16 +154,29 @@ class DailyBatchRepository:
         batch_id: int,
         group_id: int,
         user_id: str,
+        assistant_id: int = 1,
         prompts_in_group: int,
         prompts_needing_refresh: int,
         prompts_already_fresh: int,
         fresh_prompt_selections: dict[int, int] | None,
     ) -> DailyBatchGroupResult:
-        """Create a group result record."""
+        """Create a group result record.
+
+        Args:
+            batch_id: The daily batch ID
+            group_id: The prompt group ID
+            user_id: The user ID
+            assistant_id: The AI assistant ID for this result
+            prompts_in_group: Total prompts in group
+            prompts_needing_refresh: Count of prompts needing refresh
+            prompts_already_fresh: Count of already fresh prompts
+            fresh_prompt_selections: Map of prompt_id -> evaluation_id for fresh prompts
+        """
         result = DailyBatchGroupResult(
             batch_id=batch_id,
             group_id=group_id,
             user_id=user_id,
+            assistant_id=assistant_id,
             status=DailyBatchGroupStatus.PENDING,
             prompts_in_group=prompts_in_group,
             prompts_needing_refresh=prompts_needing_refresh,

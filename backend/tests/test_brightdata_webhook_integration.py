@@ -670,14 +670,15 @@ def _create_scheduled_group_with_prompts(
     assert group_response.status_code == 201, f"Group creation failed: {group_response.json()}"
     group_id = group_response.json()["id"]
 
-    # Enable schedule
+    # Enable schedule with ChatGPT and Perplexity (used by the consecutive days test)
     schedule_response = client.put(
         f"/prompt-groups/api/v1/groups/{group_id}/schedule",
-        json={"enabled": True},
+        json={"enabled": True, "assistant_ids": [1, 2]},  # ChatGPT and Perplexity
         headers=auth_headers,
     )
     assert schedule_response.status_code == 200, f"Enable schedule failed: {schedule_response.json()}"
     assert schedule_response.json()["enabled"] is True
+    assert schedule_response.json()["assistant_ids"] == [1, 2]
 
     # Add prompts
     add_resp = client.post(

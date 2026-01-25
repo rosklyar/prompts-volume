@@ -39,6 +39,8 @@ class PromptAggregatorService:
         group_id: int,
         user_id: str,
         prompts: list[dict],
+        *,
+        assistant_id: int = 1,
     ) -> GroupPromptAnalysis:
         """Analyze prompts in a group for freshness.
 
@@ -46,6 +48,7 @@ class PromptAggregatorService:
             group_id: The group ID
             user_id: The user ID
             prompts: List of {prompt_id, prompt_text}
+            assistant_id: The AI assistant ID to filter evaluations
 
         Returns:
             GroupPromptAnalysis with prompts_needing_refresh and fresh_prompt_selections
@@ -59,7 +62,7 @@ class PromptAggregatorService:
             )
 
         prompt_ids = [p["prompt_id"] for p in prompts]
-        freshness_map = await self._get_freshness_for_prompts(prompt_ids)
+        freshness_map = await self._get_freshness_for_prompts(prompt_ids, assistant_id=assistant_id)
 
         prompts_needing_refresh: list[int] = []
         fresh_prompt_selections: dict[int, int] = {}
@@ -85,8 +88,14 @@ class PromptAggregatorService:
     async def _get_freshness_for_prompts(
         self,
         prompt_ids: list[int],
+        *,
+        assistant_id: int = 1,
     ) -> dict[int, PromptFreshnessInfo]:
         """Get freshness info for multiple prompts.
+
+        Args:
+            prompt_ids: List of prompt IDs to check
+            assistant_id: The AI assistant ID to filter evaluations
 
         Returns dict mapping prompt_id -> PromptFreshnessInfo.
         """
@@ -94,7 +103,7 @@ class PromptAggregatorService:
             return {}
 
         # Get latest completed evaluation for each prompt
-        latest_evals = await self._get_latest_evaluations(prompt_ids)
+        latest_evals = await self._get_latest_evaluations(prompt_ids, assistant_id=assistant_id)
 
         now = datetime.now(timezone.utc)
         result: dict[int, PromptFreshnessInfo] = {}
@@ -126,12 +135,18 @@ class PromptAggregatorService:
     async def _get_latest_evaluations(
         self,
         prompt_ids: list[int],
+        *,
+        assistant_id: int = 1,
     ) -> dict[int, dict]:
         """Get latest completed evaluation for each prompt.
 
+        Args:
+            prompt_ids: List of prompt IDs to check
+            assistant_id: The AI assistant ID to filter evaluations
+
         Returns dict mapping prompt_id -> {id, completed_at}.
         """
-        # Subquery to get max completed_at per prompt
+        # Subquery to get max completed_at per prompt for specific assistant
         subq = (
             select(
                 PromptEvaluation.prompt_id,
@@ -140,6 +155,7 @@ class PromptAggregatorService:
             .where(
                 PromptEvaluation.prompt_id.in_(prompt_ids),
                 PromptEvaluation.status == EvaluationStatus.COMPLETED,
+                PromptEvaluation.assistant_id == assistant_id,
             )
             .group_by(PromptEvaluation.prompt_id)
             .subquery()
@@ -153,6 +169,7 @@ class PromptAggregatorService:
                 (PromptEvaluation.prompt_id == subq.c.prompt_id) &
                 (PromptEvaluation.completed_at == subq.c.max_completed),
             )
+            .where(PromptEvaluation.assistant_id == assistant_id)
         )
 
         result = await self._session.execute(query)
