@@ -62,10 +62,13 @@ class ReportRequestRepository:
         self,
         group_id: int,
         user_id: str,
+        *,
+        assistant_id: int | None = None,
     ) -> ReportRequest | None:
         """Get the pending (non-terminal) report request for a group.
 
         Returns the most recent request that is still in progress.
+        Optionally filters by assistant_id if provided.
         """
         active_statuses = [
             ReportRequestStatus.AWAITING,
@@ -82,6 +85,8 @@ class ReportRequestRepository:
             .order_by(ReportRequest.created_at.desc())
             .limit(1)
         )
+        if assistant_id is not None:
+            query = query.where(ReportRequest.assistant_id == assistant_id)
         result = await self._session.execute(query)
         return result.scalar_one_or_none()
 

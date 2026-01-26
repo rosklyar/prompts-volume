@@ -1,11 +1,31 @@
 /**
  * ReportHistoryPanel - Horizontal timeline of previously generated reports
  * Allows selecting a report to view its details
+ * Supports filtering by time period and AI assistant
  */
 
-import { useReportHistory, formatReportTime } from "@/hooks/useReports"
+import { useMemo, useState } from "react"
+import { useReportHistory, formatReportTime, type ReportHistoryFilters } from "@/hooks/useReports"
 import { formatCredits } from "@/hooks/useBilling"
 import { getAssistantLogo } from "@/utils/assistantLogos"
+import { useAssistants } from "@/hooks/useAssistants"
+
+type TimeFilterOption = "all" | "7d" | "30d" | "90d"
+
+const TIME_FILTER_OPTIONS: { value: TimeFilterOption; label: string }[] = [
+  { value: "all", label: "All time" },
+  { value: "7d", label: "Last 7 days" },
+  { value: "30d", label: "Last 30 days" },
+  { value: "90d", label: "Last 90 days" },
+]
+
+function getFromDateForFilter(filter: TimeFilterOption): string | undefined {
+  if (filter === "all") return undefined
+  const now = new Date()
+  const days = filter === "7d" ? 7 : filter === "30d" ? 30 : 90
+  now.setDate(now.getDate() - days)
+  return now.toISOString()
+}
 
 interface ReportHistoryPanelProps {
   groupId: number
@@ -20,7 +40,25 @@ export function ReportHistoryPanel({
   onSelectReport,
   accentColor,
 }: ReportHistoryPanelProps) {
-  const { data: historyData, isLoading, error } = useReportHistory(groupId, true)
+  // Filter state
+  const [timeFilter, setTimeFilter] = useState<TimeFilterOption>("all")
+  const [assistantFilter, setAssistantFilter] = useState<number | undefined>(undefined)
+
+  // Get available assistants for filter dropdown
+  const { data: assistantsData } = useAssistants()
+  const assistants = assistantsData?.assistants ?? []
+
+  // Build filters object
+  const filters: ReportHistoryFilters | undefined = useMemo(() => {
+    const fromDate = getFromDateForFilter(timeFilter)
+    if (!fromDate && assistantFilter === undefined) return undefined
+    return {
+      assistantId: assistantFilter,
+      fromDate,
+    }
+  }, [timeFilter, assistantFilter])
+
+  const { data: historyData, isLoading, error } = useReportHistory(groupId, true, 20, 0, filters)
 
   const reports = historyData?.reports ?? []
   const hasReports = reports.length > 0
@@ -63,25 +101,61 @@ export function ReportHistoryPanel({
     return null
   }
 
+  const hasFiltersApplied = timeFilter !== "all" || assistantFilter !== undefined
+
   // Empty state
   if (!hasReports) {
     return (
       <div className="mt-3">
-        <div className="flex items-center gap-2 mb-2">
-          <div
-            className="w-1 h-4 rounded-full opacity-40"
-            style={{ backgroundColor: accentColor }}
-          />
-          <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-gray-300">
-            Report history
-          </span>
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <div className="flex items-center gap-2">
+            <div
+              className="w-1 h-4 rounded-full opacity-40"
+              style={{ backgroundColor: accentColor }}
+            />
+            <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-gray-300">
+              Report history
+            </span>
+          </div>
+
+          {/* Show filters even in empty state if filters were applied */}
+          {hasFiltersApplied && (
+            <div className="flex items-center gap-2">
+              <select
+                value={timeFilter}
+                onChange={(e) => setTimeFilter(e.target.value as TimeFilterOption)}
+                className="text-[10px] h-6 px-2 py-0.5 rounded border bg-white text-gray-600 focus:outline-none focus:ring-1 cursor-pointer"
+                style={{ borderColor: `${accentColor}30` }}
+              >
+                {TIME_FILTER_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={assistantFilter ?? ""}
+                onChange={(e) => setAssistantFilter(e.target.value ? Number(e.target.value) : undefined)}
+                className="text-[10px] h-6 px-2 py-0.5 rounded border bg-white text-gray-600 focus:outline-none focus:ring-1 cursor-pointer"
+                style={{ borderColor: `${accentColor}30` }}
+              >
+                <option value="">All assistants</option>
+                {assistants.map((assistant) => (
+                  <option key={assistant.id} value={assistant.id}>
+                    {assistant.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
         <div
           className="flex items-center justify-center py-4 rounded-lg border border-dashed"
           style={{ borderColor: `${accentColor}20` }}
         >
           <p className="text-xs text-gray-400 italic">
-            No reports generated yet
+            {hasFiltersApplied ? "No reports match the selected filters" : "No reports generated yet"}
           </p>
         </div>
       </div>
@@ -90,8 +164,8 @@ export function ReportHistoryPanel({
 
   return (
     <div className="mt-3">
-      {/* Section header */}
-      <div className="flex items-center justify-between mb-2">
+      {/* Section header with filters */}
+      <div className="flex items-center justify-between mb-2 gap-2">
         <div className="flex items-center gap-2">
           <div
             className="w-1 h-4 rounded-full"
@@ -107,10 +181,41 @@ export function ReportHistoryPanel({
               color: accentColor,
             }}
           >
-            {reports.length}
+            {historyData?.total ?? reports.length}
           </span>
         </div>
 
+        {/* Filter dropdowns */}
+        <div className="flex items-center gap-2">
+          {/* Time filter */}
+          <select
+            value={timeFilter}
+            onChange={(e) => setTimeFilter(e.target.value as TimeFilterOption)}
+            className="text-[10px] h-6 px-2 py-0.5 rounded border bg-white text-gray-600 focus:outline-none focus:ring-1 cursor-pointer"
+            style={{ borderColor: `${accentColor}30` }}
+          >
+            {TIME_FILTER_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+
+          {/* Assistant filter */}
+          <select
+            value={assistantFilter ?? ""}
+            onChange={(e) => setAssistantFilter(e.target.value ? Number(e.target.value) : undefined)}
+            className="text-[10px] h-6 px-2 py-0.5 rounded border bg-white text-gray-600 focus:outline-none focus:ring-1 cursor-pointer"
+            style={{ borderColor: `${accentColor}30` }}
+          >
+            <option value="">All assistants</option>
+            {assistants.map((assistant) => (
+              <option key={assistant.id} value={assistant.id}>
+                {assistant.name}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Horizontal scrollable timeline */}

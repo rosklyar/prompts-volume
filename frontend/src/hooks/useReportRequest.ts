@@ -12,7 +12,8 @@ import { reportKeys } from "./useReports"
 
 export const reportRequestKeys = {
   all: ["reportRequests"] as const,
-  status: (groupId: number) => [...reportRequestKeys.all, "status", groupId] as const,
+  status: (groupId: number, assistantId?: number) =>
+    [...reportRequestKeys.all, "status", groupId, assistantId] as const,
 }
 
 // ===== Queries =====
@@ -20,11 +21,16 @@ export const reportRequestKeys = {
 /**
  * Get pending report request status for a group
  * Polls every 30 seconds when there's a pending request
+ * @param assistantId - Optional assistant ID to filter status by specific assistant
  */
-export function useReportRequestStatus(groupId: number, enabled: boolean = true) {
+export function useReportRequestStatus(
+  groupId: number,
+  assistantId?: number,
+  enabled: boolean = true
+) {
   return useQuery({
-    queryKey: reportRequestKeys.status(groupId),
-    queryFn: () => reportsApi.getRequestStatus(groupId),
+    queryKey: reportRequestKeys.status(groupId, assistantId),
+    queryFn: () => reportsApi.getRequestStatus(groupId, assistantId),
     enabled: enabled && groupId > 0,
     staleTime: 10 * 1000, // 10 seconds
     refetchInterval: (query) => {
@@ -64,9 +70,9 @@ export function useCreateReportRequest() {
       return reportsApi.createRequest(groupId, body)
     },
     onSuccess: (data) => {
-      // Invalidate the status query for this group
+      // Invalidate the status query for this group and assistant
       queryClient.invalidateQueries({
-        queryKey: reportRequestKeys.status(data.group_id),
+        queryKey: reportRequestKeys.status(data.group_id, data.assistant_id),
       })
     },
   })
@@ -79,11 +85,12 @@ export function useCancelReportRequest() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (groupId: number) => reportsApi.cancelRequest(groupId),
-    onSuccess: (_, groupId) => {
-      // Invalidate the status query for this group
+    mutationFn: ({ groupId, assistantId }: { groupId: number; assistantId?: number }) =>
+      reportsApi.cancelRequest(groupId, assistantId),
+    onSuccess: (_, { groupId, assistantId }) => {
+      // Invalidate the status query for this group and assistant
       queryClient.invalidateQueries({
-        queryKey: reportRequestKeys.status(groupId),
+        queryKey: reportRequestKeys.status(groupId, assistantId),
       })
     },
   })
@@ -93,10 +100,15 @@ export function useCancelReportRequest() {
 
 /**
  * Combined hook for report request state and actions
+ * @param assistantId - Optional assistant ID to filter status by specific assistant
  */
-export function useReportRequest(groupId: number, enabled: boolean = true) {
+export function useReportRequest(
+  groupId: number,
+  assistantId?: number,
+  enabled: boolean = true
+) {
   const queryClient = useQueryClient()
-  const statusQuery = useReportRequestStatus(groupId, enabled)
+  const statusQuery = useReportRequestStatus(groupId, assistantId, enabled)
   const createMutation = useCreateReportRequest()
   const cancelMutation = useCancelReportRequest()
 
@@ -129,9 +141,9 @@ export function useReportRequest(groupId: number, enabled: boolean = true) {
       : null,
 
     // Actions
-    createRequest: (assistantId?: number) =>
-      createMutation.mutateAsync({ groupId, assistantId }),
-    cancelRequest: () => cancelMutation.mutateAsync(groupId),
+    createRequest: (newAssistantId?: number) =>
+      createMutation.mutateAsync({ groupId, assistantId: newAssistantId ?? assistantId }),
+    cancelRequest: () => cancelMutation.mutateAsync({ groupId, assistantId }),
     refetch: () => statusQuery.refetch(),
 
     // Invalidate reports when request completes

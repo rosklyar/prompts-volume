@@ -841,17 +841,31 @@ export const reportsApi = {
   },
 
   /**
-   * List all reports for a group with pagination
+   * List all reports for a group with pagination and optional filters
    */
   async listReports(
     groupId: number,
     limit: number = 20,
-    offset: number = 0
+    offset: number = 0,
+    filters?: {
+      assistantId?: number
+      fromDate?: string // ISO date string
+      toDate?: string // ISO date string
+    }
   ): Promise<ReportListResponse> {
     const params = new URLSearchParams({
       limit: limit.toString(),
       offset: offset.toString(),
     })
+    if (filters?.assistantId !== undefined) {
+      params.set("assistant_id", filters.assistantId.toString())
+    }
+    if (filters?.fromDate) {
+      params.set("from_date", filters.fromDate)
+    }
+    if (filters?.toDate) {
+      params.set("to_date", filters.toDate)
+    }
     const response = await fetchWithAuth(
       `/reports/api/v1/groups/${groupId}/reports?${params}`
     )
@@ -924,19 +938,34 @@ export const reportsApi = {
 
   /**
    * Get the status of any pending report request for a group
+   * @param assistantId - Optional assistant ID to filter by specific assistant
    */
-  async getRequestStatus(groupId: number): Promise<ReportRequestStatusResponse> {
-    const response = await fetchWithAuth(
-      `/reports/api/v1/groups/${groupId}/request-status`
-    )
+  async getRequestStatus(
+    groupId: number,
+    assistantId?: number
+  ): Promise<ReportRequestStatusResponse> {
+    const params = new URLSearchParams()
+    if (assistantId !== undefined) {
+      params.set("assistant_id", String(assistantId))
+    }
+    const queryString = params.toString()
+    const url = `/reports/api/v1/groups/${groupId}/request-status${queryString ? `?${queryString}` : ""}`
+    const response = await fetchWithAuth(url)
     return response.json()
   },
 
   /**
    * Cancel a pending report request for a group
+   * @param assistantId - Optional assistant ID to filter by specific assistant
    */
-  async cancelRequest(groupId: number): Promise<void> {
-    await fetchWithAuth(`/reports/api/v1/groups/${groupId}/request`, {
+  async cancelRequest(groupId: number, assistantId?: number): Promise<void> {
+    const params = new URLSearchParams()
+    if (assistantId !== undefined) {
+      params.set("assistant_id", String(assistantId))
+    }
+    const queryString = params.toString()
+    const url = `/reports/api/v1/groups/${groupId}/request${queryString ? `?${queryString}` : ""}`
+    await fetchWithAuth(url, {
       method: "DELETE",
     })
   },
