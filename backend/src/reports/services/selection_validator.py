@@ -114,3 +114,15 @@ class SelectionValidatorService:
             errors=[],
             normalized_selections=normalized,
         )
+
+
+# Singleton instance
+_selection_validator_service: SelectionValidatorService | None = None
+
+
+def get_selection_validator_service() -> SelectionValidatorService:
+    """Get the singleton SelectionValidatorService instance."""
+    global _selection_validator_service
+    if _selection_validator_service is None:
+        _selection_validator_service = SelectionValidatorService()
+    return _selection_validator_service

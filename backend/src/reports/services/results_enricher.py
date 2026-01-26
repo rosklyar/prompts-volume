@@ -2,8 +2,6 @@
 
 from typing import List, Optional
 
-from fastapi import Depends
-
 from src.reports.models.brand_models import (
     BrandMentionResultModel,
     DomainMentionPositionModel,
@@ -164,18 +162,68 @@ class ReportEnricher:
         ]
 
 
-def get_report_enricher(
-    brand_detector: BrandMentionDetector = Depends(get_brand_mention_detector),
-    citation_builder: CitationLeaderboardBuilder = Depends(
-        get_citation_leaderboard_builder
-    ),
-    domain_mention_detector: DomainMentionDetector = Depends(
-        get_domain_mention_detector
-    ),
-) -> ReportEnricher:
-    """Dependency injection for ReportEnricher."""
-    return ReportEnricher(
-        brand_detector=brand_detector,
-        citation_builder=citation_builder,
-        domain_mention_detector=domain_mention_detector,
-    )
+def extract_brands_and_domains(
+    brand_config: dict | None,
+    competitors_config: list[dict] | None,
+) -> tuple[list[BrandInput] | None, list[DomainInput]]:
+    """Extract brand and domain inputs from group configuration.
+
+    Args:
+        brand_config: Group's brand configuration dict
+        competitors_config: Group's competitors configuration list
+
+    Returns:
+        Tuple of (brands, domains) where brands is None if no brand configured
+    """
+    if not brand_config:
+        return None, []
+
+    brands = [
+        BrandInput(
+            name=brand_config["name"],
+            variations=brand_config.get("variations", []),
+        )
+    ]
+    domains: list[DomainInput] = []
+
+    if brand_config.get("domain"):
+        domains.append(
+            DomainInput(
+                name=brand_config["name"],
+                domain=brand_config["domain"],
+                is_brand=True,
+            )
+        )
+
+    if competitors_config:
+        brands.extend(
+            BrandInput(name=c["name"], variations=c.get("variations", []))
+            for c in competitors_config
+        )
+        for c in competitors_config:
+            if c.get("domain"):
+                domains.append(
+                    DomainInput(
+                        name=c["name"],
+                        domain=c["domain"],
+                        is_brand=False,
+                    )
+                )
+
+    return brands, domains
+
+
+# Singleton instance
+_report_enricher: ReportEnricher | None = None
+
+
+def get_report_enricher() -> ReportEnricher:
+    """Get the singleton ReportEnricher instance."""
+    global _report_enricher
+    if _report_enricher is None:
+        _report_enricher = ReportEnricher(
+            brand_detector=get_brand_mention_detector(),
+            citation_builder=get_citation_leaderboard_builder(),
+            domain_mention_detector=get_domain_mention_detector(),
+        )
+    return _report_enricher

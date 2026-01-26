@@ -129,6 +129,13 @@ class DomainMentionDetector:
         return mentions
 
 
+# Singleton instance
+_domain_mention_detector: DomainMentionDetector | None = None
+
+
 def get_domain_mention_detector() -> DomainMentionDetector:
-    """Dependency injection for DomainMentionDetector."""
-    return DomainMentionDetector()
+    """Get the singleton DomainMentionDetector instance."""
+    global _domain_mention_detector
+    if _domain_mention_detector is None:
+        _domain_mention_detector = DomainMentionDetector()
+    return _domain_mention_detector

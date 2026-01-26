@@ -3,14 +3,6 @@
 import logging
 from decimal import Decimal
 
-logger = logging.getLogger(__name__)
-
-
-class DuplicateReportError(Exception):
-    """Raised when attempting to generate a duplicate report."""
-
-    pass
-
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -29,7 +21,16 @@ from src.database.models import (
     PromptGroup,
     PromptGroupBinding,
 )
+from src.reports.models.api_models import BrandChangeInfo, PromptSelection
 from src.reports.services.comparison_service import ComparisonService
+
+logger = logging.getLogger(__name__)
+
+
+class DuplicateReportError(Exception):
+    """Raised when attempting to generate a duplicate report."""
+
+    pass
 
 
 class ReportService:
@@ -371,13 +372,11 @@ class ReportService:
         current_brand: dict | None,
         current_competitors: list[dict] | None,
         last_report: GroupReport | None,
-    ) -> "BrandChangeInfo":
+    ) -> BrandChangeInfo:
         """Compare current brand config with last report snapshot.
 
         Returns BrandChangeInfo indicating if brand or competitors changed.
         """
-        from src.reports.models.api_models import BrandChangeInfo
-
         if not last_report:
             # No previous report - consider nothing changed (no basis for comparison)
             return BrandChangeInfo(
@@ -411,7 +410,7 @@ class ReportService:
         self,
         group_id: int,
         user_id: str,
-        selections: list["PromptSelection"],
+        selections: list[PromptSelection],
         title: str | None = None,
         brand_snapshot: dict | None = None,
         competitors_snapshot: list[dict] | None = None,
@@ -435,8 +434,6 @@ class ReportService:
         Returns:
             The created GroupReport
         """
-        from src.reports.models.api_models import PromptSelection
-
         # Get group to verify it exists and load country (from prompts_db)
         group_query = (
             select(PromptGroup)

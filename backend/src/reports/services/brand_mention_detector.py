@@ -89,6 +89,13 @@ class BrandMentionDetector:
         return mentions
 
 
+# Singleton instance
+_brand_mention_detector: BrandMentionDetector | None = None
+
+
 def get_brand_mention_detector() -> BrandMentionDetector:
-    """Dependency injection for BrandMentionDetector."""
-    return BrandMentionDetector()
+    """Get the singleton BrandMentionDetector instance."""
+    global _brand_mention_detector
+    if _brand_mention_detector is None:
+        _brand_mention_detector = BrandMentionDetector()
+    return _brand_mention_detector

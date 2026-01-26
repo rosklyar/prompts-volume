@@ -1,42 +1,37 @@
 """Export services with dependency injection."""
 
-from fastapi import Depends
-
 from src.reports.services.export.export_service import ReportExportService
 from src.reports.services.export.json_formatter import JsonExportFormatter
-from src.reports.services.statistics.brand_visibility import BrandVisibilityCalculator
-from src.reports.services.statistics.citation_domains import CitationDomainCalculator
-from src.reports.services.statistics.domain_mentions import DomainMentionCalculator
+from src.reports.services.statistics import (
+    get_brand_visibility_calculator,
+    get_citation_domain_calculator,
+    get_domain_mention_calculator,
+)
 
 
-def get_brand_visibility_calculator() -> BrandVisibilityCalculator:
-    return BrandVisibilityCalculator()
+# Singleton instances
+_report_export_service: ReportExportService | None = None
+_json_formatter: JsonExportFormatter | None = None
 
 
-def get_domain_mention_calculator() -> DomainMentionCalculator:
-    return DomainMentionCalculator()
-
-
-def get_citation_domain_calculator() -> CitationDomainCalculator:
-    return CitationDomainCalculator()
-
-
-def get_report_export_service(
-    visibility_calc: BrandVisibilityCalculator = Depends(
-        get_brand_visibility_calculator
-    ),
-    domain_calc: DomainMentionCalculator = Depends(get_domain_mention_calculator),
-    citation_calc: CitationDomainCalculator = Depends(get_citation_domain_calculator),
-) -> ReportExportService:
-    return ReportExportService(
-        visibility_calculator=visibility_calc,
-        domain_mention_calculator=domain_calc,
-        citation_domain_calculator=citation_calc,
-    )
+def get_report_export_service() -> ReportExportService:
+    """Get the singleton ReportExportService instance."""
+    global _report_export_service
+    if _report_export_service is None:
+        _report_export_service = ReportExportService(
+            visibility_calculator=get_brand_visibility_calculator(),
+            domain_mention_calculator=get_domain_mention_calculator(),
+            citation_domain_calculator=get_citation_domain_calculator(),
+        )
+    return _report_export_service
 
 
 def get_json_formatter() -> JsonExportFormatter:
-    return JsonExportFormatter(indent=2)
+    """Get the singleton JsonExportFormatter instance."""
+    global _json_formatter
+    if _json_formatter is None:
+        _json_formatter = JsonExportFormatter(indent=2)
+    return _json_formatter
 
 
 __all__ = [
