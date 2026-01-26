@@ -1,7 +1,6 @@
 """Orchestrator for daily scheduled batch processing."""
 
 import logging
-import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 
@@ -9,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.billing.services.charge_service import ChargeService
 from src.brightdata.services.brightdata_service import BrightDataService
+from src.config.settings import settings
 from src.daily_scheduling.models.domain import EnabledGroup, GroupPromptAnalysis
 from src.daily_scheduling.repositories.daily_batch_repo import DailyBatchRepository
 from src.daily_scheduling.services.batch_completion_service import BatchCompletionService
@@ -48,7 +48,9 @@ class DailyBatchOrchestrator:
     Open/Closed: Can add new scheduling strategies without modifying core logic.
     """
 
-    TIMEOUT_HOURS = 6
+    # Timeout is naturally determined by chunk retry mechanism:
+    # (max_retries + 1) * chunk_timeout_hours = (2 + 1) * 2 = 6 hours
+    TIMEOUT_HOURS = (settings.chunk_max_retries + 1) * settings.chunk_timeout_hours
 
     def __init__(
         self,
@@ -62,7 +64,6 @@ class DailyBatchOrchestrator:
         brightdata_service: BrightDataService | None = None,
         completion_service: BatchCompletionService | None = None,
         report_generator: BatchReportGenerator | None = None,
-        chunk_size: int = 50,
     ) -> None:
         self._prompts_session = prompts_session
         self._evals_session = evals_session
@@ -75,7 +76,6 @@ class DailyBatchOrchestrator:
         self._report_generator = report_generator or BatchReportGenerator(
             prompts_session, evals_session, charge_service=charge_service
         )
-        self._chunk_size = chunk_size
 
     async def start_daily_batch(self) -> int | None:
         """Start daily batch processing.
@@ -293,40 +293,16 @@ class DailyBatchOrchestrator:
 
         Returns list of batch IDs.
         """
-        if not prompts:
+        if not prompts or self._brightdata_service is None:
             return []
 
-        if self._brightdata_service is None:
-            logger.warning("BrightDataService not configured, skipping trigger")
-            return []
-
-        # Chunk prompts
-        prompt_items = list(prompts.items())
-        chunks = [
-            prompt_items[i:i + self._chunk_size]
-            for i in range(0, len(prompt_items), self._chunk_size)
-        ]
-
-        batch_ids: list[str] = []
-        for chunk in chunks:
-            batch_id = str(uuid.uuid4())
-            chunk_dict = dict(chunk)
-
-            await self._brightdata_service.trigger_batch(
-                batch_id,
-                chunk_dict,
-                user_id="system",  # System-triggered
-                country_id=country_id,
-                country_iso_code=country_iso_code,
-                assistant_id=assistant_id,
-            )
-            batch_ids.append(batch_id)
-            logger.info(
-                f"Triggered batch {batch_id} for country={country_iso_code}, "
-                f"assistant_id={assistant_id} with {len(chunk)} prompts"
-            )
-
-        return batch_ids
+        return await self._brightdata_service.trigger_batches_chunked(
+            prompts=prompts,
+            user_id="system",
+            country_id=country_id,
+            country_iso_code=country_iso_code,
+            assistant_id=assistant_id,
+        )
 
     async def _trigger_brightdata_batches_by_country_assistant(
         self,

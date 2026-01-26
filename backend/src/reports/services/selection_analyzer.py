@@ -50,6 +50,18 @@ class MostRecentSelectionStrategy:
         return sorted_options[0].evaluation_id
 
 
+# Singleton instance for MostRecentSelectionStrategy
+_most_recent_selection_strategy: MostRecentSelectionStrategy | None = None
+
+
+def get_most_recent_selection_strategy() -> MostRecentSelectionStrategy:
+    """Get the singleton MostRecentSelectionStrategy instance."""
+    global _most_recent_selection_strategy
+    if _most_recent_selection_strategy is None:
+        _most_recent_selection_strategy = MostRecentSelectionStrategy()
+    return _most_recent_selection_strategy
+
+
 class SelectionAnalyzerService:
     """Analyzes available evaluation options for each prompt in a group."""
 

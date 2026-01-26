@@ -128,6 +128,13 @@ class CitationLeaderboardBuilder:
             return []
 
 
+# Singleton instance
+_citation_leaderboard_builder: CitationLeaderboardBuilder | None = None
+
+
 def get_citation_leaderboard_builder() -> CitationLeaderboardBuilder:
-    """Dependency injection for CitationLeaderboardBuilder."""
-    return CitationLeaderboardBuilder(max_path_depth=2)
+    """Get the singleton CitationLeaderboardBuilder instance."""
+    global _citation_leaderboard_builder
+    if _citation_leaderboard_builder is None:
+        _citation_leaderboard_builder = CitationLeaderboardBuilder(max_path_depth=2)
+    return _citation_leaderboard_builder

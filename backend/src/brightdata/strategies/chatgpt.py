@@ -3,6 +3,7 @@
 from typing import Any
 
 from src.brightdata.strategies.base import AssistantConfig, AssistantStrategy, ParsedWebhookItem
+from src.brightdata.strategies.citation_utils import extract_index, normalize_citations
 
 
 _CONFIG = AssistantConfig(
@@ -68,30 +69,10 @@ class ChatGPTStrategy(AssistantStrategy):
 
     def parse_webhook_item(self, raw_item: dict[str, Any]) -> ParsedWebhookItem:
         """Parse ChatGPT webhook response into normalized format."""
-        # Extract index (ChatGPT returns it in 'input' or at top level)
-        index: int | None = None
-        if "index" in raw_item:
-            index = int(raw_item["index"])
-        elif "input" in raw_item and isinstance(raw_item["input"], dict):
-            index = raw_item["input"].get("index")
-            if index is not None:
-                index = int(index)
-
-        # Extract citations and normalize
-        raw_citations = raw_item.get("citations") or []
-        citations = [
-            {
-                "url": c.get("url", ""),
-                "text": c.get("title", ""),
-                "domain": c.get("domain", ""),
-            }
-            for c in raw_citations
-        ]
-
         return ParsedWebhookItem(
-            index=index,
+            index=extract_index(raw_item),
             prompt_text=raw_item.get("prompt", ""),
             answer_text=raw_item.get("answer_text", ""),
-            citations=citations,
+            citations=normalize_citations(raw_item.get("citations")),
             raw_data=raw_item,
         )

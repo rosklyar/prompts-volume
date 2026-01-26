@@ -3,16 +3,17 @@
 import logging
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.billing.services.charge_service import ChargeService
+from src.config.settings import settings
 from src.daily_scheduling.repositories.daily_batch_repo import DailyBatchRepository
+from src.daily_scheduling.repositories.evaluation_query import EvaluationQueryRepository
+from src.daily_scheduling.services.group_collector_service import GroupCollectorService
 from src.database.evals_models import (
     DailyBatchGroupStatus,
     DailyBatchStatus,
-    EvaluationStatus,
-    PromptEvaluation,
 )
 from src.database.models import PromptGroup
 from src.reports.models.api_models import PromptSelection
@@ -35,6 +36,8 @@ class BatchReportGenerator:
         charge_service: ChargeService,
         report_service: ReportService | None = None,
         batch_repo: DailyBatchRepository | None = None,
+        group_collector: GroupCollectorService | None = None,
+        evaluation_query: EvaluationQueryRepository | None = None,
     ) -> None:
         self._prompts_session = prompts_session
         self._evals_session = evals_session
@@ -44,6 +47,10 @@ class BatchReportGenerator:
             charge_service=charge_service,
         )
         self._batch_repo = batch_repo or DailyBatchRepository(evals_session)
+        self._group_collector = group_collector or GroupCollectorService(prompts_session)
+        self._evaluation_query = evaluation_query or EvaluationQueryRepository(
+            evals_session
+        )
 
     async def generate_all_reports(self, batch_id: int) -> int:
         """Generate reports for all groups in the batch.
@@ -140,11 +147,7 @@ class BatchReportGenerator:
             raise ValueError(f"Group {group_id} not found")
 
         # Get all prompts in group
-        from src.daily_scheduling.services.group_collector_service import (
-            GroupCollectorService,
-        )
-        collector = GroupCollectorService(self._prompts_session)
-        prompt_ids = await collector.get_prompt_ids_for_group(group_id)
+        prompt_ids = await self._group_collector.get_prompt_ids_for_group(group_id)
 
         # Build selections using:
         # 1. Pre-recorded selections for fresh prompts
@@ -177,25 +180,25 @@ class BatchReportGenerator:
     ) -> list[PromptSelection]:
         """Build evaluation selections for report.
 
-        For prompts with pre-recorded fresh evaluation: use that ID.
-        For prompts needing refresh: use latest completed evaluation for this assistant.
-        For prompts with no data: use None (will be marked AWAITING).
+        At generation time, uses a 24h window to find the most recent evaluations:
+        - For prompts with pre-recorded fresh evaluation: use that ID (already within window)
+        - For prompts needing refresh: query evaluations within 24h window, take latest
+        - For prompts with no data in window: use None (will be marked AWAITING)
         """
         # Convert dict keys from str to int if needed (JSON serialization)
-        fresh_selections = {
-            int(k): v for k, v in fresh_prompt_selections.items()
-        }
+        fresh_selections = {int(k): v for k, v in fresh_prompt_selections.items()}
 
-        # Get latest evaluations for prompts that needed refresh
+        # Get latest evaluations within the generation window (24h) for prompts that needed refresh
         prompts_needing_lookup = [
             pid for pid in prompt_ids if pid not in fresh_selections
         ]
 
         latest_evals: dict[int, int] = {}
         if prompts_needing_lookup:
-            latest_evals = await self._get_latest_evaluations(
+            latest_evals = await self._evaluation_query.get_latest_evaluation_ids_within_window(
                 prompts_needing_lookup,
                 assistant_id=assistant_id,
+                window_hours=settings.freshness_generation_threshold_hours,
             )
 
         # Build selections
@@ -205,55 +208,20 @@ class BatchReportGenerator:
                 # Use pre-recorded fresh evaluation
                 eval_id = fresh_selections[prompt_id]
             elif prompt_id in latest_evals:
-                # Use latest evaluation (from refresh)
+                # Use latest evaluation within window (from refresh or late webhook)
                 eval_id = latest_evals[prompt_id]
             else:
-                # No evaluation available
+                # No evaluation available within window
                 eval_id = None
 
-            selections.append(PromptSelection(
-                prompt_id=prompt_id,
-                evaluation_id=eval_id,
-            ))
+            selections.append(
+                PromptSelection(
+                    prompt_id=prompt_id,
+                    evaluation_id=eval_id,
+                )
+            )
 
         return selections
-
-    async def _get_latest_evaluations(
-        self,
-        prompt_ids: list[int],
-        *,
-        assistant_id: int = 1,
-    ) -> dict[int, int]:
-        """Get latest completed evaluation ID for each prompt for specific assistant."""
-        if not prompt_ids:
-            return {}
-
-        subq = (
-            select(
-                PromptEvaluation.prompt_id,
-                func.max(PromptEvaluation.id).label("max_id"),
-            )
-            .where(
-                PromptEvaluation.prompt_id.in_(prompt_ids),
-                PromptEvaluation.status == EvaluationStatus.COMPLETED,
-                PromptEvaluation.assistant_id == assistant_id,
-            )
-            .group_by(PromptEvaluation.prompt_id)
-            .subquery()
-        )
-
-        query = (
-            select(PromptEvaluation.prompt_id, PromptEvaluation.id)
-            .join(
-                subq,
-                (PromptEvaluation.prompt_id == subq.c.prompt_id) &
-                (PromptEvaluation.id == subq.c.max_id),
-            )
-            .where(PromptEvaluation.assistant_id == assistant_id)
-        )
-
-        result = await self._evals_session.execute(query)
-        return {row[0]: row[1] for row in result.all()}
 
     async def _get_group(self, group_id: int) -> PromptGroup | None:
         """Get group from prompts_db."""
@@ -267,7 +235,6 @@ class BatchReportGenerator:
         last_run_at: datetime,
     ) -> None:
         """Update schedule_last_run_at for all groups."""
-        from sqlalchemy import update
         stmt = (
             update(PromptGroup)
             .where(PromptGroup.id.in_(group_ids))

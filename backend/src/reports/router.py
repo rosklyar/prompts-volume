@@ -1,5 +1,6 @@
 """API router for report operations."""
 
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Annotated
 
@@ -9,6 +10,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.deps import CurrentUser
+from src.database.evals_models import (
+    PromptEvaluation,
+    EvaluationStatus,
+)
+from src.database.models import Prompt, PromptGroupBinding
 from src.config.settings import settings
 from src.database.evals_session import get_evals_session
 from src.database.session import get_async_session
@@ -37,9 +43,7 @@ from src.reports.models.export_models import (
     ExportReportMeta,
 )
 from src.reports.services import (
-    BrandInput,
     ComparisonService,
-    DomainInput,
     FreshnessAnalyzerService,
     ReportEnricher,
     ReportRequestService,
@@ -47,6 +51,7 @@ from src.reports.services import (
     SelectionAnalyzerService,
     SelectionPricingService,
     SelectionValidatorService,
+    extract_brands_and_domains,
     get_comparison_service,
     get_freshness_analyzer,
     get_report_enricher,
@@ -104,14 +109,6 @@ async def get_report_data(
     - Simple 3-state status: fresh (<=24h), stale (>24h), absent (no data)
     - Queue status for pending executions (via BrightData batches)
     """
-    from datetime import timezone
-
-    from src.database.evals_models import (
-        PromptEvaluation,
-        EvaluationStatus,
-    )
-    from src.database.models import Prompt, PromptGroupBinding
-
     # Verify user owns the group and get country_id
     try:
         group = await group_service.get_by_id_for_user(group_id, current_user.id)
@@ -196,7 +193,6 @@ async def get_report_data(
         "pending": 0,
     }
 
-    from datetime import datetime
     now = datetime.now(timezone.utc)
 
     for prompt_id in prompt_ids:
@@ -317,28 +313,7 @@ async def generate_report(
         )
 
     # Extract brand and competitors from group for brand mention detection
-    brands = None
-    domains = []
-    if group.brand:
-        brands = [BrandInput(name=group.brand["name"], variations=group.brand.get("variations", []))]
-        if group.brand.get("domain"):
-            domains.append(DomainInput(
-                name=group.brand["name"],
-                domain=group.brand["domain"],
-                is_brand=True,
-            ))
-        if group.competitors:
-            brands.extend(
-                BrandInput(name=c["name"], variations=c.get("variations", []))
-                for c in group.competitors
-            )
-            for c in group.competitors:
-                if c.get("domain"):
-                    domains.append(DomainInput(
-                        name=c["name"],
-                        domain=c["domain"],
-                        is_brand=False,
-                    ))
+    brands, domains = extract_brands_and_domains(group.brand, group.competitors)
 
     # Generate report with validated selections
     try:
@@ -523,7 +498,6 @@ async def get_report(
 
     result = await report_service.get_report(report_id, current_user.id)
     if not result or result["report"].group_id != group_id:
-        from fastapi import HTTPException, status
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Report {report_id} not found",
@@ -533,28 +507,7 @@ async def get_report(
     prompts_map = result["prompts_map"]
 
     # Extract brand and competitors from group for brand mention detection
-    brands = None
-    domains = []
-    if group.brand:
-        brands = [BrandInput(name=group.brand["name"], variations=group.brand.get("variations", []))]
-        if group.brand.get("domain"):
-            domains.append(DomainInput(
-                name=group.brand["name"],
-                domain=group.brand["domain"],
-                is_brand=True,
-            ))
-        if group.competitors:
-            brands.extend(
-                BrandInput(name=c["name"], variations=c.get("variations", []))
-                for c in group.competitors
-            )
-            for c in group.competitors:
-                if c.get("domain"):
-                    domains.append(DomainInput(
-                        name=c["name"],
-                        domain=c["domain"],
-                        is_brand=False,
-                    ))
+    brands, domains = extract_brands_and_domains(group.brand, group.competitors)
 
     items = []
     all_answers = []
@@ -803,36 +756,7 @@ async def export_report_json(
     prompts_map = result["prompts_map"]
 
     # Extract brand and competitors from group for detection
-    brands = None
-    domains = []
-    if group.brand:
-        brands = [
-            BrandInput(
-                name=group.brand["name"], variations=group.brand.get("variations", [])
-            )
-        ]
-        if group.brand.get("domain"):
-            domains.append(
-                DomainInput(
-                    name=group.brand["name"],
-                    domain=group.brand["domain"],
-                    is_brand=True,
-                )
-            )
-        if group.competitors:
-            brands.extend(
-                BrandInput(name=c["name"], variations=c.get("variations", []))
-                for c in group.competitors
-            )
-            for c in group.competitors:
-                if c.get("domain"):
-                    domains.append(
-                        DomainInput(
-                            name=c["name"],
-                            domain=c["domain"],
-                            is_brand=False,
-                        )
-                    )
+    brands, domains = extract_brands_and_domains(group.brand, group.competitors)
 
     # Build export items and collect mentions
     export_items = []

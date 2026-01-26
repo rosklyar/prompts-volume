@@ -29,6 +29,7 @@ class BrightDataBatchService:
         *,
         assistant_id: int = 1,
         index_to_prompt_id: dict[str, int] | None = None,
+        max_retries: int = 2,
     ) -> BrightDataBatch:
         """Register a new batch for webhook correlation.
 
@@ -39,10 +40,12 @@ class BrightDataBatchService:
             country_id: Country ID used for scraping
             assistant_id: AI assistant ID for this batch (default: 1 = ChatGPT)
             index_to_prompt_id: Mapping of 1-based string index to prompt_id for webhook matching
+            max_retries: Maximum number of retries for this batch (default: 2)
 
         Returns:
             Created BrightDataBatch record
         """
+        now = datetime.now(timezone.utc)
         batch = BrightDataBatch(
             batch_id=batch_id,
             user_id=user_id,
@@ -51,6 +54,10 @@ class BrightDataBatchService:
             country_id=country_id,
             status=BrightDataBatchStatus.PENDING,
             index_to_prompt_id=index_to_prompt_id,
+            retry_count=0,
+            max_retries=max_retries,
+            first_submitted_at=now,
+            last_submitted_at=now,
         )
         self._session.add(batch)
         await self._session.flush()
@@ -119,6 +126,62 @@ class BrightDataBatchService:
             all_pending.update(batch_prompt_ids)
 
         return set(prompt_ids) & all_pending
+
+    async def get_timed_out_pending_batches(
+        self,
+        *,
+        chunk_timeout_hours: int,
+    ) -> list[BrightDataBatch]:
+        """Get PENDING batches that have exceeded the chunk timeout.
+
+        Args:
+            chunk_timeout_hours: Hours after which PENDING batches are timed out
+
+        Returns:
+            List of timed-out BrightDataBatch records
+        """
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=chunk_timeout_hours)
+        result = await self._session.execute(
+            select(BrightDataBatch).where(
+                BrightDataBatch.status == BrightDataBatchStatus.PENDING,
+                BrightDataBatch.last_submitted_at < cutoff,
+            )
+        )
+        return list(result.scalars().all())
+
+    async def increment_retry_and_update_timestamp(
+        self,
+        batch: BrightDataBatch,
+    ) -> None:
+        """Increment retry count and update last_submitted_at for retry.
+
+        Args:
+            batch: The batch being retried
+        """
+        batch.retry_count += 1
+        batch.last_submitted_at = datetime.now(timezone.utc)
+        await self._session.flush()
+        logger.info(
+            f"Batch {batch.batch_id} retry #{batch.retry_count} "
+            f"(max_retries={batch.max_retries})"
+        )
+
+    async def mark_batch_failed(
+        self,
+        batch: BrightDataBatch,
+    ) -> None:
+        """Mark batch as FAILED when max retries exceeded.
+
+        Args:
+            batch: The batch to mark as failed
+        """
+        batch.status = BrightDataBatchStatus.FAILED
+        batch.completed_at = datetime.now(timezone.utc)
+        await self._session.flush()
+        logger.info(
+            f"Batch {batch.batch_id} marked as FAILED after {batch.retry_count} retries "
+            f"(prompt_ids={batch.prompt_ids})"
+        )
 
     async def get_stale_pending_batches(
         self,

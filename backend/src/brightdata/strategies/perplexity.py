@@ -3,6 +3,11 @@
 from typing import Any
 
 from src.brightdata.strategies.base import AssistantConfig, AssistantStrategy, ParsedWebhookItem
+from src.brightdata.strategies.citation_utils import (
+    extract_index,
+    merge_additional_sources,
+    normalize_citations,
+)
 
 
 _CONFIG = AssistantConfig(
@@ -62,36 +67,10 @@ class PerplexityStrategy(AssistantStrategy):
 
     def parse_webhook_item(self, raw_item: dict[str, Any]) -> ParsedWebhookItem:
         """Parse Perplexity webhook response into normalized format."""
-        # Extract index
-        index: int | None = None
-        if "index" in raw_item:
-            index = int(raw_item["index"])
-
-        # Perplexity uses 'citations' list with url/title/domain structure
-        raw_citations = raw_item.get("citations") or []
-        citations = [
-            {
-                "url": c.get("url", ""),
-                "text": c.get("title", c.get("text", "")),
-                "domain": c.get("domain", ""),
-            }
-            for c in raw_citations
-        ]
-
-        # Also check 'sources' which may contain additional citation-like data
-        raw_sources = raw_item.get("sources") or []
-        for s in raw_sources:
-            if isinstance(s, dict) and s.get("url"):
-                # Avoid duplicates
-                if not any(c["url"] == s.get("url") for c in citations):
-                    citations.append({
-                        "url": s.get("url", ""),
-                        "text": s.get("title", s.get("name", "")),
-                        "domain": s.get("domain", ""),
-                    })
-
+        citations = normalize_citations(raw_item.get("citations"))
+        citations = merge_additional_sources(citations, raw_item.get("sources"))
         return ParsedWebhookItem(
-            index=index,
+            index=extract_index(raw_item),
             prompt_text=raw_item.get("prompt", ""),
             answer_text=raw_item.get("answer_text", ""),
             citations=citations,
