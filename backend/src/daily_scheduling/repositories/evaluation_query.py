@@ -1,5 +1,6 @@
 """Repository for evaluation queries shared across services."""
 
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 
 from sqlalchemy import func, select
@@ -140,3 +141,58 @@ class EvaluationQueryRepository:
             prompt_ids, assistant_id=assistant_id
         )
         return {pid: info["id"] for pid, info in evals.items()}
+
+    async def get_latest_evaluation_ids_within_window(
+        self,
+        prompt_ids: list[int],
+        *,
+        assistant_id: int = 1,
+        window_hours: int = 24,
+    ) -> dict[int, int]:
+        """Get latest completed evaluation ID for each prompt within a time window.
+
+        This is used at report generation time to find the most recent evaluation
+        within the freshness window (e.g., 24 hours).
+
+        Args:
+            prompt_ids: List of prompt IDs to look up
+            assistant_id: AI assistant ID to filter evaluations
+            window_hours: Look back window in hours (default: 24)
+
+        Returns:
+            Dict mapping prompt_id -> evaluation_id for prompts with recent evaluations.
+        """
+        if not prompt_ids:
+            return {}
+
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=window_hours)
+
+        # Subquery to get max completed_at within window for each prompt
+        subq = (
+            select(
+                PromptEvaluation.prompt_id,
+                func.max(PromptEvaluation.completed_at).label("max_completed"),
+            )
+            .where(
+                PromptEvaluation.prompt_id.in_(prompt_ids),
+                PromptEvaluation.status == EvaluationStatus.COMPLETED,
+                PromptEvaluation.assistant_id == assistant_id,
+                PromptEvaluation.completed_at >= cutoff,
+            )
+            .group_by(PromptEvaluation.prompt_id)
+            .subquery()
+        )
+
+        # Join to get the actual evaluation IDs
+        query = (
+            select(PromptEvaluation.prompt_id, PromptEvaluation.id)
+            .join(
+                subq,
+                (PromptEvaluation.prompt_id == subq.c.prompt_id)
+                & (PromptEvaluation.completed_at == subq.c.max_completed),
+            )
+            .where(PromptEvaluation.assistant_id == assistant_id)
+        )
+
+        result = await self._session.execute(query)
+        return {row[0]: row[1] for row in result.all()}

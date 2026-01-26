@@ -17,16 +17,16 @@ from src.database.evals_models import (
 )
 from src.database.models import Prompt, PromptGroup, PromptGroupBinding
 from src.reports.models.api_models import PromptSelection
+from src.config.settings import settings
 from src.reports.repositories.report_request_repo import ReportRequestRepository
 from src.reports.services.report_service import DuplicateReportError, ReportService
 
 logger = logging.getLogger(__name__)
 
-# Same timeout as scheduled batches
-TIMEOUT_HOURS = 6
-
-# Freshness threshold in hours
-FRESH_THRESHOLD_HOURS = 24
+# Chunk retry gives natural ~6h max wait: 3 attempts × 2h each
+# Manual requests use generation threshold for freshness
+TIMEOUT_HOURS = settings.chunk_timeout_hours * (settings.chunk_max_retries + 1)
+FRESH_THRESHOLD_HOURS = settings.freshness_generation_threshold_hours
 
 
 class ReportRequestService:

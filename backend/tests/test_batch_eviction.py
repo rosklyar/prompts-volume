@@ -151,8 +151,10 @@ def test_batch_eviction_webhook_never_arrives(client, create_verified_user, test
     assert data["queued_count"] == 0
 
     # === STEP 6: Make batch stale (simulate time passing) ===
+    # Eviction timeout is 6 hours (chunk_timeout=2 * (max_retries+1)=3)
+    # Use 7 hours to exceed the timeout
     asyncio.get_event_loop().run_until_complete(
-        _make_batch_stale(test_engine, first_batch_id, hours_ago=4)
+        _make_batch_stale(test_engine, first_batch_id, hours_ago=7)
     )
 
     # === STEP 7: Third request - should evict stale batch and create new one ===

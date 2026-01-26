@@ -127,6 +127,92 @@ class BrightDataService:
             logger.exception(f"Failed to trigger Bright Data batch: {e}")
             raise
 
+    async def re_trigger_batch(
+        self,
+        batch: "BrightDataBatch",
+        prompts: dict[int, str],
+        country_iso_code: str,
+    ) -> None:
+        """Re-submit an existing batch to BrightData (for retry).
+
+        Uses the existing batch's batch_id but re-triggers with the provided prompts.
+        Does NOT create a new batch record - just re-triggers the HTTP request.
+
+        Args:
+            batch: The existing BrightDataBatch record to re-trigger
+            prompts: Dict mapping prompt_id to prompt_text
+            country_iso_code: ISO country code for BrightData API (e.g., "UA")
+        """
+        # Import here to avoid circular import
+        from src.database.evals_models import BrightDataBatch
+
+        if not self._client:
+            logger.debug("Bright Data client not configured, skipping HTTP re-trigger")
+            return
+
+        if not prompts:
+            logger.debug(f"Batch {batch.batch_id} has no prompts to re-trigger")
+            return
+
+        # Get strategy for the selected assistant
+        strategy = AssistantStrategyFactory.get_strategy(batch.assistant_id)
+        logger.info(
+            f"Re-triggering batch {batch.batch_id} for {strategy.get_assistant_name()} "
+            f"(retry #{batch.retry_count}, country={country_iso_code})"
+        )
+
+        try:
+            # Build request inputs using strategy, preserving original index order
+            # Use the stored index_to_prompt_id to maintain consistent ordering
+            inputs = []
+            if batch.index_to_prompt_id:
+                for idx_str, prompt_id in sorted(
+                    batch.index_to_prompt_id.items(),
+                    key=lambda x: int(x[0])
+                ):
+                    if prompt_id in prompts:
+                        inputs.append(
+                            strategy.build_input_item(
+                                prompt=prompts[prompt_id],
+                                country=country_iso_code,
+                                index=int(idx_str),
+                            )
+                        )
+            else:
+                # Fallback: rebuild from prompts
+                for i, (prompt_id, text) in enumerate(prompts.items()):
+                    inputs.append(
+                        strategy.build_input_item(
+                            prompt=text,
+                            country=country_iso_code,
+                            index=i + 1,
+                        )
+                    )
+
+            # Build webhook URL with assistant key for routing
+            assistant_key = strategy.get_assistant_key()
+            webhook_url = (
+                f"{self._webhook_base_url}/evaluations/api/v1/webhook/"
+                f"{assistant_key}/{batch.batch_id}"
+            )
+
+            trigger_request = BrightDataTriggerRequest(
+                batch_id=batch.batch_id,
+                inputs=inputs,
+                webhook_url=webhook_url,
+                webhook_auth_header=f"Basic {self._webhook_secret}",
+            )
+
+            await self._client.trigger_batch(trigger_request, strategy)
+            logger.info(
+                f"Batch {batch.batch_id} re-triggered successfully "
+                f"(prompts: {len(inputs)}, retry: #{batch.retry_count})"
+            )
+
+        except Exception as e:
+            logger.exception(f"Failed to re-trigger Bright Data batch: {e}")
+            raise
+
     async def trigger_batches_chunked(
         self,
         prompts: dict[int, str],

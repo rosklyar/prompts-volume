@@ -6,6 +6,7 @@ All imports are at the top of the file for clarity and performance.
 
 from src.billing.services import build_charge_service
 from src.brightdata.service_factory import create_brightdata_service
+from src.brightdata.services.chunk_retry_service import ChunkRetryService
 from src.daily_scheduling.services.batch_completion_service import BatchCompletionService
 from src.daily_scheduling.services.batch_report_generator import BatchReportGenerator
 from src.daily_scheduling.services.daily_batch_orchestrator import DailyBatchOrchestrator
@@ -49,4 +50,14 @@ def create_report_request_service(sessions: SessionSet) -> ReportRequestService:
         sessions.prompts,
         sessions.evals,
         report_service=report_service,
+    )
+
+
+def create_chunk_retry_service(sessions: SessionSet) -> ChunkRetryService:
+    """Create chunk retry service with all dependencies."""
+    brightdata_service = create_brightdata_service(sessions.evals)
+    return ChunkRetryService(
+        sessions.prompts,
+        sessions.evals,
+        brightdata_service=brightdata_service,
     )

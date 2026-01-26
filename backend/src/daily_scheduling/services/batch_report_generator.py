@@ -7,6 +7,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.billing.services.charge_service import ChargeService
+from src.config.settings import settings
 from src.daily_scheduling.repositories.daily_batch_repo import DailyBatchRepository
 from src.daily_scheduling.repositories.evaluation_query import EvaluationQueryRepository
 from src.daily_scheduling.services.group_collector_service import GroupCollectorService
@@ -179,23 +180,25 @@ class BatchReportGenerator:
     ) -> list[PromptSelection]:
         """Build evaluation selections for report.
 
-        For prompts with pre-recorded fresh evaluation: use that ID.
-        For prompts needing refresh: use latest completed evaluation for this assistant.
-        For prompts with no data: use None (will be marked AWAITING).
+        At generation time, uses a 24h window to find the most recent evaluations:
+        - For prompts with pre-recorded fresh evaluation: use that ID (already within window)
+        - For prompts needing refresh: query evaluations within 24h window, take latest
+        - For prompts with no data in window: use None (will be marked AWAITING)
         """
         # Convert dict keys from str to int if needed (JSON serialization)
         fresh_selections = {int(k): v for k, v in fresh_prompt_selections.items()}
 
-        # Get latest evaluations for prompts that needed refresh
+        # Get latest evaluations within the generation window (24h) for prompts that needed refresh
         prompts_needing_lookup = [
             pid for pid in prompt_ids if pid not in fresh_selections
         ]
 
         latest_evals: dict[int, int] = {}
         if prompts_needing_lookup:
-            latest_evals = await self._evaluation_query.get_latest_evaluation_ids(
+            latest_evals = await self._evaluation_query.get_latest_evaluation_ids_within_window(
                 prompts_needing_lookup,
                 assistant_id=assistant_id,
+                window_hours=settings.freshness_generation_threshold_hours,
             )
 
         # Build selections
@@ -205,10 +208,10 @@ class BatchReportGenerator:
                 # Use pre-recorded fresh evaluation
                 eval_id = fresh_selections[prompt_id]
             elif prompt_id in latest_evals:
-                # Use latest evaluation (from refresh)
+                # Use latest evaluation within window (from refresh or late webhook)
                 eval_id = latest_evals[prompt_id]
             else:
-                # No evaluation available
+                # No evaluation available within window
                 eval_id = None
 
             selections.append(

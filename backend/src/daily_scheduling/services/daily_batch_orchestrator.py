@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.billing.services.charge_service import ChargeService
 from src.brightdata.services.brightdata_service import BrightDataService
+from src.config.settings import settings
 from src.daily_scheduling.models.domain import EnabledGroup, GroupPromptAnalysis
 from src.daily_scheduling.repositories.daily_batch_repo import DailyBatchRepository
 from src.daily_scheduling.services.batch_completion_service import BatchCompletionService
@@ -47,7 +48,9 @@ class DailyBatchOrchestrator:
     Open/Closed: Can add new scheduling strategies without modifying core logic.
     """
 
-    TIMEOUT_HOURS = 6
+    # Timeout is naturally determined by chunk retry mechanism:
+    # (max_retries + 1) * chunk_timeout_hours = (2 + 1) * 2 = 6 hours
+    TIMEOUT_HOURS = (settings.chunk_max_retries + 1) * settings.chunk_timeout_hours
 
     def __init__(
         self,

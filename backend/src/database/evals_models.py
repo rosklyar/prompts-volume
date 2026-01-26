@@ -213,6 +213,15 @@ class GroupReport(EvalsBase):
     total_evaluations_loaded: Mapped[int] = mapped_column(Integer, nullable=False)
     total_cost: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
 
+    # Completeness tracking
+    is_complete: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
+        comment="True if all prompts have data (prompts_awaiting = 0)"
+    )
+
     # Brand/competitors snapshot at report generation time
     brand_snapshot: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     competitors_snapshot: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
@@ -355,6 +364,30 @@ class BrightDataBatch(EvalsBase):
         JSON,
         nullable=True,
         comment="Map of 1-based index to prompt_id for webhook matching"
+    )
+
+    # Chunk retry tracking
+    retry_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+    max_retries: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=2,
+        server_default="2",
+    )
+    first_submitted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Original submission timestamp"
+    )
+    last_submitted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Most recent submission timestamp (for retries)"
     )
 
     def __repr__(self) -> str:

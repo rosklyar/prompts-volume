@@ -28,14 +28,10 @@ class PromptAggregatorService:
         self._evaluation_query = evaluation_query or EvaluationQueryRepository(
             evals_session
         )
-        # Use tighter threshold for scheduled batches: fresh_threshold - batch_timeout
-        # This ensures prompts are refreshed before they become stale after batch completes
-        scheduled_threshold = (
-            settings.freshness_fresh_threshold_hours
-            - settings.scheduled_batch_timeout_hours
-        )
+        # Use scheduling threshold (18h) which ensures prompts are refreshed
+        # before they become stale at generation time (24h)
         self._freshness = freshness_service or FreshnessService(
-            fresh_threshold_hours=scheduled_threshold,
+            fresh_threshold_hours=settings.freshness_scheduling_threshold_hours,
         )
 
     async def analyze_group_prompts(

@@ -15,6 +15,7 @@ from src.database.users_session import get_users_session_maker
 from src.daily_scheduling.service_factory import (
     create_batch_completion_service,
     create_batch_report_generator,
+    create_chunk_retry_service,
     create_daily_batch_orchestrator,
     create_report_request_service,
 )
@@ -84,6 +85,15 @@ async def setup_scheduler() -> None:
         id="ready_reports_generator",
         replace_existing=True,
         name="Ready reports generator",
+    )
+
+    # Job 6: Check chunk timeouts and retry every 15 minutes
+    scheduler.add_job(
+        _check_chunk_timeouts_and_retry_job,
+        trigger=IntervalTrigger(minutes=15),
+        id="chunk_timeout_retry_checker",
+        replace_existing=True,
+        name="Chunk timeout and retry checker",
     )
 
     scheduler.start()
@@ -216,6 +226,29 @@ async def _generate_ready_reports_job() -> None:
         except Exception:
             logger.exception("Failed to generate ready reports")
             await sessions.rollback_all()
+
+
+async def _check_chunk_timeouts_and_retry_job() -> None:
+    """Job to check for timed-out chunks and retry them.
+
+    Runs every 15 minutes. Checks for PENDING BrightData batches that have
+    exceeded the chunk timeout (2 hours) and either retries them or marks
+    them as FAILED if max retries exceeded.
+    """
+    async with multi_session_context(
+        prompts_maker=get_session_maker(),
+        evals_maker=get_evals_session_maker(),
+        users_maker=get_users_session_maker(),
+    ) as sessions:
+        retry_service = create_chunk_retry_service(sessions)
+        try:
+            retried, failed = await retry_service.check_and_retry_timed_out_chunks()
+            if retried > 0 or failed > 0:
+                logger.info(
+                    f"Chunk timeout check: {retried} retried, {failed} marked failed"
+                )
+        except Exception:
+            logger.exception("Failed to check chunk timeouts")
 
 
 async def trigger_daily_batch_manually() -> int | None:

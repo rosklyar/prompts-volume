@@ -156,7 +156,7 @@ class ReportService:
         prompt_ids = [p.id for p in prompts]
 
         if not prompt_ids:
-            # Empty group - create empty report
+            # Empty group - create empty report (considered complete)
             report = GroupReport(
                 group_id=group_id,
                 user_id=user_id,
@@ -169,6 +169,7 @@ class ReportService:
                 total_cost=Decimal("0"),
                 brand_snapshot=brand_snapshot,
                 competitors_snapshot=competitors_snapshot,
+                is_complete=True,
             )
             self._evals_session.add(report)
             await self._evals_session.flush()
@@ -231,6 +232,7 @@ class ReportService:
             total_cost=total_cost,
             brand_snapshot=brand_snapshot,
             competitors_snapshot=competitors_snapshot,
+            is_complete=(prompts_awaiting == 0),
         )
         self._evals_session.add(report)
         await self._evals_session.flush()
@@ -461,7 +463,7 @@ class ReportService:
         prompts_map = {p.id: p for p in prompts}
 
         if not prompts:
-            # Empty group - create empty report
+            # Empty group - create empty report (considered complete)
             report = GroupReport(
                 group_id=group_id,
                 user_id=user_id,
@@ -475,6 +477,7 @@ class ReportService:
                 total_cost=Decimal("0"),
                 brand_snapshot=brand_snapshot,
                 competitors_snapshot=competitors_snapshot,
+                is_complete=True,
             )
             self._evals_session.add(report)
             await self._evals_session.flush()
@@ -544,6 +547,7 @@ class ReportService:
             total_cost=total_cost,
             brand_snapshot=brand_snapshot,
             competitors_snapshot=competitors_snapshot,
+            is_complete=(prompts_awaiting == 0),
         )
         self._evals_session.add(report)
         await self._evals_session.flush()

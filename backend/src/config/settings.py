@@ -48,8 +48,12 @@ class Settings(BaseSettings):
     evaluation_api_tokens: str = ""  # CSV list of allowed tokens for evaluation API
 
     # Freshness thresholds (hours)
-    freshness_fresh_threshold_hours: int = 24  # < 24h = fresh
-    scheduled_batch_timeout_hours: int = 6  # Timeout for scheduled batch completion
+    freshness_scheduling_threshold_hours: int = 18  # At scheduling: < 18h = fresh
+    freshness_generation_threshold_hours: int = 24  # At generation: look back 24h
+
+    # Chunk retry configuration
+    chunk_timeout_hours: int = 2  # Timeout per chunk attempt
+    chunk_max_retries: int = 2  # Max retries per chunk (total attempts = 3)
 
     # Execution queue configuration
     execution_timeout_hours: int = 2  # Hours before timed-out entries reset to PENDING
@@ -116,8 +120,16 @@ class Settings(BaseSettings):
     brightdata_webhook_secret: str = "dev-webhook-secret"  # For webhook auth
     brightdata_default_country: str = "UA"
     backend_webhook_base_url: str = "https://prompts-backend.jollydune-754acd02.canadacentral.azurecontainerapps.io"
-    brightdata_batch_eviction_timeout_hours: int = 3  # Hours before stale PENDING batches are evicted
     brightdata_chunk_size: int = 5  # Number of prompts to process in each chunk
+
+    @property
+    def brightdata_batch_eviction_timeout_hours(self) -> int:
+        """Timeout for evicting stale PENDING batches.
+
+        Derived from chunk retry settings: chunk_timeout * (max_retries + 1).
+        This gives the maximum time a batch could be retrying before being considered stale.
+        """
+        return self.chunk_timeout_hours * (self.chunk_max_retries + 1)
 
 
 # Singleton settings instance
