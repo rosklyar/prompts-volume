@@ -17,20 +17,30 @@ export const reportKeys = {
   compare: (groupId: number) => [...reportKeys.all, "compare", groupId] as const,
 }
 
+// ===== Filter Types =====
+
+export interface ReportHistoryFilters {
+  assistantId?: number
+  fromDate?: string // ISO date string
+  toDate?: string // ISO date string
+}
+
 // ===== Queries =====
 
 /**
- * Fetch report history for a group with pagination
+ * Fetch report history for a group with pagination and optional filters
  */
 export function useReportHistory(
   groupId: number,
   enabled: boolean = true,
   limit: number = 20,
-  offset: number = 0
+  offset: number = 0,
+  filters?: ReportHistoryFilters
 ) {
   return useQuery({
-    queryKey: [...reportKeys.history(groupId), limit, offset],
-    queryFn: () => reportsApi.listReports(groupId, limit, offset),
+    // Include filters in query key for proper cache invalidation
+    queryKey: [...reportKeys.history(groupId), limit, offset, filters],
+    queryFn: () => reportsApi.listReports(groupId, limit, offset, filters),
     enabled: enabled && groupId > 0,
     staleTime: 60 * 1000, // 1 minute
   })

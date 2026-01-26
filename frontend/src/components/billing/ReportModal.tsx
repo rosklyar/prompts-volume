@@ -119,7 +119,7 @@ export function ReportModal(props: ReportModalProps) {
     refetch,
   } = useReportData(groupId, assistantId, isOpen)
 
-  // Unified report request hook
+  // Unified report request hook - now filtered by selected assistant
   const {
     hasPending,
     pendingRequest,
@@ -133,7 +133,7 @@ export function ReportModal(props: ReportModalProps) {
     invalidateReports,
     isCreating,
     isCancelling,
-  } = useReportRequest(groupId, isOpen)
+  } = useReportRequest(groupId, assistantId, isOpen)
 
   // Success state for the generate action
   const [generateSuccess, setGenerateSuccess] = useState<{

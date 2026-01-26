@@ -1,6 +1,7 @@
 """Service for generating and managing reports."""
 
 import logging
+from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -314,23 +315,35 @@ class ReportService:
         user_id: str,
         limit: int = 20,
         offset: int = 0,
+        *,
+        assistant_id: int | None = None,
+        from_date: datetime | None = None,
+        to_date: datetime | None = None,
     ) -> tuple[list[GroupReport], int]:
-        """List reports for a group with assistant info."""
-        # Count total (in evals_db)
-        count_query = select(func.count(GroupReport.id)).where(
+        """List reports for a group with assistant info and optional filtering."""
+        # Build base conditions
+        conditions = [
             GroupReport.group_id == group_id,
             GroupReport.user_id == user_id,
-        )
+        ]
+
+        # Add optional filters
+        if assistant_id is not None:
+            conditions.append(GroupReport.assistant_id == assistant_id)
+        if from_date is not None:
+            conditions.append(GroupReport.created_at >= from_date)
+        if to_date is not None:
+            conditions.append(GroupReport.created_at < to_date)
+
+        # Count total (in evals_db)
+        count_query = select(func.count(GroupReport.id)).where(*conditions)
         count_result = await self._evals_session.execute(count_query)
         total = count_result.scalar() or 0
 
         # Get reports with assistant relationship (from evals_db)
         query = (
             select(GroupReport)
-            .where(
-                GroupReport.group_id == group_id,
-                GroupReport.user_id == user_id,
-            )
+            .where(*conditions)
             .options(selectinload(GroupReport.assistant))
             .order_by(GroupReport.created_at.desc())
             .limit(limit)

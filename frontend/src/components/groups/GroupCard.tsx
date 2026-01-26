@@ -110,7 +110,7 @@ export function GroupCard({
   const exportMutation = useExportReportJson()
 
   // Report request status for badge
-  const { data: requestStatus } = useReportRequestStatus(group.id, true)
+  const { data: requestStatus } = useReportRequestStatus(group.id, undefined, true)
   const hasPendingRequest = requestStatus?.has_pending ?? false
   const pendingStatus = requestStatus?.request?.status
 

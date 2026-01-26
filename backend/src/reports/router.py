@@ -444,6 +444,9 @@ async def list_reports(
     group_service: PromptGroupServiceDep,
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    assistant_id: int | None = Query(None, description="Filter by assistant ID"),
+    from_date: datetime | None = Query(None, description="Filter reports created on or after this date"),
+    to_date: datetime | None = Query(None, description="Filter reports created before this date"),
 ):
     """List all reports for a prompt group."""
     # Verify user owns the group
@@ -457,6 +460,9 @@ async def list_reports(
         user_id=current_user.id,
         limit=limit,
         offset=offset,
+        assistant_id=assistant_id,
+        from_date=from_date,
+        to_date=to_date,
     )
 
     return ReportListResponse(
@@ -919,10 +925,12 @@ async def get_report_request_status(
     current_user: CurrentUser,
     request_service: ReportRequestServiceDep,
     group_service: PromptGroupServiceDep,
+    assistant_id: int | None = Query(None, description="Filter by assistant ID"),
 ):
     """Get the status of any pending report request for this group.
 
     Used by the frontend to show badge on GroupCard.
+    Optionally filters by assistant_id to allow per-assistant status tracking.
     """
     # Verify user owns the group
     try:
@@ -930,7 +938,9 @@ async def get_report_request_status(
     except Exception:
         raise to_http_exception(GroupNotFoundError(group_id))
 
-    pending = await request_service.get_pending_request(group_id, current_user.id)
+    pending = await request_service.get_pending_request(
+        group_id, current_user.id, assistant_id=assistant_id
+    )
 
     if pending is None:
         return ReportRequestStatusResponse(has_pending=False)
@@ -947,10 +957,12 @@ async def cancel_report_request(
     current_user: CurrentUser,
     request_service: ReportRequestServiceDep,
     group_service: PromptGroupServiceDep,
+    assistant_id: int | None = Query(None, description="Filter by assistant ID"),
 ):
     """Cancel a pending report request for this group.
 
     Returns 404 if no pending request exists.
+    Optionally filters by assistant_id to cancel specific assistant's request.
     """
     # Verify user owns the group
     try:
@@ -958,7 +970,9 @@ async def cancel_report_request(
     except Exception:
         raise to_http_exception(GroupNotFoundError(group_id))
 
-    pending = await request_service.get_pending_request(group_id, current_user.id)
+    pending = await request_service.get_pending_request(
+        group_id, current_user.id, assistant_id=assistant_id
+    )
     if pending is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

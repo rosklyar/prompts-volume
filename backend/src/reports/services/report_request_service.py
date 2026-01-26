@@ -386,9 +386,16 @@ class ReportRequestService:
         self,
         group_id: int,
         user_id: str,
+        *,
+        assistant_id: int | None = None,
     ) -> ReportRequest | None:
-        """Get the pending report request for a group, if any."""
-        return await self._repo.get_pending_for_group(group_id, user_id)
+        """Get the pending report request for a group, if any.
+
+        Optionally filters by assistant_id if provided.
+        """
+        return await self._repo.get_pending_for_group(
+            group_id, user_id, assistant_id=assistant_id
+        )
 
     async def cancel_request(self, request_id: int, user_id: str) -> bool:
         """Cancel a pending report request.
