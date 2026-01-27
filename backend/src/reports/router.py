@@ -170,7 +170,7 @@ async def get_report_data(
 
     # Get pending prompt IDs from BrightData batches
     batch_service = BrightDataBatchService(evals_session)
-    pending_prompt_ids = await batch_service.get_pending_prompt_ids(prompt_ids)
+    pending_prompt_ids = await batch_service.get_pending_prompt_ids(prompt_ids, assistant_id=assistant_id)
 
     # Calculate estimated wait time for pending prompts
     pending_count = len(pending_prompt_ids)
