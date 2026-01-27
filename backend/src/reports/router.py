@@ -889,7 +889,7 @@ async def create_report_request(
     This triggers BrightData for stale/absent prompts and waits for completion.
     The report is auto-generated when all data is ready (or on 6-hour timeout).
 
-    Returns 409 if there's already a pending request for this group.
+    Returns 409 if there's already a pending request for this group and assistant.
     """
     # Verify user owns the group
     try:
@@ -897,15 +897,18 @@ async def create_report_request(
     except Exception:
         raise to_http_exception(GroupNotFoundError(group_id))
 
-    # Check for existing pending request
-    existing = await request_service.get_pending_request(group_id, current_user.id)
+    # Check for existing pending request for the same assistant
+    existing = await request_service.get_pending_request(
+        group_id, current_user.id, assistant_id=request_body.assistant_id
+    )
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
-                "message": "A report request is already pending for this group",
+                "message": "A report request is already pending for this group and assistant",
                 "existing_request_id": existing.id,
                 "existing_status": existing.status.value,
+                "assistant_id": existing.assistant_id,
             },
         )
 

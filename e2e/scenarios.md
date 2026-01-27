@@ -60,7 +60,24 @@ Run these scenarios using Playwright MCP tools after docker-compose and frontend
 9. Wait for report to complete
 10. Verify: Report appears in history with Gemini logo and assistant name "Gemini"
 
-## Scenario 7: Pending Status Does Not Bleed Across Assistants
+## Scenario 7: Per-Assistant Report Request Coexistence
+
+**Prerequisites:** User logged in, group with stale prompts exists
+
+1. Navigate to Dashboard (http://localhost:5173)
+2. Login as admin@example.com if not already logged in
+3. Open a group with prompts that have stale evaluations
+4. Click "Generate Report" on the group
+5. Select "ChatGPT" assistant and click "Generate"
+6. Verify: Report request created, pending indicator shown
+7. Close the dialog
+8. Click "Generate Report" again on the same group
+9. Select "Gemini" assistant and click "Generate"
+10. Verify: Second request created successfully (no 409 error)
+11. Both requests should be pending independently
+12. Try requesting again for "ChatGPT" — should see conflict/pending state
+
+## Scenario 8: Pending Status Does Not Bleed Across Assistants
 
 **Prerequisites:** User logged in, group with prompts exists, fresh execution requested for one assistant
 
