@@ -70,7 +70,7 @@ async def request_fresh_execution(
         logger.info(f"Evicted {len(evicted_batches)} stale batches before processing request")
 
     # Check for prompts already in PENDING batches (after eviction)
-    already_pending = await batch_service.get_pending_prompt_ids(request.prompt_ids)
+    already_pending = await batch_service.get_pending_prompt_ids(request.prompt_ids, assistant_id=request.assistant_id)
     new_prompt_ids = [p for p in request.prompt_ids if p not in already_pending]
 
     if not new_prompt_ids:

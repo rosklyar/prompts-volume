@@ -60,3 +60,18 @@ Run these scenarios using Playwright MCP tools after docker-compose and frontend
 9. Wait for report to complete
 10. Verify: Report appears in history with Gemini logo and assistant name "Gemini"
 
+## Scenario 7: Pending Status Does Not Bleed Across Assistants
+
+**Prerequisites:** User logged in, group with prompts exists, fresh execution requested for one assistant
+
+1. Navigate to Dashboard (http://localhost:5173)
+2. Login as admin@example.com if not already logged in
+3. Open a group with prompts
+4. Click "Generate Report" on the group
+5. Select an assistant (e.g., Gemini) and request fresh answers for stale/absent prompts
+6. Verify: Pending execution count reflects queued prompts for Gemini
+7. Switch to a different assistant (e.g., ChatGPT)
+8. Verify: Pending execution count is 0 (no bleed-through from Gemini)
+9. Switch back to Gemini
+10. Verify: Pending execution count still shows the queued prompts
+
