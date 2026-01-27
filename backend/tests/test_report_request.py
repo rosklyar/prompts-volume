@@ -355,3 +355,96 @@ def test_report_request_cancel(
     )
     assert status_resp.status_code == 200
     assert status_resp.json()["has_pending"] is False
+
+
+def test_report_request_different_assistants_coexist(
+    client,
+    test_engine,
+    create_verified_user,
+):
+    """Test that report requests for different assistants can coexist.
+
+    A pending request for one assistant (e.g., ChatGPT) should NOT block
+    creating a request for a different assistant (e.g., Gemini) in the same group.
+    Duplicate requests for the same assistant should still return 409.
+    """
+    session_maker = _make_session_maker(test_engine)
+
+    def run_async(coro):
+        return asyncio.get_event_loop().run_until_complete(coro)
+
+    # === STEP 1: Create user and group with stale prompts ===
+    user_email = f"multi-assistant-{uuid.uuid4()}@example.com"
+    auth_headers = create_verified_user(user_email, "testpassword123", "Test User")
+
+    prompts = _get_prompts_for_topic(client, auth_headers)
+    assert len(prompts) >= 3, "Need at least 3 prompts for test"
+    prompt_ids = [p["id"] for p in prompts[:3]]
+
+    group_id = _create_group_with_prompts(
+        client, auth_headers, "MultiAssistantGroup", prompt_ids
+    )
+
+    run_async(_make_evaluations_stale(session_maker, prompt_ids, hours_ago=48))
+
+    # === STEP 2: Create request for assistant_id=1 (ChatGPT) ===
+    resp1 = client.post(
+        f"/reports/api/v1/groups/{group_id}/request",
+        json={"assistant_id": 1},
+        headers=auth_headers,
+    )
+    assert resp1.status_code == 201, f"First request failed: {resp1.json()}"
+    request1 = resp1.json()
+
+    # === STEP 3: Create request for assistant_id=2 (Gemini) — should succeed ===
+    resp2 = client.post(
+        f"/reports/api/v1/groups/{group_id}/request",
+        json={"assistant_id": 2},
+        headers=auth_headers,
+    )
+    assert resp2.status_code == 201, f"Second request failed (was 409 before fix): {resp2.json()}"
+    request2 = resp2.json()
+
+    # Verify both requests are distinct and have correct assistant IDs
+    assert request1["id"] != request2["id"]
+    assert request1["assistant_id"] == 1
+    assert request2["assistant_id"] == 2
+
+    # === STEP 4: Duplicate request for assistant_id=1 — should get 409 ===
+    dup_resp = client.post(
+        f"/reports/api/v1/groups/{group_id}/request",
+        json={"assistant_id": 1},
+        headers=auth_headers,
+    )
+    assert dup_resp.status_code == 409
+    dup_detail = dup_resp.json()["detail"]
+    assert dup_detail["existing_request_id"] == request1["id"]
+    assert dup_detail["assistant_id"] == 1
+
+    # === STEP 5: Status with assistant_id=1 returns request 1 ===
+    status1 = client.get(
+        f"/reports/api/v1/groups/{group_id}/request-status?assistant_id=1",
+        headers=auth_headers,
+    )
+    assert status1.status_code == 200
+    status1_data = status1.json()
+    assert status1_data["has_pending"] is True
+    assert status1_data["request"]["id"] == request1["id"]
+
+    # === STEP 6: Status with assistant_id=2 returns request 2 ===
+    status2 = client.get(
+        f"/reports/api/v1/groups/{group_id}/request-status?assistant_id=2",
+        headers=auth_headers,
+    )
+    assert status2.status_code == 200
+    status2_data = status2.json()
+    assert status2_data["has_pending"] is True
+    assert status2_data["request"]["id"] == request2["id"]
+
+    # === STEP 7: Status without filter returns any pending (has_pending=true) ===
+    status_any = client.get(
+        f"/reports/api/v1/groups/{group_id}/request-status",
+        headers=auth_headers,
+    )
+    assert status_any.status_code == 200
+    assert status_any.json()["has_pending"] is True
