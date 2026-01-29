@@ -91,6 +91,9 @@ class Settings(BaseSettings):
     # CORS configuration
     frontend_url: str = "http://localhost:5173"
 
+    # Google OAuth configuration
+    google_oauth_client_id: str = ""  # Google OAuth 2.0 Client ID
+
     # Brevo email configuration (uses HTTP API instead of SMTP to avoid port blocking)
     brevo_api_key: str = ""  # Set via BREVO_API_KEY env var
     brevo_sender_email: str = "llmheroai@gmail.com"
