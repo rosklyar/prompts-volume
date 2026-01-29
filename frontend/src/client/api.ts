@@ -1,4 +1,4 @@
-import type { BrandInfo, CompetitorInfo, TopicInput } from "@/types/groups"
+import type { AggregatedCitationsResponse, BrandInfo, CompetitorInfo, TopicInput } from "@/types/groups"
 import type {
   OnboardingStatusResponse,
   UserPreferencesResponse,
@@ -913,6 +913,24 @@ export const reportsApi = {
     const filenameMatch = contentDisposition?.match(/filename="(.+)"/)
     const filename = filenameMatch?.[1] ?? `report_${reportId}.json`
     return { blob, filename }
+  },
+
+  /**
+   * Get aggregated citation leaderboard across reports for a group
+   */
+  async getCitationsLeaderboard(
+    groupId: number,
+    period: "1d" | "7d" | "30d",
+    assistantId?: number
+  ): Promise<AggregatedCitationsResponse> {
+    const params = new URLSearchParams({ period })
+    if (assistantId !== undefined) {
+      params.set("assistant_id", assistantId.toString())
+    }
+    const response = await fetchWithAuth(
+      `/reports/api/v1/groups/${groupId}/citations-leaderboard?${params}`
+    )
+    return response.json()
   },
 
   // ===== Report Request (Unified Manual/Scheduled) =====

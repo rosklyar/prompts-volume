@@ -15,6 +15,8 @@ import { BalanceIndicator } from "@/components/billing"
 import { Logo } from "@/components/Logo"
 import { Check } from "lucide-react"
 import type { BrandInfo, CompetitorInfo, TopicInput } from "@/types/groups"
+import { TabSidebar } from "@/components/navigation/TabSidebar"
+import { CitationsView } from "@/components/citations/CitationsView"
 
 export const Route = createFileRoute("/")({
   component: PromptDiscovery,
@@ -44,6 +46,9 @@ function PromptDiscovery() {
   // Multi-select state
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [anchorIndex, setAnchorIndex] = useState<number | null>(null)
+
+  // Tab navigation state
+  const [activeTab, setActiveTab] = useState<"prompts" | "sources">("prompts")
 
   // State for inline group selection
   const [pendingPrompts, setPendingPrompts] = useState<PendingPrompts | null>(null)
@@ -435,325 +440,340 @@ function PromptDiscovery() {
     addPromptsToGroup.isPending || isCreatingCustomPrompt
 
   return (
-    <div className="min-h-screen bg-[#FDFBF7] font-['DM_Sans']">
-      {/* Header with branding */}
-      <header className="absolute top-0 left-0 right-0 p-6 z-10 flex items-center justify-between">
+    <div className="min-h-screen bg-[#FDFBF7] font-['DM_Sans'] flex">
+      {/* Left sidebar with branding and navigation */}
+      <aside className="w-[200px] flex-shrink-0 bg-[#FDFBF7] p-6 hidden md:flex flex-col">
         <Logo variant="compact" />
-        <div className="flex items-center gap-3">
-          <BalanceIndicator />
-          {user?.is_superuser && (
-            <Link
-              to="/admin"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium
-                text-[#C4553D] bg-[#C4553D]/10 rounded-full
-                hover:bg-[#C4553D]/20 transition-colors"
-            >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
+        <div className="mt-8">
+          <TabSidebar activeTab={activeTab} onTabChange={setActiveTab} />
+        </div>
+      </aside>
+
+      {/* Main area */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Top header bar */}
+        <header className="p-6 flex items-center justify-end">
+          <div className="flex items-center gap-3">
+            <BalanceIndicator />
+            {user?.is_superuser && (
+              <Link
+                to="/admin"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium
+                  text-[#C4553D] bg-[#C4553D]/10 rounded-full
+                  hover:bg-[#C4553D]/20 transition-colors"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-                />
-              </svg>
-              Admin
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+                  />
+                </svg>
+                Admin
+              </Link>
+            )}
+            <Link to="/settings">
+              <Button
+                variant="ghost"
+                className="text-[#9CA3AF] hover:text-[#1F2937] hover:bg-transparent transition-colors text-sm"
+              >
+                Settings
+              </Button>
             </Link>
-          )}
-          <Link to="/settings">
             <Button
               variant="ghost"
+              onClick={logout}
               className="text-[#9CA3AF] hover:text-[#1F2937] hover:bg-transparent transition-colors text-sm"
             >
-              Settings
+              Sign out
             </Button>
-          </Link>
-          <Button
-            variant="ghost"
-            onClick={logout}
-            className="text-[#9CA3AF] hover:text-[#1F2937] hover:bg-transparent transition-colors text-sm"
-          >
-            Sign out
-          </Button>
-        </div>
-      </header>
+          </div>
+        </header>
 
-      {/* Main content */}
-      <main className="pt-20 pb-12 px-4 md:px-8 lg:px-12">
-        <div className="max-w-7xl mx-auto">
-          {/* Search container */}
-          <div className="max-w-2xl mx-auto relative mb-10">
-            {/* Service name */}
-            <h1 className="font-['Fraunces'] text-3xl text-[#1F2937] text-center mb-6">
-              Prompt Volume
-            </h1>
+        {/* Main content */}
+        <main className="flex-1 pb-12 px-4 md:px-8 lg:px-12">
+          <div className="max-w-6xl mx-auto">
+            {activeTab === "prompts" ? (
+              <>
+                {/* Search container */}
+                <div className="max-w-2xl mx-auto relative mb-10">
+                  {/* Service name */}
+                  <h1 className="font-['Fraunces'] text-3xl text-[#1F2937] text-center mb-6">
+                    Prompt Volume
+                  </h1>
 
-            {/* Search input */}
-            <div className="relative">
-                <input
-                ref={inputRef}
-                type="text"
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value)
-                  setHighlightedIndex(-1)
-                  // Clear selection when search query changes
-                  setSelectedIds(new Set())
-                  setAnchorIndex(null)
-                  // Close group selector when typing
-                  if (showGroupSelector) {
-                    setShowGroupSelector(false)
-                    setPendingPrompts(null)
-                  }
-                  if (e.target.value.trim().length >= 2) {
-                    setIsDropdownOpen(true)
-                  }
-                }}
-                onFocus={() => shouldShowDropdown && setIsDropdownOpen(true)}
-                onKeyDown={handleKeyDown}
-                placeholder="Search for prompts to track..."
-                disabled={isAddingPrompt}
-                className="w-full px-6 py-4 text-lg bg-white rounded-2xl border-0
-                  shadow-[0_4px_24px_-4px_rgba(0,0,0,0.08)]
-                  focus:shadow-[0_4px_32px_-4px_rgba(207,206,204,0.3)]
-                  focus:outline-none focus:ring-2 focus:ring-[#CFCECC]
-                  placeholder:text-[#9CA3AF] text-[#1F2937]
-                  transition-all duration-300
-                  disabled:opacity-50"
-                role="combobox"
-                aria-expanded={!!showDropdown}
-                aria-haspopup="listbox"
-                aria-activedescendant={
-                  highlightedIndex >= 0
-                    ? `suggestion-${highlightedIndex}`
-                    : undefined
-                }
-                aria-describedby="selection-status"
-              />
-              {/* Screen reader announcement for selection */}
-              <div id="selection-status" className="sr-only" aria-live="polite">
-                {selectedIds.size > 0
-                  ? `${selectedIds.size} item${selectedIds.size > 1 ? "s" : ""} selected`
-                  : ""}
-              </div>
-              {/* Loading indicator */}
-              {(isFetching || isAddingPrompt) && (
-                <div className="absolute right-5 top-1/2 -translate-y-1/2">
-                  <div className="w-5 h-5 border-2 border-[#C4553D]/30 border-t-[#C4553D] rounded-full animate-spin" />
-                </div>
-              )}
-            </div>
-
-            {/* Dropdown - either suggestions or group selector */}
-            {showDropdown && (
-              <div
-                ref={dropdownRef}
-                className="absolute top-full left-0 right-0 mt-2 z-50"
-              >
-                {showGroupSelector ? (
-                  // Group selector inline
-                  <GroupSelector
-                    groups={groups}
-                    isLoadingGroups={isLoadingGroups}
-                    onSelectGroup={handleSelectGroup}
-                    onCreateGroup={handleCreateGroup}
-                    onCancel={handleCancelGroupSelection}
-                    isAddingPrompt={isAddingPrompt}
-                    isCreatingGroup={createGroup.isPending}
-                    addingToGroupId={addingToGroupId}
-                  />
-                ) : (
-                  // Suggestions dropdown
-                  <div
-                    className="bg-white rounded-2xl
-                      shadow-[0_8px_40px_-8px_rgba(0,0,0,0.12)]
-                      border border-[#F3F4F6] overflow-hidden
-                      animate-in fade-in slide-in-from-top-2 duration-200
-                      max-h-80 flex flex-col"
-                    role="listbox"
-                    aria-multiselectable="true"
-                    aria-label="Search results"
-                  >
-                    {isLoading && suggestions.length === 0 ? (
-                      <div className="px-6 py-4 text-[#9CA3AF] text-center">
-                        Searching...
+                  {/* Search input */}
+                  <div className="relative">
+                      <input
+                      ref={inputRef}
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => {
+                        setSearchQuery(e.target.value)
+                        setHighlightedIndex(-1)
+                        // Clear selection when search query changes
+                        setSelectedIds(new Set())
+                        setAnchorIndex(null)
+                        // Close group selector when typing
+                        if (showGroupSelector) {
+                          setShowGroupSelector(false)
+                          setPendingPrompts(null)
+                        }
+                        if (e.target.value.trim().length >= 2) {
+                          setIsDropdownOpen(true)
+                        }
+                      }}
+                      onFocus={() => shouldShowDropdown && setIsDropdownOpen(true)}
+                      onKeyDown={handleKeyDown}
+                      placeholder="Search for prompts to track..."
+                      disabled={isAddingPrompt}
+                      className="w-full px-6 py-4 text-lg bg-white rounded-2xl border-0
+                        shadow-[0_4px_24px_-4px_rgba(0,0,0,0.08)]
+                        focus:shadow-[0_4px_32px_-4px_rgba(207,206,204,0.3)]
+                        focus:outline-none focus:ring-2 focus:ring-[#CFCECC]
+                        placeholder:text-[#9CA3AF] text-[#1F2937]
+                        transition-all duration-300
+                        disabled:opacity-50"
+                      role="combobox"
+                      aria-expanded={!!showDropdown}
+                      aria-haspopup="listbox"
+                      aria-activedescendant={
+                        highlightedIndex >= 0
+                          ? `suggestion-${highlightedIndex}`
+                          : undefined
+                      }
+                      aria-describedby="selection-status"
+                    />
+                    {/* Screen reader announcement for selection */}
+                    <div id="selection-status" className="sr-only" aria-live="polite">
+                      {selectedIds.size > 0
+                        ? `${selectedIds.size} item${selectedIds.size > 1 ? "s" : ""} selected`
+                        : ""}
+                    </div>
+                    {/* Loading indicator */}
+                    {(isFetching || isAddingPrompt) && (
+                      <div className="absolute right-5 top-1/2 -translate-y-1/2">
+                        <div className="w-5 h-5 border-2 border-[#C4553D]/30 border-t-[#C4553D] rounded-full animate-spin" />
                       </div>
-                    ) : (
-                      <>
-                        <div ref={listRef} className="overflow-y-auto flex-1">
-                          {/* Suggestion items */}
-                          {suggestions.map((prompt, index) => {
-                            const isHighlighted = index === highlightedIndex
-                            const isSelected = selectedIds.has(prompt.id)
-                            const isAlreadyAdded = alreadyAddedIds.has(prompt.id)
-                            const wasJustAdded = justAddedIds.has(prompt.id)
-
-                            return (
-                              <button
-                                key={prompt.id}
-                                id={`suggestion-${index}`}
-                                data-suggestion-item
-                                onClick={() =>
-                                  !isAlreadyAdded && handlePromptClick(prompt)
-                                }
-                                onMouseEnter={() => setHighlightedIndex(index)}
-                                disabled={isAlreadyAdded}
-                                className={`w-full px-4 py-3 text-left
-                                  transition-all duration-150 flex items-center gap-3
-                                  border-b border-[#F3F4F6] last:border-b-0 group
-                                  ${
-                                    isAlreadyAdded
-                                      ? "opacity-50 cursor-default"
-                                      : isSelected
-                                        ? "bg-[#C4553D]/10 border-l-2 border-l-[#C4553D]"
-                                        : isHighlighted
-                                          ? "bg-[#FEF7F5]"
-                                          : "hover:bg-[#FEF7F5]"
-                                  }
-                                  ${wasJustAdded ? "animate-[addedFlash_0.5s_ease-out]" : ""}`}
-                                role="option"
-                                aria-selected={isSelected || isHighlighted}
-                                aria-disabled={isAlreadyAdded}
-                              >
-                                {/* Selection indicator */}
-                                <span
-                                  className={`w-5 h-5 rounded flex items-center justify-center shrink-0 transition-all duration-150
-                                    ${
-                                      isAlreadyAdded
-                                        ? "bg-[#E5E7EB] text-[#9CA3AF]"
-                                        : isSelected
-                                          ? "bg-[#C4553D] text-white scale-110"
-                                          : "border-2 border-[#D1D5DB] group-hover:border-[#C4553D]/50"
-                                    }`}
-                                >
-                                  {(isAlreadyAdded || isSelected) && (
-                                    <Check className="w-3 h-3" strokeWidth={3} />
-                                  )}
-                                </span>
-
-                                {/* Prompt text */}
-                                <span
-                                  className={`flex-1 transition-colors line-clamp-2 text-sm
-                                    ${
-                                      isAlreadyAdded
-                                        ? "text-[#9CA3AF]"
-                                        : isSelected
-                                          ? "text-[#C4553D] font-medium"
-                                          : isHighlighted
-                                            ? "text-[#C4553D]"
-                                            : "text-[#1F2937] group-hover:text-[#C4553D]"
-                                    }`}
-                                >
-                                  {prompt.prompt_text}
-                                </span>
-
-                                {/* Status badges */}
-                                <div className="flex items-center gap-2 shrink-0">
-                                  {isAlreadyAdded ? (
-                                    <span className="text-xs text-[#9CA3AF] bg-[#F3F4F6] px-2 py-0.5 rounded-full">
-                                      Added
-                                    </span>
-                                  ) : (
-                                    <span className="text-xs font-medium text-[#C4553D] bg-[#FEF7F5] px-2 py-0.5 rounded-full">
-                                      {Math.round(prompt.similarity * 100)}%
-                                    </span>
-                                  )}
-                                </div>
-                              </button>
-                            )
-                          })}
-
-                          {/* Add custom option */}
-                          {hasCustomOption && (
-                            <button
-                              id={`suggestion-${suggestions.length}`}
-                              data-suggestion-item
-                              onClick={handleAddCustomClick}
-                              onMouseEnter={() =>
-                                setHighlightedIndex(suggestions.length)
-                              }
-                              className={`w-full px-4 py-3 text-left
-                                transition-colors duration-100 flex items-center gap-3
-                                border-t border-[#E5E7EB]
-                                ${highlightedIndex === suggestions.length ? "bg-[#F3F4F6]" : "bg-[#FAFAFA] hover:bg-[#F3F4F6]"}`}
-                              role="option"
-                              aria-selected={
-                                highlightedIndex === suggestions.length
-                              }
-                            >
-                              <span
-                                className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-medium transition-colors
-                                ${highlightedIndex === suggestions.length ? "bg-[#C4553D] text-white" : "bg-[#E5E7EB] text-[#6B7280]"}`}
-                              >
-                                +
-                              </span>
-                              <span className="text-[#6B7280] text-sm">
-                                Add &ldquo;
-                                <span
-                                  className={`font-medium transition-colors
-                                  ${highlightedIndex === suggestions.length ? "text-[#C4553D]" : "text-[#1F2937]"}`}
-                                >
-                                  {searchQuery.trim()}
-                                </span>
-                                &rdquo; as priority prompt
-                              </span>
-                            </button>
-                          )}
-
-                          {/* No results state */}
-                          {!isLoading &&
-                            suggestions.length === 0 &&
-                            searchQuery.trim() && (
-                              <div className="px-4 py-3 text-[#9CA3AF] text-sm border-b border-[#F3F4F6]">
-                                No similar prompts found
-                              </div>
-                            )}
-                        </div>
-
-                        {/* Action bar - shows when items are selected */}
-                        {selectedIds.size > 0 && (
-                          <div className="sticky bottom-0 border-t border-[#E5E7EB] bg-[#FAFAFA] px-4 py-2.5 flex items-center justify-between">
-                            <span className="text-sm text-[#6B7280]">
-                              <kbd className="px-1.5 py-0.5 bg-white border border-[#D1D5DB] rounded text-xs font-mono mr-1">⏎</kbd>
-                              Add {selectedIds.size} prompt{selectedIds.size > 1 ? "s" : ""} to a group
-                            </span>
-                            <span className="text-sm text-[#9CA3AF]">
-                              <kbd className="px-1.5 py-0.5 bg-white border border-[#D1D5DB] rounded text-xs font-mono mr-1">Esc</kbd>
-                              Cancel
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Hint for multi-select when no selection */}
-                        {selectedIds.size === 0 && selectableSuggestions.length > 1 && (
-                          <div className="border-t border-[#F3F4F6] bg-[#FAFAFA] px-4 py-2 text-center">
-                            <span className="text-xs text-[#9CA3AF]">
-                              <kbd className="px-1 py-0.5 bg-white border border-[#D1D5DB] rounded text-[10px] font-mono">Shift</kbd>
-                              +
-                              <kbd className="px-1 py-0.5 bg-white border border-[#D1D5DB] rounded text-[10px] font-mono">↓</kbd>
-                              to select multiple
-                            </span>
-                          </div>
-                        )}
-                      </>
                     )}
                   </div>
-                )}
-              </div>
-            )}
-          </div>
 
-          {/* Groups Grid Section */}
-          <div className="mt-8">
-            <GroupsGrid />
-          </div>
-        </div>
-      </main>
+                  {/* Dropdown - either suggestions or group selector */}
+                  {showDropdown && (
+                    <div
+                      ref={dropdownRef}
+                      className="absolute top-full left-0 right-0 mt-2 z-50"
+                    >
+                      {showGroupSelector ? (
+                        // Group selector inline
+                        <GroupSelector
+                          groups={groups}
+                          isLoadingGroups={isLoadingGroups}
+                          onSelectGroup={handleSelectGroup}
+                          onCreateGroup={handleCreateGroup}
+                          onCancel={handleCancelGroupSelection}
+                          isAddingPrompt={isAddingPrompt}
+                          isCreatingGroup={createGroup.isPending}
+                          addingToGroupId={addingToGroupId}
+                        />
+                      ) : (
+                        // Suggestions dropdown
+                        <div
+                          className="bg-white rounded-2xl
+                            shadow-[0_8px_40px_-8px_rgba(0,0,0,0.12)]
+                            border border-[#F3F4F6] overflow-hidden
+                            animate-in fade-in slide-in-from-top-2 duration-200
+                            max-h-80 flex flex-col"
+                          role="listbox"
+                          aria-multiselectable="true"
+                          aria-label="Search results"
+                        >
+                          {isLoading && suggestions.length === 0 ? (
+                            <div className="px-6 py-4 text-[#9CA3AF] text-center">
+                              Searching...
+                            </div>
+                          ) : (
+                            <>
+                              <div ref={listRef} className="overflow-y-auto flex-1">
+                                {/* Suggestion items */}
+                                {suggestions.map((prompt, index) => {
+                                  const isHighlighted = index === highlightedIndex
+                                  const isSelected = selectedIds.has(prompt.id)
+                                  const isAlreadyAdded = alreadyAddedIds.has(prompt.id)
+                                  const wasJustAdded = justAddedIds.has(prompt.id)
 
+                                  return (
+                                    <button
+                                      key={prompt.id}
+                                      id={`suggestion-${index}`}
+                                      data-suggestion-item
+                                      onClick={() =>
+                                        !isAlreadyAdded && handlePromptClick(prompt)
+                                      }
+                                      onMouseEnter={() => setHighlightedIndex(index)}
+                                      disabled={isAlreadyAdded}
+                                      className={`w-full px-4 py-3 text-left
+                                        transition-all duration-150 flex items-center gap-3
+                                        border-b border-[#F3F4F6] last:border-b-0 group
+                                        ${
+                                          isAlreadyAdded
+                                            ? "opacity-50 cursor-default"
+                                            : isSelected
+                                              ? "bg-[#C4553D]/10 border-l-2 border-l-[#C4553D]"
+                                              : isHighlighted
+                                                ? "bg-[#FEF7F5]"
+                                                : "hover:bg-[#FEF7F5]"
+                                        }
+                                        ${wasJustAdded ? "animate-[addedFlash_0.5s_ease-out]" : ""}`}
+                                      role="option"
+                                      aria-selected={isSelected || isHighlighted}
+                                      aria-disabled={isAlreadyAdded}
+                                    >
+                                      {/* Selection indicator */}
+                                      <span
+                                        className={`w-5 h-5 rounded flex items-center justify-center shrink-0 transition-all duration-150
+                                          ${
+                                            isAlreadyAdded
+                                              ? "bg-[#E5E7EB] text-[#9CA3AF]"
+                                              : isSelected
+                                                ? "bg-[#C4553D] text-white scale-110"
+                                                : "border-2 border-[#D1D5DB] group-hover:border-[#C4553D]/50"
+                                          }`}
+                                      >
+                                        {(isAlreadyAdded || isSelected) && (
+                                          <Check className="w-3 h-3" strokeWidth={3} />
+                                        )}
+                                      </span>
+
+                                      {/* Prompt text */}
+                                      <span
+                                        className={`flex-1 transition-colors line-clamp-2 text-sm
+                                          ${
+                                            isAlreadyAdded
+                                              ? "text-[#9CA3AF]"
+                                              : isSelected
+                                                ? "text-[#C4553D] font-medium"
+                                                : isHighlighted
+                                                  ? "text-[#C4553D]"
+                                                  : "text-[#1F2937] group-hover:text-[#C4553D]"
+                                          }`}
+                                      >
+                                        {prompt.prompt_text}
+                                      </span>
+
+                                      {/* Status badges */}
+                                      <div className="flex items-center gap-2 shrink-0">
+                                        {isAlreadyAdded ? (
+                                          <span className="text-xs text-[#9CA3AF] bg-[#F3F4F6] px-2 py-0.5 rounded-full">
+                                            Added
+                                          </span>
+                                        ) : (
+                                          <span className="text-xs font-medium text-[#C4553D] bg-[#FEF7F5] px-2 py-0.5 rounded-full">
+                                            {Math.round(prompt.similarity * 100)}%
+                                          </span>
+                                        )}
+                                      </div>
+                                    </button>
+                                  )
+                                })}
+
+                                {/* Add custom option */}
+                                {hasCustomOption && (
+                                  <button
+                                    id={`suggestion-${suggestions.length}`}
+                                    data-suggestion-item
+                                    onClick={handleAddCustomClick}
+                                    onMouseEnter={() =>
+                                      setHighlightedIndex(suggestions.length)
+                                    }
+                                    className={`w-full px-4 py-3 text-left
+                                      transition-colors duration-100 flex items-center gap-3
+                                      border-t border-[#E5E7EB]
+                                      ${highlightedIndex === suggestions.length ? "bg-[#F3F4F6]" : "bg-[#FAFAFA] hover:bg-[#F3F4F6]"}`}
+                                    role="option"
+                                    aria-selected={
+                                      highlightedIndex === suggestions.length
+                                    }
+                                  >
+                                    <span
+                                      className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-medium transition-colors
+                                      ${highlightedIndex === suggestions.length ? "bg-[#C4553D] text-white" : "bg-[#E5E7EB] text-[#6B7280]"}`}
+                                    >
+                                      +
+                                    </span>
+                                    <span className="text-[#6B7280] text-sm">
+                                      Add &ldquo;
+                                      <span
+                                        className={`font-medium transition-colors
+                                        ${highlightedIndex === suggestions.length ? "text-[#C4553D]" : "text-[#1F2937]"}`}
+                                      >
+                                        {searchQuery.trim()}
+                                      </span>
+                                      &rdquo; as priority prompt
+                                    </span>
+                                  </button>
+                                )}
+
+                                {/* No results state */}
+                                {!isLoading &&
+                                  suggestions.length === 0 &&
+                                  searchQuery.trim() && (
+                                    <div className="px-4 py-3 text-[#9CA3AF] text-sm border-b border-[#F3F4F6]">
+                                      No similar prompts found
+                                    </div>
+                                  )}
+                              </div>
+
+                              {/* Action bar - shows when items are selected */}
+                              {selectedIds.size > 0 && (
+                                <div className="sticky bottom-0 border-t border-[#E5E7EB] bg-[#FAFAFA] px-4 py-2.5 flex items-center justify-between">
+                                  <span className="text-sm text-[#6B7280]">
+                                    <kbd className="px-1.5 py-0.5 bg-white border border-[#D1D5DB] rounded text-xs font-mono mr-1">⏎</kbd>
+                                    Add {selectedIds.size} prompt{selectedIds.size > 1 ? "s" : ""} to a group
+                                  </span>
+                                  <span className="text-sm text-[#9CA3AF]">
+                                    <kbd className="px-1.5 py-0.5 bg-white border border-[#D1D5DB] rounded text-xs font-mono mr-1">Esc</kbd>
+                                    Cancel
+                                  </span>
+                                </div>
+                              )}
+
+                              {/* Hint for multi-select when no selection */}
+                              {selectedIds.size === 0 && selectableSuggestions.length > 1 && (
+                                <div className="border-t border-[#F3F4F6] bg-[#FAFAFA] px-4 py-2 text-center">
+                                  <span className="text-xs text-[#9CA3AF]">
+                                    <kbd className="px-1 py-0.5 bg-white border border-[#D1D5DB] rounded text-[10px] font-mono">Shift</kbd>
+                                    +
+                                    <kbd className="px-1 py-0.5 bg-white border border-[#D1D5DB] rounded text-[10px] font-mono">↓</kbd>
+                                    to select multiple
+                                  </span>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Groups Grid Section */}
+                <div className="mt-8">
+                  <GroupsGrid />
+                </div>
+              </>
+            ) : activeTab === "sources" ? (
+              <CitationsView groups={groups} isLoadingGroups={isLoadingGroups} />
+            ) : null}
+          </div>
+        </main>
+      </div>
     </div>
   )
 }

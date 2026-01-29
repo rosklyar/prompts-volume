@@ -286,3 +286,13 @@ class ReportRequestStatusResponse(BaseModel):
 
     has_pending: bool
     request: ReportRequestResponse | None = None
+
+
+class AggregatedCitationsResponse(BaseModel):
+    """Aggregated citation leaderboard across multiple reports."""
+
+    group_id: int
+    period: str
+    assistant_id: int | None
+    reports_included: int
+    citation_leaderboard: CitationLeaderboardModel
