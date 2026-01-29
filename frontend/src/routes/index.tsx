@@ -498,7 +498,7 @@ function PromptDiscovery() {
 
         {/* Main content */}
         <main className="flex-1 pb-12 px-4 md:px-8 lg:px-12">
-          <div className="max-w-6xl mx-auto">
+          <div className="w-full">
             {activeTab === "prompts" ? (
               <>
                 {/* Search container */}
