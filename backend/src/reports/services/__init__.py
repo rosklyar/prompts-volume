@@ -43,6 +43,7 @@ from src.reports.services.results_enricher import (
     extract_brands_and_domains,
 )
 from src.reports.services.report_request_service import ReportRequestService
+from src.reports.services.citations_leaderboard_service import CitationsLeaderboardService
 
 
 def get_report_service(
@@ -103,6 +104,14 @@ def get_selection_validator() -> SelectionValidatorService:
     return get_selection_validator_service()
 
 
+def get_citations_leaderboard_service(
+    evals_session: AsyncSession = Depends(get_evals_session),
+    enricher: ReportEnricher = Depends(get_report_enricher),
+) -> CitationsLeaderboardService:
+    """Per-request service: requires evals database session."""
+    return CitationsLeaderboardService(evals_session, enricher)
+
+
 def get_report_request_service(
     prompts_session: AsyncSession = Depends(get_async_session),
     evals_session: AsyncSession = Depends(get_evals_session),
@@ -134,6 +143,8 @@ __all__ = [
     "get_selection_analyzer",
     "get_selection_pricing",
     "get_report_request_service",
+    "CitationsLeaderboardService",
+    "get_citations_leaderboard_service",
     # Singleton services (stateless, shared across requests)
     "SelectionValidatorService",
     "get_selection_validator",

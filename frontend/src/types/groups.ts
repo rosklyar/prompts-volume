@@ -170,6 +170,16 @@ export interface CitationLeaderboard {
   total_citations: number
 }
 
+// ===== Aggregated Citations Types =====
+
+export interface AggregatedCitationsResponse {
+  group_id: number
+  period: string
+  assistant_id: number | null
+  reports_included: number
+  citation_leaderboard: CitationLeaderboard
+}
+
 // ===== Enriched Result Types =====
 
 export interface EnrichedEvaluationResultItem extends EvaluationResultItem {

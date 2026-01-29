@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
@@ -21,6 +21,7 @@ from src.database.session import get_async_session
 from src.prompt_groups.exceptions import GroupNotFoundError, to_http_exception
 from src.prompt_groups.services import PromptGroupService, get_prompt_group_service
 from src.reports.models.api_models import (
+    AggregatedCitationsResponse,
     ComparisonResponse,
     CreateReportRequestBody,
     EnhancedComparisonResponse,
@@ -61,6 +62,10 @@ from src.reports.services import (
     get_selection_pricing,
     get_selection_validator,
 )
+from src.reports.services.citations_leaderboard_service import (
+    CitationsLeaderboardService,
+)
+from src.reports.services import get_citations_leaderboard_service
 from src.reports.services.report_service import DuplicateReportError
 from src.reports.services.export import (
     JsonExportFormatter,
@@ -88,6 +93,7 @@ SelectionValidatorDep = Annotated[SelectionValidatorService, Depends(get_selecti
 ReportExportServiceDep = Annotated[ReportExportService, Depends(get_report_export_service)]
 JsonFormatterDep = Annotated[JsonExportFormatter, Depends(get_json_formatter)]
 ReportRequestServiceDep = Annotated[ReportRequestService, Depends(get_report_request_service)]
+CitationsLeaderboardServiceDep = Annotated[CitationsLeaderboardService, Depends(get_citations_leaderboard_service)]
 
 # 24-hour freshness threshold
 FRESH_THRESHOLD_HOURS = 24
@@ -851,6 +857,49 @@ async def export_report_json(
         content=json_bytes,
         media_type=json_formatter.content_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# =============================================================================
+# Aggregated Citations endpoint
+# =============================================================================
+
+
+@router.get(
+    "/groups/{group_id}/citations-leaderboard",
+    response_model=AggregatedCitationsResponse,
+)
+async def get_citations_leaderboard(
+    group_id: int,
+    current_user: CurrentUser,
+    group_service: PromptGroupServiceDep,
+    citations_service: CitationsLeaderboardServiceDep,
+    period: Literal["1d", "7d", "30d"] = Query(..., description="Time period for aggregation"),
+    assistant_id: int | None = Query(None, description="Filter by assistant ID"),
+):
+    """Get aggregated citation leaderboard across reports in a time period.
+
+    Deduplicates evaluations across reports and aggregates all citations
+    into a single leaderboard with domain and subpath counts.
+    """
+    try:
+        await group_service.get_by_id_for_user(group_id, current_user.id)
+    except Exception:
+        raise to_http_exception(GroupNotFoundError(group_id))
+
+    result = await citations_service.get_aggregated_leaderboard(
+        group_id=group_id,
+        user_id=current_user.id,
+        period=period,
+        assistant_id=assistant_id,
+    )
+
+    return AggregatedCitationsResponse(
+        group_id=group_id,
+        period=period,
+        assistant_id=assistant_id,
+        reports_included=result.reports_included,
+        citation_leaderboard=result.citation_leaderboard,
     )
 
 
