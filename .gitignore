@@ -220,3 +220,4 @@ frontend/src/routeTree.gen.ts
 sessions/
 .claude/
 backend/.claude/
+.playwright-mcp/
