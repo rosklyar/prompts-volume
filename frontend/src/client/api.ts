@@ -72,6 +72,10 @@ export interface Token {
   token_type: string
 }
 
+export interface OAuthLoginResponse extends Token {
+  is_new_user: boolean
+}
+
 export interface UserRegister {
   email: string
   password: string
@@ -230,6 +234,26 @@ export const authApi = {
       throw new ApiError(
         response.status,
         errorData.detail || "Failed to resend verification"
+      )
+    }
+
+    return response.json()
+  },
+
+  async loginWithGoogle(idToken: string): Promise<OAuthLoginResponse> {
+    const response = await fetch(`${API_URL}/api/v1/oauth/google`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ id_token: idToken }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new ApiError(
+        response.status,
+        errorData.detail || "Google login failed"
       )
     }
 

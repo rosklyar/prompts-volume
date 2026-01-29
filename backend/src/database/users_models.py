@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Enum, Integer, Numeric, String, text
+from sqlalchemy import Boolean, DateTime, Enum, Integer, Numeric, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -22,7 +22,7 @@ class User(UsersBase):
         String(36), primary_key=True, default=lambda: str(uuid_module.uuid4())
     )
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
-    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    hashed_password: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     full_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -217,3 +217,51 @@ class UserPreferences(UsersBase):
 
     def __repr__(self) -> str:
         return f"<UserPreferences(id={self.id}, user_id='{self.user_id}', has_brand={self.default_brand is not None})>"
+
+
+class OAuthConnection(UsersBase):
+    """OAuth provider connection for a user.
+
+    Allows users to link multiple OAuth providers (Google, Apple, etc.)
+    to their account. Each provider can only be linked once per user.
+    """
+
+    __tablename__ = "oauth_connections"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String(36),
+        nullable=False,
+        index=True,
+    )
+    provider: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+    )  # 'google', 'apple', 'github'
+    provider_user_id: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )  # External provider's unique user ID
+    provider_email: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+    )  # Email from provider (for reference)
+    connected_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("NOW()"),
+    )
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    __table_args__ = (
+        # Each provider user ID can only link to one local user
+        UniqueConstraint("provider", "provider_user_id", name="uq_oauth_provider_user"),
+        # Each user can only have one connection per provider
+        UniqueConstraint("user_id", "provider", name="uq_user_provider"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<OAuthConnection(user_id='{self.user_id}', provider='{self.provider}')>"

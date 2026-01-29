@@ -1,5 +1,7 @@
 """Pydantic models for authentication."""
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
@@ -103,3 +105,31 @@ class VerifyEmailResponse(BaseModel):
 
     message: str
     status: str  # "success" or "already_verified"
+
+
+# OAuth models
+
+
+class GoogleLoginRequest(BaseModel):
+    """Request body for Google Sign-In."""
+
+    id_token: str = Field(..., description="Google ID token from frontend Sign-In")
+
+
+class OAuthLoginResponse(BaseModel):
+    """Response for OAuth login (extends Token)."""
+
+    access_token: str
+    token_type: str = "bearer"
+    is_new_user: bool = False  # True if account was just created
+
+
+class OAuthConnectionPublic(BaseModel):
+    """Public representation of an OAuth connection."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    provider: str
+    provider_email: str | None
+    connected_at: datetime
+    last_login_at: datetime | None

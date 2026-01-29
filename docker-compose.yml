@@ -39,6 +39,7 @@ services:
       FRONTEND_URL: http://localhost:5173
       EVALUATION_API_TOKENS: ${EVALUATION_API_TOKENS}
       BREVO_API_KEY: ${BREVO_API_KEY}
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID}
       SEED_DATA: "true"
     ports:
       - "8000:8000"

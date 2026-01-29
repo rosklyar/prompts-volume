@@ -108,6 +108,9 @@ async def authenticate(session: AsyncSession, email: str, password: str) -> User
         return None
     if user.is_deleted:
         return None
+    # OAuth-only users have no password
+    if user.hashed_password is None:
+        return None
     if not verify_password(password, user.hashed_password):
         return None
     return user

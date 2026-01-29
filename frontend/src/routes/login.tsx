@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { useState } from "react"
 import { AuthLayout } from "@/components/AuthLayout"
+import { GoogleSignInButton } from "@/components/GoogleSignInButton"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -27,11 +28,12 @@ export const Route = createFileRoute("/login")({
 })
 
 function Login() {
-  const { loginMutation } = useAuth()
+  const { loginMutation, googleLoginMutation } = useAuth()
   const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null)
   const [resendStatus, setResendStatus] = useState<"idle" | "sending" | "sent">(
     "idle"
   )
+  const [googleError, setGoogleError] = useState<string | null>(null)
   const {
     register,
     handleSubmit,
@@ -44,11 +46,22 @@ function Login() {
     if (loginMutation.isPending) return
     setUnverifiedEmail(null) // Reset
     setResendStatus("idle")
+    setGoogleError(null)
     loginMutation.mutate(data, {
       onError: (error) => {
         if (error.message.toLowerCase().includes("verify your email")) {
           setUnverifiedEmail(data.username)
         }
+      },
+    })
+  }
+
+  const handleGoogleCredential = (idToken: string) => {
+    setGoogleError(null)
+    setUnverifiedEmail(null)
+    googleLoginMutation.mutate(idToken, {
+      onError: (error) => {
+        setGoogleError(error.message)
       },
     })
   }
@@ -125,6 +138,27 @@ function Login() {
           <Button type="submit" disabled={loginMutation.isPending}>
             {loginMutation.isPending ? "Logging in..." : "Log in"}
           </Button>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t border-gray-300" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-white px-2 text-gray-500">
+                or continue with
+              </span>
+            </div>
+          </div>
+
+          <GoogleSignInButton
+            onCredentialResponse={handleGoogleCredential}
+            disabled={loginMutation.isPending}
+            isLoading={googleLoginMutation.isPending}
+          />
+
+          {googleError && (
+            <p className="text-sm text-red-600 text-center">{googleError}</p>
+          )}
         </div>
 
         <div className="text-center text-sm">
