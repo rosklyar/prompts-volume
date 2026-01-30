@@ -1096,4 +1096,84 @@ export const onboardingApi = {
   },
 }
 
+// ===== GSC (Google Search Console) API =====
+
+export interface GSCSiteInfo {
+  site_url: string
+  permission_level: "siteOwner" | "siteFullUser" | "siteRestrictedUser" | "siteUnverifiedUser"
+}
+
+export interface GSCConnectionStatus {
+  is_connected: boolean
+  connected_at: string | null
+  sites: GSCSiteInfo[] | null
+}
+
+export interface GSCAuthInitResponse {
+  auth_url: string
+}
+
+export interface GSCDisconnectResponse {
+  message: string
+}
+
+export interface GSCSearchAnalyticsRequest {
+  site_url: string
+  start_date: string  // YYYY-MM-DD
+  end_date: string    // YYYY-MM-DD
+  row_limit?: number
+}
+
+export interface GSCSearchQueryRow {
+  keys: string[]  // Query text (first element is the query)
+  clicks: number
+  impressions: number
+  ctr: number
+  position: number
+}
+
+export interface GSCSearchAnalyticsResponse {
+  rows: GSCSearchQueryRow[]
+}
+
+export const gscApi = {
+  /**
+   * Initiate GSC OAuth flow - returns URL to redirect user to
+   */
+  async initiateAuth(): Promise<GSCAuthInitResponse> {
+    const response = await fetchWithAuth("/api/v1/gsc/auth/initiate")
+    return response.json()
+  },
+
+  /**
+   * Get GSC connection status and list of properties
+   */
+  async getStatus(): Promise<GSCConnectionStatus> {
+    const response = await fetchWithAuth("/api/v1/gsc/status")
+    return response.json()
+  },
+
+  /**
+   * Disconnect GSC account
+   */
+  async disconnect(): Promise<GSCDisconnectResponse> {
+    const response = await fetchWithAuth("/api/v1/gsc/disconnect", {
+      method: "DELETE",
+    })
+    return response.json()
+  },
+
+  /**
+   * Get search analytics data for a GSC property
+   */
+  async getSearchAnalytics(request: GSCSearchAnalyticsRequest): Promise<GSCSearchAnalyticsResponse> {
+    const response = await fetchWithAuth("/api/v1/gsc/search-analytics", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    })
+    return response.json()
+  },
+}
+
 export { ApiError }
