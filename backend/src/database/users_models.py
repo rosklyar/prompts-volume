@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Enum, Integer, Numeric, String, UniqueConstraint, text
+from sqlalchemy import Boolean, DateTime, Enum, Integer, Numeric, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -265,3 +265,46 @@ class OAuthConnection(UsersBase):
 
     def __repr__(self) -> str:
         return f"<OAuthConnection(user_id='{self.user_id}', provider='{self.provider}')>"
+
+
+class GSCCredential(UsersBase):
+    """Google Search Console OAuth credentials for a user.
+
+    Stores encrypted OAuth tokens for ongoing GSC API access.
+    One-to-one relationship with User (each user can connect one GSC account).
+    """
+
+    __tablename__ = "gsc_credentials"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String(36),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+
+    # Encrypted tokens (Fernet symmetric encryption)
+    access_token_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    refresh_token_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # Token metadata
+    token_expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    scopes: Mapped[str] = mapped_column(String(500), nullable=False)
+
+    # Audit timestamps
+    connected_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("NOW()"),
+    )
+    last_used_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    def __repr__(self) -> str:
+        return f"<GSCCredential(user_id='{self.user_id}', connected_at='{self.connected_at}')>"

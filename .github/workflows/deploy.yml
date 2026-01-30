@@ -213,7 +213,11 @@ jobs:
               BRIGHTDATA_WEBHOOK_SECRET="${{ secrets.BRIGHTDATA_WEBHOOK_SECRET }}" \
               BRIGHTDATA_API_TOKEN="${{ secrets.BRIGHTDATA_API_TOKEN }}" \
               BRIGHTDATA_ANSWERS="true" \
-              GOOGLE_OAUTH_CLIENT_ID="${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}"
+              GOOGLE_OAUTH_CLIENT_ID="${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}" \
+              GOOGLE_GSC_CLIENT_ID="${{ secrets.GOOGLE_GSC_CLIENT_ID }}" \
+              GOOGLE_GSC_CLIENT_SECRET="${{ secrets.GOOGLE_GSC_CLIENT_SECRET }}" \
+              GOOGLE_GSC_REDIRECT_URI="${{ env.BACKEND_URL }}/api/v1/gsc/auth/callback" \
+              GSC_TOKEN_ENCRYPTION_KEY="${{ secrets.GSC_TOKEN_ENCRYPTION_KEY }}"
 
       - name: Health Check
         run: |

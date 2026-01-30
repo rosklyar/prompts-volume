@@ -221,3 +221,4 @@ sessions/
 .claude/
 backend/.claude/
 .playwright-mcp/
+secrets/

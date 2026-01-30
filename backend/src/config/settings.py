@@ -91,8 +91,14 @@ class Settings(BaseSettings):
     # CORS configuration
     frontend_url: str = "http://localhost:5173"
 
-    # Google OAuth configuration
+    # Google OAuth configuration (Sign-In with ID token verification)
     google_oauth_client_id: str = ""  # Google OAuth 2.0 Client ID
+
+    # Google Search Console OAuth (Authorization Code flow with refresh tokens)
+    google_gsc_client_id: str = ""
+    google_gsc_client_secret: str = ""
+    google_gsc_redirect_uri: str = "http://localhost:8000/api/v1/gsc/auth/callback"
+    gsc_token_encryption_key: str = ""  # Fernet encryption key for token storage
 
     # Brevo email configuration (uses HTTP API instead of SMTP to avoid port blocking)
     brevo_api_key: str = ""  # Set via BREVO_API_KEY env var
