@@ -66,3 +66,66 @@ class SearchAnalyticsResponse(BaseModel):
     """Response containing search analytics data."""
 
     rows: list[SearchQueryRow]
+
+
+# ===== Onboarding GSC Models =====
+
+
+class GSCPropertyMatchRequest(BaseModel):
+    """Request to match brand domain to GSC property."""
+
+    brand_domain: str
+
+
+class GSCPropertyMatchResponse(BaseModel):
+    """Response from property matching."""
+
+    match_type: Literal["exact", "partial", "multiple", "none"]
+    matched_property: str | None
+    available_properties: list[GSCSiteInfo]
+
+
+class GSCKeywordExtractRequest(BaseModel):
+    """Request to extract keywords from GSC."""
+
+    site_url: str
+    min_word_count: int = 3
+    result_limit: int = 10
+
+
+class GSCKeywordResponse(BaseModel):
+    """Single keyword with metrics."""
+
+    query: str
+    clicks: int
+    impressions: int
+    ctr: float
+    position: float
+
+
+class GSCKeywordExtractResponse(BaseModel):
+    """Response containing extracted keywords."""
+
+    keywords: list[GSCKeywordResponse]
+    total_fetched: int
+    total_after_filter: int
+
+
+class GSCOnboardingCreateRequest(BaseModel):
+    """Request to create prompts and group from GSC keywords."""
+
+    keywords: list[str]
+    group_title: str
+    # Brand/country/competitors passed from frontend (not yet saved to preferences)
+    country_id: int
+    brand: dict
+    competitors: list[dict] | None = None
+
+
+class GSCOnboardingCreateResponse(BaseModel):
+    """Response after creating prompts and group."""
+
+    group_id: int
+    group_title: str
+    prompts_created: int
+    prompt_ids: list[int]

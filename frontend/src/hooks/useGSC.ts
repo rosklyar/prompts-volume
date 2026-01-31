@@ -1,5 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { gscApi, type GSCConnectionStatus, type GSCSearchAnalyticsResponse } from "@/client/api"
+import {
+  gscApi,
+  type GSCConnectionStatus,
+  type GSCSearchAnalyticsResponse,
+  type GSCPropertyMatchResponse,
+  type GSCKeywordExtractResponse,
+  type GSCCreatePromptsResponse,
+} from "@/client/api"
 import { isLoggedIn } from "./useAuth"
 
 export function useGSCStatus() {
@@ -12,10 +19,10 @@ export function useGSCStatus() {
   })
 }
 
-export function useGSCConnect() {
+export function useGSCConnect(redirectUri?: string) {
   return useMutation({
     mutationFn: async () => {
-      const response = await gscApi.initiateAuth()
+      const response = await gscApi.initiateAuth(redirectUri)
       // Redirect user to Google OAuth
       window.location.href = response.auth_url
     },
@@ -51,5 +58,65 @@ export function useGSCSearchAnalytics(
     enabled: isLoggedIn() && siteUrl !== null,
     retry: false,
     staleTime: 5 * 60 * 1000, // 5 minutes
+  })
+}
+
+// ===== GSC Onboarding Hooks =====
+
+export function useGSCMatchProperty(brandDomain: string | null, enabled: boolean = true) {
+  return useQuery<GSCPropertyMatchResponse, Error>({
+    queryKey: ["gscMatchProperty", brandDomain],
+    queryFn: () => gscApi.matchProperty({ brand_domain: brandDomain! }),
+    enabled: isLoggedIn() && brandDomain !== null && enabled,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useGSCExtractKeywords(
+  siteUrl: string | null,
+  options?: { minWordCount?: number; resultLimit?: number },
+  enabled: boolean = true
+) {
+  return useQuery<GSCKeywordExtractResponse, Error>({
+    queryKey: ["gscExtractKeywords", siteUrl, options?.minWordCount, options?.resultLimit],
+    queryFn: () =>
+      gscApi.extractKeywords({
+        site_url: siteUrl!,
+        min_word_count: options?.minWordCount ?? 3,
+        result_limit: options?.resultLimit ?? 10,
+      }),
+    enabled: isLoggedIn() && siteUrl !== null && enabled,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useGSCCreatePrompts() {
+  const queryClient = useQueryClient()
+
+  return useMutation<
+    GSCCreatePromptsResponse,
+    Error,
+    {
+      keywords: string[]
+      groupTitle: string
+      countryId: number
+      brand: { name: string; domain?: string | null; variations: string[] }
+      competitors?: { name: string; domain?: string | null; variations: string[] }[] | null
+    }
+  >({
+    mutationFn: ({ keywords, groupTitle, countryId, brand, competitors }) =>
+      gscApi.createPromptsFromGSC({
+        keywords,
+        group_title: groupTitle,
+        country_id: countryId,
+        brand,
+        competitors,
+      }),
+    onSuccess: () => {
+      // Invalidate groups list so the new group appears
+      queryClient.invalidateQueries({ queryKey: ["groups"] })
+    },
   })
 }

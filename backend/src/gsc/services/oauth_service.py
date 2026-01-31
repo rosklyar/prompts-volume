@@ -42,16 +42,17 @@ class OAuthService:
         self._redirect_uri = redirect_uri
         self._secret_key = secret_key
 
-    def generate_auth_url(self, user_id: str) -> str:
+    def generate_auth_url(self, user_id: str, redirect_uri: str | None = None) -> str:
         """Generate OAuth authorization URL with signed state.
 
         Args:
             user_id: User ID to encode in state JWT
+            redirect_uri: Optional URL to redirect to after OAuth completes
 
         Returns:
             Full authorization URL to redirect user to
         """
-        state = self._create_state_jwt(user_id)
+        state = self._create_state_jwt(user_id, redirect_uri)
 
         params = {
             "client_id": self._client_id,
@@ -65,14 +66,14 @@ class OAuthService:
 
         return f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
 
-    def validate_state(self, state: str) -> str:
-        """Validate state JWT and extract user_id.
+    def validate_state(self, state: str) -> tuple[str, str | None]:
+        """Validate state JWT and extract user_id and redirect_uri.
 
         Args:
             state: State JWT from OAuth callback
 
         Returns:
-            user_id extracted from valid state
+            Tuple of (user_id, redirect_uri) extracted from valid state
 
         Raises:
             GSCInvalidStateError: If state is invalid, expired, or tampered
@@ -86,7 +87,8 @@ class OAuthService:
             user_id = payload.get("sub")
             if not user_id:
                 raise GSCInvalidStateError("State missing user ID")
-            return user_id
+            redirect_uri = payload.get("redirect_uri")
+            return user_id, redirect_uri
         except jwt.ExpiredSignatureError:
             raise GSCInvalidStateError("OAuth state has expired")
         except jwt.InvalidTokenError as e:
@@ -163,12 +165,13 @@ class OAuthService:
             scope=result.get("scope", GSC_SCOPE),
         )
 
-    def _create_state_jwt(self, user_id: str) -> str:
+    def _create_state_jwt(self, user_id: str, redirect_uri: str | None = None) -> str:
         """Create a signed JWT for OAuth state parameter."""
         expire = datetime.now(timezone.utc) + timedelta(minutes=STATE_EXPIRY_MINUTES)
         payload = {
             "sub": user_id,
             "exp": expire,
             "purpose": "gsc_oauth",
+            "redirect_uri": redirect_uri,
         }
         return jwt.encode(payload, self._secret_key, algorithm="HS256")

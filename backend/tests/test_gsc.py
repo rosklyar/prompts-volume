@@ -115,7 +115,7 @@ class TestOAuthService:
         assert "state=" in url
 
     def test_validate_state_extracts_user_id(self, oauth_service):
-        """Valid state should return the encoded user ID."""
+        """Valid state should return the encoded user ID and redirect_uri."""
         user_id = "user-456"
         url = oauth_service.generate_auth_url(user_id)
 
@@ -126,8 +126,26 @@ class TestOAuthService:
         state = params["state"][0]
 
         # Validate state
-        extracted = oauth_service.validate_state(state)
-        assert extracted == user_id
+        extracted_user_id, extracted_redirect_uri = oauth_service.validate_state(state)
+        assert extracted_user_id == user_id
+        assert extracted_redirect_uri is None  # No redirect_uri passed
+
+    def test_validate_state_extracts_redirect_uri(self, oauth_service):
+        """Valid state with redirect_uri should return both user ID and redirect_uri."""
+        user_id = "user-456"
+        redirect_uri = "http://localhost:5173/onboarding"
+        url = oauth_service.generate_auth_url(user_id, redirect_uri)
+
+        # Extract state from URL
+        import urllib.parse
+        parsed = urllib.parse.urlparse(url)
+        params = urllib.parse.parse_qs(parsed.query)
+        state = params["state"][0]
+
+        # Validate state
+        extracted_user_id, extracted_redirect_uri = oauth_service.validate_state(state)
+        assert extracted_user_id == user_id
+        assert extracted_redirect_uri == redirect_uri
 
     def test_validate_state_rejects_tampered_state(self, oauth_service):
         """Tampered state should raise error."""
