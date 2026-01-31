@@ -1,8 +1,34 @@
 """API router for onboarding and user preferences."""
 
-from fastapi import APIRouter, status
+import logging
+from typing import Any
 
-from src.auth.deps import CurrentUser
+from fastapi import APIRouter, Depends, HTTPException, status
+
+from src.approval.policies import ApprovalPolicy, get_approval_policy
+from src.auth.deps import CurrentUser, UsersSessionDep, SessionDep
+from src.embeddings.embeddings_service import EmbeddingsService, get_embeddings_service
+from src.geography.services.country_resolver import CountryResolution
+from src.gsc.deps import get_oauth_service, get_token_manager, get_valid_access_token
+from src.gsc.exceptions import GSCError, GSCTokenRefreshError
+from src.gsc.models import (
+    GSCKeywordExtractRequest,
+    GSCKeywordExtractResponse,
+    GSCKeywordResponse,
+    GSCOnboardingCreateRequest,
+    GSCOnboardingCreateResponse,
+    GSCPropertyMatchRequest,
+    GSCPropertyMatchResponse,
+)
+from src.gsc.repository import GSCCredentialRepository
+from src.gsc.services import (
+    GSCClient,
+    KeywordExtractor,
+    MinWordCountFilter,
+    PropertyMatcher,
+)
+from src.gsc.services.oauth_service import OAuthService
+from src.gsc.services.token_manager import TokenManager
 from src.onboarding.exceptions import OnboardingError, to_http_exception
 from src.onboarding.models.api_models import (
     CompleteOnboardingRequest,
@@ -10,8 +36,13 @@ from src.onboarding.models.api_models import (
     SavePreferencesRequest,
     UserPreferencesResponse,
 )
-from src.onboarding.services import OnboardingServiceDep
+from src.onboarding.services import OnboardingServiceDep, PreferencesServiceDep
 from src.prompt_groups.models.brand_models import BrandModel, CompetitorModel
+from src.prompt_groups.services.prompt_group_binding_service import PromptGroupBindingService
+from src.prompt_groups.services.prompt_group_service import PromptGroupService
+from src.prompts.services.prompt_service import PromptService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/onboarding/api/v1", tags=["onboarding"])
 
@@ -123,7 +154,6 @@ def _build_preferences_response(prefs) -> UserPreferencesResponse:
     if prefs is None or prefs.default_country_id is None:
         # Return a minimal response for users who haven't completed onboarding
         # This should only happen for legacy users
-        from fastapi import HTTPException, status
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Onboarding not completed. Please complete onboarding first.",
@@ -148,4 +178,180 @@ def _build_preferences_response(prefs) -> UserPreferencesResponse:
             completed_at=prefs.onboarding_completed_at,
             has_preferences=prefs.default_brand is not None,
         ),
+    )
+
+
+# ===== GSC Onboarding Endpoints =====
+
+
+@router.post("/gsc/match-property", response_model=GSCPropertyMatchResponse)
+async def match_gsc_property(
+    request: GSCPropertyMatchRequest,
+    current_user: CurrentUser,
+    session: UsersSessionDep,
+    oauth_service: OAuthService = Depends(get_oauth_service),
+    token_manager: TokenManager = Depends(get_token_manager),
+) -> Any:
+    """Match brand domain to a GSC property.
+
+    Attempts to auto-match the user's brand domain to one of their GSC properties.
+    Returns match type and available properties for selection.
+    """
+    repo = GSCCredentialRepository(session)
+    credential = await repo.get_by_user_id(current_user.id)
+
+    if not credential:
+        raise HTTPException(status_code=400, detail="GSC is not connected")
+
+    try:
+        access_token = await get_valid_access_token(
+            credential, repo, session, token_manager, oauth_service
+        )
+    except GSCTokenRefreshError:
+        await repo.delete(credential)
+        await session.commit()
+        raise HTTPException(status_code=400, detail="GSC connection expired. Please reconnect.")
+
+    # Fetch sites from GSC
+    gsc_client = GSCClient()
+    try:
+        sites = await gsc_client.list_sites(access_token)
+    except GSCError as e:
+        logger.error(f"Failed to list GSC sites: {e}")
+        raise HTTPException(status_code=502, detail="Failed to fetch GSC properties")
+
+    # Match property
+    matcher = PropertyMatcher()
+    match_result = matcher.match(request.brand_domain, sites)
+
+    return GSCPropertyMatchResponse(
+        match_type=match_result.match_type,
+        matched_property=match_result.matched_property,
+        available_properties=match_result.available_properties,
+    )
+
+
+@router.post("/gsc/extract-keywords", response_model=GSCKeywordExtractResponse)
+async def extract_gsc_keywords(
+    request: GSCKeywordExtractRequest,
+    current_user: CurrentUser,
+    session: UsersSessionDep,
+    oauth_service: OAuthService = Depends(get_oauth_service),
+    token_manager: TokenManager = Depends(get_token_manager),
+) -> Any:
+    """Extract long-tail keywords from GSC search analytics.
+
+    Returns filtered keywords (3+ words by default) sorted by performance.
+    """
+    repo = GSCCredentialRepository(session)
+    credential = await repo.get_by_user_id(current_user.id)
+
+    if not credential:
+        raise HTTPException(status_code=400, detail="GSC is not connected")
+
+    try:
+        access_token = await get_valid_access_token(
+            credential, repo, session, token_manager, oauth_service
+        )
+    except GSCTokenRefreshError:
+        await repo.delete(credential)
+        await session.commit()
+        raise HTTPException(status_code=400, detail="GSC connection expired. Please reconnect.")
+
+    # Extract keywords
+    gsc_client = GSCClient()
+    keyword_filter = MinWordCountFilter(min_words=request.min_word_count)
+    extractor = KeywordExtractor(gsc_client, keyword_filter)
+
+    try:
+        result = await extractor.extract(
+            access_token,
+            request.site_url,
+            days_back=28,
+            result_limit=request.result_limit,
+        )
+    except GSCError as e:
+        logger.error(f"Failed to extract keywords: {e}")
+        raise HTTPException(status_code=502, detail="Failed to fetch search analytics")
+
+    # Convert to response format
+    keywords = [
+        GSCKeywordResponse(
+            query=row.keys[0] if row.keys else "",
+            clicks=row.clicks,
+            impressions=row.impressions,
+            ctr=row.ctr,
+            position=row.position,
+        )
+        for row in result.keywords
+    ]
+
+    return GSCKeywordExtractResponse(
+        keywords=keywords,
+        total_fetched=result.total_fetched,
+        total_after_filter=result.total_after_filter,
+    )
+
+
+@router.post(
+    "/gsc/create-prompts",
+    response_model=GSCOnboardingCreateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_prompts_from_gsc(
+    request: GSCOnboardingCreateRequest,
+    current_user: CurrentUser,
+    prompts_session: SessionDep,
+    embeddings_service: EmbeddingsService = Depends(get_embeddings_service),
+    approval_policy: ApprovalPolicy = Depends(get_approval_policy),
+) -> Any:
+    """Create prompts and a group from selected GSC keywords.
+
+    Creates prompts with pending approval status (not admin-created),
+    creates a group with provided brand/country/competitors, and adds prompts to the group.
+
+    This endpoint is called during onboarding (before onboarding is completed),
+    so brand/country/competitors are passed from the frontend state.
+    """
+    # Create services
+    prompt_service = PromptService(prompts_session, embeddings_service, approval_policy)
+    group_service = PromptGroupService(prompts_session)
+    binding_service = PromptGroupBindingService(prompts_session)
+
+    # Create prompts (pending approval, no topic, user_id set)
+    prompt_ids: list[int] = []
+    for keyword in request.keywords:
+        prompt = await prompt_service.add_prompt(
+            prompt_text=keyword,
+            topic_id=None,
+            user_id=current_user.id,
+            is_admin=False,  # Forces pending status
+        )
+        prompt_ids.append(prompt.id)
+
+    # Create country resolution (from request, not locked)
+    country_resolution = CountryResolution(
+        country_id=request.country_id,
+        is_locked=False,
+        source="explicit",
+    )
+
+    # Create group without topic
+    group = await group_service.create_group(
+        user_id=current_user.id,
+        title=request.group_title,
+        brand=request.brand,
+        country_resolution=country_resolution,
+        topic_id=None,
+        competitors=request.competitors,
+    )
+
+    # Add prompts to group
+    await binding_service.add_prompts_to_group(group, prompt_ids)
+
+    return GSCOnboardingCreateResponse(
+        group_id=group.id,
+        group_title=group.title,
+        prompts_created=len(prompt_ids),
+        prompt_ids=prompt_ids,
     )

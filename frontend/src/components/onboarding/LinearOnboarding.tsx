@@ -3,7 +3,7 @@
  * Clean progression through steps with clear navigation
  */
 
-import { useState, useCallback, useRef } from "react"
+import { useState, useCallback, useRef, useMemo } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import {
   Globe,
@@ -24,17 +24,33 @@ import { useCreateGroup, useAddPromptsToGroup } from "@/hooks/useGroups"
 import { normalizeDomain } from "@/lib/domain"
 import { TopicSelectionStep } from "./TopicSelectionStep"
 import { PromptSelectionStep } from "./PromptSelectionStep"
+import { GSCOnboardingStep } from "./GSCOnboardingStep"
 import type { CompetitorInfo } from "@/types/groups"
 import type { Topic } from "@/types/admin"
 
-type OnboardingStep = 1 | 2 | 3 | 4 | 5 | 6 | 7
+type OnboardingStep = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
 
-const TOTAL_STEPS = 7
+const TOTAL_STEPS = 8
+const ONBOARDING_STATE_KEY = "onboardingState"
 
 interface BrandData {
   name: string
   domain: string
   variations: string
+}
+
+interface SavedOnboardingState {
+  countryId?: number
+  businessDomainId?: number
+  brand: BrandData
+  competitors: CompetitorInfo[]
+  selectedTopics: Topic[]
+  selectedPromptsByTopic: Record<number, number[]>
+  groupsCreatedCount: number
+}
+
+interface LinearOnboardingProps {
+  initialGscConnected?: boolean
 }
 
 // Step indicator component
@@ -59,36 +75,56 @@ function StepIndicator({ currentStep, totalSteps }: { currentStep: number; total
   )
 }
 
-export function LinearOnboarding() {
+export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps) {
   const navigate = useNavigate()
   const hasSubmittedRef = useRef(false)
   const completeOnboarding = useCompleteOnboarding()
   const createGroup = useCreateGroup()
   const addPromptsToGroup = useAddPromptsToGroup()
 
-  // Step state
-  const [currentStep, setCurrentStep] = useState<OnboardingStep>(1)
+  // Restore state from sessionStorage if returning from OAuth
+  const savedState = useMemo<SavedOnboardingState | null>(() => {
+    if (!initialGscConnected) return null
+    const saved = sessionStorage.getItem(ONBOARDING_STATE_KEY)
+    if (saved) {
+      sessionStorage.removeItem(ONBOARDING_STATE_KEY)  // Clear after use
+      try {
+        return JSON.parse(saved) as SavedOnboardingState
+      } catch {
+        return null
+      }
+    }
+    return null
+  }, [initialGscConnected])
 
-  // Form data
-  const [countryId, setCountryId] = useState<number | undefined>()
-  const [businessDomainId, setBusinessDomainId] = useState<number | undefined>()
-  const [brand, setBrand] = useState<BrandData>({
-    name: "",
-    domain: "",
-    variations: "",
-  })
+  // Step state - go to step 7 (GSC) if returning from OAuth
+  const [currentStep, setCurrentStep] = useState<OnboardingStep>(
+    savedState ? 7 : 1
+  )
+
+  // Form data - restore from saved state if available
+  const [countryId, setCountryId] = useState<number | undefined>(savedState?.countryId)
+  const [businessDomainId, setBusinessDomainId] = useState<number | undefined>(savedState?.businessDomainId)
+  const [brand, setBrand] = useState<BrandData>(
+    savedState?.brand || { name: "", domain: "", variations: "" }
+  )
   const [brandVariationsTouched, setBrandVariationsTouched] = useState(false)
-  const [competitors, setCompetitors] = useState<CompetitorInfo[]>([])
+  const [competitors, setCompetitors] = useState<CompetitorInfo[]>(savedState?.competitors || [])
   const [newCompName, setNewCompName] = useState("")
   const [newCompDomain, setNewCompDomain] = useState("")
   const [newCompVariations, setNewCompVariations] = useState("")
   const [newCompVariationsTouched, setNewCompVariationsTouched] = useState(false)
 
-  // Topic/Prompt selection state (steps 5-6)
-  const [selectedTopics, setSelectedTopics] = useState<Topic[]>([])
-  const [selectedPromptsByTopic, setSelectedPromptsByTopic] = useState<Record<number, number[]>>({})
+  // Topic/Prompt selection state (steps 5-6) - restore from saved state
+  const [selectedTopics, setSelectedTopics] = useState<Topic[]>(savedState?.selectedTopics || [])
+  const [selectedPromptsByTopic, setSelectedPromptsByTopic] = useState<Record<number, number[]>>(
+    savedState?.selectedPromptsByTopic || {}
+  )
   const [isCreatingGroups, setIsCreatingGroups] = useState(false)
-  const [groupsCreatedCount, setGroupsCreatedCount] = useState(0)
+  const [groupsCreatedCount, setGroupsCreatedCount] = useState(savedState?.groupsCreatedCount || 0)
+
+  // GSC state (step 7)
+  const [gscGroupCreated, setGscGroupCreated] = useState<{ groupId: number; promptCount: number } | null>(null)
 
   // Error state
   const [error, setError] = useState<string | null>(null)
@@ -301,7 +337,7 @@ export function LinearOnboarding() {
       })
 
       // Go to complete step
-      setCurrentStep(7)
+      setCurrentStep(8)
     } catch (err) {
       hasSubmittedRef.current = false
       setError(err instanceof Error ? err.message : "Failed to save preferences")
@@ -328,10 +364,46 @@ export function LinearOnboarding() {
     }
   }, [selectedTopics, handleSubmit])
 
-  // Handle step 6 continue -> submit
+  // Handle step 6 continue -> go to GSC step
   const handleStep6Continue = useCallback(() => {
+    setCurrentStep(7) // Go to GSC step
+  }, [])
+
+  // Handle GSC step completion
+  const handleGSCComplete = useCallback((result: { groupId: number; promptCount: number } | null) => {
+    setGscGroupCreated(result)
     handleSubmit()
   }, [handleSubmit])
+
+  // Handle GSC step skip
+  const handleGSCSkip = useCallback(() => {
+    setGscGroupCreated(null)
+    handleSubmit()
+  }, [handleSubmit])
+
+  // Save onboarding state before OAuth redirect
+  const saveOnboardingState = useCallback(() => {
+    const stateToSave: SavedOnboardingState = {
+      countryId,
+      businessDomainId,
+      brand,
+      competitors,
+      selectedTopics,
+      selectedPromptsByTopic,
+      groupsCreatedCount,
+    }
+    sessionStorage.setItem(ONBOARDING_STATE_KEY, JSON.stringify(stateToSave))
+  }, [countryId, businessDomainId, brand, competitors, selectedTopics, selectedPromptsByTopic, groupsCreatedCount])
+
+  // Get the appropriate handler for each step's continue button
+  const getStepContinueHandler = (step: number) => {
+    switch (step) {
+      case 4: return handleStep4Continue
+      case 5: return handleStep5Continue
+      case 6: return handleStep6Continue
+      default: return goNext
+    }
+  }
 
   // Skip handler for topic/prompt steps
   const handleSkipTopics = useCallback(() => {
@@ -344,8 +416,8 @@ export function LinearOnboarding() {
   const selectedCountry = countriesData?.countries.find((c) => c.id === countryId)
   const selectedDomain = businessDomainsData?.business_domains.find((d) => d.id === businessDomainId)
 
-  // Calculate visible steps (4 base + topic steps if applicable)
-  const visibleSteps = shouldShowTopicSteps ? 6 : 4 // Exclude complete step from indicator
+  // Calculate visible steps (4 base + topic steps + GSC step if applicable)
+  const visibleSteps = shouldShowTopicSteps ? 7 : 5 // Exclude complete step from indicator
 
   return (
     <div className="min-h-screen bg-[#FDFBF7] font-['DM_Sans']">
@@ -359,9 +431,9 @@ export function LinearOnboarding() {
         </div>
 
         {/* Step indicator */}
-        {currentStep < 7 && (
+        {currentStep < 8 && (
           <StepIndicator
-            currentStep={shouldShowTopicSteps ? currentStep : Math.min(currentStep, 4)}
+            currentStep={shouldShowTopicSteps ? currentStep : Math.min(currentStep, 5)}
             totalSteps={visibleSteps}
           />
         )}
@@ -658,8 +730,28 @@ export function LinearOnboarding() {
               />
             )}
 
-            {/* Step 7: Complete */}
-            {currentStep === 7 && (
+            {/* Step 7: GSC Integration */}
+            {currentStep === 7 && countryId && (
+              <GSCOnboardingStep
+                brandDomain={normalizeDomain(brand.domain) || brand.name}
+                countryId={countryId}
+                brand={{
+                  name: brand.name.trim(),
+                  domain: normalizeDomain(brand.domain) || null,
+                  variations: brand.variations
+                    .split(",")
+                    .map((v) => v.trim())
+                    .filter(Boolean),
+                }}
+                competitors={competitors}
+                onComplete={handleGSCComplete}
+                onSkip={handleGSCSkip}
+                onBeforeConnect={saveOnboardingState}
+              />
+            )}
+
+            {/* Step 8: Complete */}
+            {currentStep === 8 && (
               <div className="text-center animate-in fade-in duration-300">
                 {isPending ? (
                   <>
@@ -701,10 +793,18 @@ export function LinearOnboarding() {
                             {competitors.length === 0 ? "None" : competitors.length}
                           </span>
                         </div>
-                        {groupsCreatedCount > 0 && (
+                        {(groupsCreatedCount > 0 || gscGroupCreated) && (
                           <div className="flex items-center gap-2">
                             <span className="text-gray-400">Groups created:</span>
-                            <span className="text-[#C4553D] font-medium">{groupsCreatedCount}</span>
+                            <span className="text-[#C4553D] font-medium">
+                              {groupsCreatedCount + (gscGroupCreated ? 1 : 0)}
+                            </span>
+                          </div>
+                        )}
+                        {gscGroupCreated && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-400">GSC keywords:</span>
+                            <span className="text-[#C4553D] font-medium">{gscGroupCreated.promptCount}</span>
                           </div>
                         )}
                       </div>
@@ -753,21 +853,13 @@ export function LinearOnboarding() {
                     </button>
                   )}
                   <button
-                    onClick={
-                      currentStep === 4
-                        ? handleStep4Continue
-                        : currentStep === 5
-                          ? handleStep5Continue
-                          : currentStep === 6
-                            ? handleStep6Continue
-                            : goNext
-                    }
+                    onClick={getStepContinueHandler(currentStep)}
                     disabled={!canProceed() || isPending}
                     className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white
                       bg-[#C4553D] rounded-xl hover:bg-[#B34835] transition-colors
                       disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {currentStep === 6 ? "Finish Setup" : "Continue"}
+                    Continue
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>

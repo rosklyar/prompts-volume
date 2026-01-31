@@ -8,11 +8,10 @@ from fastapi.responses import RedirectResponse
 
 from src.auth.deps import CurrentUser, UsersSessionDep
 from src.config.settings import settings
+from src.gsc.deps import get_oauth_service, get_token_manager, get_valid_access_token
 from src.gsc.exceptions import (
-    GSCConfigurationError,
     GSCError,
     GSCInvalidStateError,
-    GSCNotConnectedError,
     GSCTokenRefreshError,
 )
 from src.gsc.models import (
@@ -32,42 +31,22 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/gsc", tags=["gsc"])
 
 
-def get_oauth_service() -> OAuthService:
-    """Factory for OAuth service."""
-    if not settings.google_gsc_client_id or not settings.google_gsc_client_secret:
-        raise HTTPException(
-            status_code=503,
-            detail="Google Search Console integration is not configured",
-        )
-    return OAuthService(
-        client_id=settings.google_gsc_client_id,
-        client_secret=settings.google_gsc_client_secret,
-        redirect_uri=settings.google_gsc_redirect_uri,
-        secret_key=settings.secret_key,
-    )
-
-
-def get_token_manager() -> TokenManager:
-    """Factory for token manager."""
-    if not settings.gsc_token_encryption_key:
-        raise HTTPException(
-            status_code=503,
-            detail="GSC token encryption is not configured",
-        )
-    return TokenManager(encryption_key=settings.gsc_token_encryption_key)
-
-
 @router.get("/auth/initiate", response_model=GSCAuthInitResponse)
 async def initiate_gsc_auth(
     current_user: CurrentUser,
+    redirect_uri: str | None = None,
     oauth_service: OAuthService = Depends(get_oauth_service),
 ) -> Any:
     """Initiate GSC OAuth flow.
 
     Returns an authorization URL that the frontend should redirect the user to.
     After user authorizes, Google will redirect back to /auth/callback.
+
+    Args:
+        redirect_uri: Optional URL to redirect to after OAuth completes.
+                      If not provided, defaults to settings page.
     """
-    auth_url = oauth_service.generate_auth_url(current_user.id)
+    auth_url = oauth_service.generate_auth_url(current_user.id, redirect_uri)
     return GSCAuthInitResponse(auth_url=auth_url)
 
 
@@ -90,9 +69,9 @@ async def gsc_oauth_callback(
     This endpoint doesn't use CurrentUser dependency because we need to
     extract user_id from the state parameter (user may not have auth cookie).
     """
-    # Validate state and extract user_id
+    # Validate state and extract user_id and redirect_uri
     try:
-        user_id = oauth_service.validate_state(state)
+        user_id, redirect_uri = oauth_service.validate_state(state)
     except GSCInvalidStateError as e:
         logger.warning(f"GSC OAuth callback - invalid state: {e}")
         return RedirectResponse(
@@ -144,7 +123,9 @@ async def gsc_oauth_callback(
     await session.commit()
 
     logger.info(f"GSC connected successfully for user {user_id}")
-    return RedirectResponse(url=f"{settings.frontend_url}/settings?gsc=connected")
+    # Use provided redirect_uri or default to settings page
+    final_redirect = redirect_uri or f"{settings.frontend_url}/settings"
+    return RedirectResponse(url=f"{final_redirect}?gsc=connected")
 
 
 @router.get("/status", response_model=GSCConnectionStatus)
@@ -167,7 +148,7 @@ async def get_gsc_status(
 
     # Get or refresh access token
     try:
-        access_token = await _get_valid_access_token(
+        access_token = await get_valid_access_token(
             credential, repo, session, token_manager, oauth_service
         )
     except GSCTokenRefreshError:
@@ -242,7 +223,7 @@ async def get_search_analytics(
 
     # Get or refresh access token
     try:
-        access_token = await _get_valid_access_token(
+        access_token = await get_valid_access_token(
             credential, repo, session, token_manager, oauth_service
         )
     except GSCTokenRefreshError:
@@ -269,45 +250,3 @@ async def get_search_analytics(
     await session.commit()
 
     return SearchAnalyticsResponse(rows=rows)
-
-
-async def _get_valid_access_token(
-    credential: Any,
-    repo: GSCCredentialRepository,
-    session: UsersSessionDep,
-    token_manager: TokenManager,
-    oauth_service: OAuthService,
-) -> str:
-    """Get a valid access token, refreshing if necessary.
-
-    Returns:
-        Valid access token
-
-    Raises:
-        GSCTokenRefreshError: If token refresh fails
-    """
-    if not token_manager.is_token_expired(credential.token_expires_at):
-        return token_manager.decrypt(credential.access_token_encrypted)
-
-    # Token expired, refresh it
-    refresh_token = token_manager.decrypt(credential.refresh_token_encrypted)
-    tokens = await oauth_service.refresh_access_token(refresh_token)
-
-    # Update stored tokens
-    new_access_encrypted = token_manager.encrypt(tokens.access_token)
-    new_expires_at = token_manager.calculate_expiry(tokens.expires_in)
-
-    # Google may return a new refresh token on refresh
-    new_refresh_encrypted = None
-    if tokens.refresh_token:
-        new_refresh_encrypted = token_manager.encrypt(tokens.refresh_token)
-
-    await repo.update_tokens(
-        credential,
-        access_token_encrypted=new_access_encrypted,
-        token_expires_at=new_expires_at,
-        refresh_token_encrypted=new_refresh_encrypted,
-    )
-    await session.commit()
-
-    return tokens.access_token

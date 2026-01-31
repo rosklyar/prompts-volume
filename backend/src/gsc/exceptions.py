@@ -23,3 +23,11 @@ class GSCInvalidStateError(GSCError):
 
 class GSCConfigurationError(GSCError):
     """GSC is not properly configured."""
+
+
+class GSCPropertyMatchError(GSCError):
+    """Error during property matching."""
+
+
+class GSCKeywordExtractionError(GSCError):
+    """Error during keyword extraction."""

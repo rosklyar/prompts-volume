@@ -1136,12 +1136,68 @@ export interface GSCSearchAnalyticsResponse {
   rows: GSCSearchQueryRow[]
 }
 
+// GSC Onboarding types
+export interface GSCPropertyMatchRequest {
+  brand_domain: string
+}
+
+export interface GSCPropertyMatchResponse {
+  match_type: "exact" | "partial" | "multiple" | "none"
+  matched_property: string | null
+  available_properties: GSCSiteInfo[]
+}
+
+export interface GSCKeywordExtractRequest {
+  site_url: string
+  min_word_count?: number
+  result_limit?: number
+}
+
+export interface GSCKeywordInfo {
+  query: string
+  clicks: number
+  impressions: number
+  ctr: number
+  position: number
+}
+
+export interface GSCKeywordExtractResponse {
+  keywords: GSCKeywordInfo[]
+  total_fetched: number
+  total_after_filter: number
+}
+
+export interface GSCCreatePromptsRequest {
+  keywords: string[]
+  group_title: string
+  country_id: number
+  brand: {
+    name: string
+    domain?: string | null
+    variations: string[]
+  }
+  competitors?: {
+    name: string
+    domain?: string | null
+    variations: string[]
+  }[] | null
+}
+
+export interface GSCCreatePromptsResponse {
+  group_id: number
+  group_title: string
+  prompts_created: number
+  prompt_ids: number[]
+}
+
 export const gscApi = {
   /**
    * Initiate GSC OAuth flow - returns URL to redirect user to
+   * @param redirectUri - Optional URL to redirect to after OAuth completes
    */
-  async initiateAuth(): Promise<GSCAuthInitResponse> {
-    const response = await fetchWithAuth("/api/v1/gsc/auth/initiate")
+  async initiateAuth(redirectUri?: string): Promise<GSCAuthInitResponse> {
+    const params = redirectUri ? `?redirect_uri=${encodeURIComponent(redirectUri)}` : ""
+    const response = await fetchWithAuth(`/api/v1/gsc/auth/initiate${params}`)
     return response.json()
   },
 
@@ -1168,6 +1224,44 @@ export const gscApi = {
    */
   async getSearchAnalytics(request: GSCSearchAnalyticsRequest): Promise<GSCSearchAnalyticsResponse> {
     const response = await fetchWithAuth("/api/v1/gsc/search-analytics", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    })
+    return response.json()
+  },
+
+  // ===== GSC Onboarding endpoints =====
+
+  /**
+   * Match brand domain to a GSC property
+   */
+  async matchProperty(request: GSCPropertyMatchRequest): Promise<GSCPropertyMatchResponse> {
+    const response = await fetchWithAuth("/onboarding/api/v1/gsc/match-property", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    })
+    return response.json()
+  },
+
+  /**
+   * Extract long-tail keywords from GSC search analytics
+   */
+  async extractKeywords(request: GSCKeywordExtractRequest): Promise<GSCKeywordExtractResponse> {
+    const response = await fetchWithAuth("/onboarding/api/v1/gsc/extract-keywords", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    })
+    return response.json()
+  },
+
+  /**
+   * Create prompts and group from selected GSC keywords
+   */
+  async createPromptsFromGSC(request: GSCCreatePromptsRequest): Promise<GSCCreatePromptsResponse> {
+    const response = await fetchWithAuth("/onboarding/api/v1/gsc/create-prompts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request),
