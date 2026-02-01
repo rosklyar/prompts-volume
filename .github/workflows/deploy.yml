@@ -213,6 +213,7 @@ jobs:
               BRIGHTDATA_WEBHOOK_SECRET="${{ secrets.BRIGHTDATA_WEBHOOK_SECRET }}" \
               BRIGHTDATA_API_TOKEN="${{ secrets.BRIGHTDATA_API_TOKEN }}" \
               BRIGHTDATA_ANSWERS="true" \
+              PG_OPENAI_MODEL="gpt-5.2" \
               GOOGLE_OAUTH_CLIENT_ID="${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}" \
               GOOGLE_GSC_CLIENT_ID="${{ secrets.GOOGLE_GSC_CLIENT_ID }}" \
               GOOGLE_GSC_CLIENT_SECRET="${{ secrets.GOOGLE_GSC_CLIENT_SECRET }}" \

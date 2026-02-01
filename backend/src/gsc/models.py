@@ -91,6 +91,9 @@ class GSCKeywordExtractRequest(BaseModel):
     site_url: str
     min_word_count: int = 3
     result_limit: int = 10
+    business_domain: str | None = None
+    generate_prompts: bool = False
+    country_id: int | None = None  # Required when generate_prompts=True
 
 
 class GSCKeywordResponse(BaseModel):
@@ -103,18 +106,26 @@ class GSCKeywordResponse(BaseModel):
     position: float
 
 
+class GeneratedPromptResponse(BaseModel):
+    """Generated prompt with source keyword."""
+
+    prompt: str
+    source_keyword: str
+
+
 class GSCKeywordExtractResponse(BaseModel):
     """Response containing extracted keywords."""
 
     keywords: list[GSCKeywordResponse]
     total_fetched: int
     total_after_filter: int
+    generated_prompts: list[GeneratedPromptResponse] | None = None
 
 
 class GSCOnboardingCreateRequest(BaseModel):
-    """Request to create prompts and group from GSC keywords."""
+    """Request to create prompts and group from selected prompts."""
 
-    keywords: list[str]
+    prompts: list[str]
     group_title: str
     # Brand/country/competitors passed from frontend (not yet saved to preferences)
     country_id: int

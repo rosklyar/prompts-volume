@@ -75,16 +75,33 @@ export function useGSCMatchProperty(brandDomain: string | null, enabled: boolean
 
 export function useGSCExtractKeywords(
   siteUrl: string | null,
-  options?: { minWordCount?: number; resultLimit?: number },
+  options?: {
+    minWordCount?: number
+    resultLimit?: number
+    generatePrompts?: boolean
+    countryId?: number
+    businessDomain?: string
+  },
   enabled: boolean = true
 ) {
   return useQuery<GSCKeywordExtractResponse, Error>({
-    queryKey: ["gscExtractKeywords", siteUrl, options?.minWordCount, options?.resultLimit],
+    queryKey: [
+      "gscExtractKeywords",
+      siteUrl,
+      options?.minWordCount,
+      options?.resultLimit,
+      options?.generatePrompts,
+      options?.countryId,
+      options?.businessDomain,
+    ],
     queryFn: () =>
       gscApi.extractKeywords({
         site_url: siteUrl!,
         min_word_count: options?.minWordCount ?? 3,
         result_limit: options?.resultLimit ?? 10,
+        generate_prompts: options?.generatePrompts,
+        country_id: options?.countryId,
+        business_domain: options?.businessDomain,
       }),
     enabled: isLoggedIn() && siteUrl !== null && enabled,
     retry: false,
@@ -99,16 +116,16 @@ export function useGSCCreatePrompts() {
     GSCCreatePromptsResponse,
     Error,
     {
-      keywords: string[]
+      prompts: string[]
       groupTitle: string
       countryId: number
       brand: { name: string; domain?: string | null; variations: string[] }
       competitors?: { name: string; domain?: string | null; variations: string[] }[] | null
     }
   >({
-    mutationFn: ({ keywords, groupTitle, countryId, brand, competitors }) =>
+    mutationFn: ({ prompts, groupTitle, countryId, brand, competitors }) =>
       gscApi.createPromptsFromGSC({
-        keywords,
+        prompts,
         group_title: groupTitle,
         country_id: countryId,
         brand,

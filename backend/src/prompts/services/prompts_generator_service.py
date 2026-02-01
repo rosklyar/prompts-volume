@@ -55,6 +55,30 @@ class PromptsGeneratorService:
         else:
             return "English"
 
+    async def _call_openai_json(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        error_context: str,
+    ) -> dict:
+        """Make OpenAI API call with JSON response format."""
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                response_format={"type": "json_object"},
+            )
+            content = response.choices[0].message.content
+            if not content:
+                raise ValueError("Empty response from OpenAI")
+            return json.loads(content)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse OpenAI JSON response for {error_context}: {e}")
+            raise ValueError(f"Invalid JSON response from OpenAI: {e}")
+
     async def generate_prompts(
         self,
         topics_with_clusters: Dict[str, List[ClusterWithRelevance]],
@@ -149,43 +173,26 @@ class PromptsGeneratorService:
             f"{num_keywords} keywords -> {num_prompts} prompts"
         )
 
-        # Create system prompt with instructions
         system_prompt = self._create_cluster_system_prompt(
             topic_name=topic_name,
             keywords=keywords,
             num_prompts=num_prompts,
             number_of_keywords_for_prompt=number_of_keywords_for_prompt
         )
+        user_prompt = (
+            f"Generate {num_prompts} e-commerce product search prompts "
+            f"using these keywords: {', '.join(keywords)}"
+        )
 
-        try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"Generate {num_prompts} e-commerce product search prompts using these keywords: {', '.join(keywords)}"}
-                ],
-                response_format={"type": "json_object"}
-            )
+        parsed_data = await self._call_openai_json(
+            system_prompt, user_prompt, f"cluster {cluster.cluster_id}"
+        )
+        prompts = parsed_data.get("prompts", [])
 
-            content = response.choices[0].message.content
-            if not content:
-                raise ValueError("Empty response from OpenAI")
+        if not prompts:
+            raise ValueError("Response missing 'prompts' field or prompts list is empty")
 
-            # Parse JSON response
-            parsed_data = json.loads(content)
-            prompts = parsed_data.get("prompts", [])
-
-            if not prompts:
-                raise ValueError("Response missing 'prompts' field or prompts list is empty")
-
-            return prompts
-
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse OpenAI JSON response: {e}")
-            raise ValueError(f"Invalid JSON response from OpenAI: {e}")
-        except Exception as e:
-            logger.error(f"Error generating prompts for cluster {cluster.cluster_id}: {e}")
-            raise
+        return prompts
 
     def _create_cluster_system_prompt(
         self,
@@ -284,6 +291,118 @@ REMEMBER:
 - Short (5-15 words), casual, conversational
 - Transform indirect intents to product search prompts
 - Follow the Ukrainian examples style"""
+
+    async def generate_prompts_from_keywords(
+        self,
+        keywords: List[str],
+        business_domain: str,
+        language: str,
+        *,
+        prompts_per_keyword: int = 3,
+    ) -> List[tuple[str, str]]:
+        """
+        Generate LLM prompts from GSC keywords.
+
+        Args:
+            keywords: List of GSC keywords to generate prompts from
+            business_domain: Business domain (e-comm, fintech, saas, etc.)
+            language: Language for generated prompts (e.g., "Ukrainian", "English")
+            prompts_per_keyword: Number of prompts to generate per keyword (default: 3)
+
+        Returns:
+            List of (prompt, source_keyword) tuples
+
+        Raises:
+            ValueError: If keywords list is empty
+        """
+        if not keywords:
+            raise ValueError("Keywords list cannot be empty")
+
+        system_prompt = self._create_keyword_system_prompt(
+            keywords, business_domain, language, prompts_per_keyword
+        )
+        user_prompt = f"Generate prompts for these keywords: {', '.join(keywords)}"
+
+        parsed_data = await self._call_openai_json(
+            system_prompt, user_prompt, "GSC keywords"
+        )
+        prompts_data = parsed_data.get("prompts", [])
+
+        if not prompts_data:
+            raise ValueError("Response missing 'prompts' field or prompts list is empty")
+
+        return [(item["prompt"], item["source_keyword"]) for item in prompts_data]
+
+    def _create_keyword_system_prompt(
+        self,
+        keywords: List[str],
+        business_domain: str,
+        language: str,
+        prompts_per_keyword: int,
+    ) -> str:
+        """Create system prompt for generating prompts from GSC keywords."""
+        domain_contexts = {
+            "e-comm": "e-commerce products, online shopping, product recommendations",
+            "general": "products, services, and solutions across various industries",
+            "fintech": "financial services, banking, payments, investments, personal finance",
+            "saas": "software as a service, business tools, productivity apps, cloud software",
+            "education": "learning, courses, training, educational resources, skill development",
+            "healthcare": "medical services, health information, wellness, patient care",
+            "crypto": "cryptocurrency, blockchain, digital assets, decentralized finance",
+            "real-estate": "property, real estate, housing, rentals, property investment",
+            "entertainment": "media, streaming, gaming, content, leisure activities",
+        }
+        domain_context = domain_contexts.get(
+            business_domain, f"{business_domain} services and solutions"
+        )
+
+        return f"""You are an expert in creating search prompts for AI assistants in the {business_domain} domain.
+
+CONTEXT:
+- Business domain: {business_domain} ({domain_context})
+- Keywords from GSC: {', '.join(keywords)}
+- Detected language: {language}
+- Prompts per keyword: {prompts_per_keyword}
+
+YOUR TASK:
+For each keyword, generate {prompts_per_keyword} different prompts in these styles:
+1. Service/solution finding - Questions about where to find services or solutions
+2. Information/comparison - Questions comparing options or seeking detailed information
+3. Problem-solving - Questions about solving specific problems or achieving goals
+
+CRITICAL INSTRUCTIONS:
+
+1. LANGUAGE: Generate ALL prompts in {language}
+   - Match the exact language of the keywords
+   - Use natural, native-speaker style
+
+2. STYLE: Keep prompts SHORT and CASUAL (5-15 words typical)
+   - Natural, conversational questions
+   - Direct and to the point
+   - Relevant to {business_domain} domain
+
+3. DOMAIN CONTEXT: Frame prompts within {business_domain}
+   - Focus on {domain_context}
+   - Use domain-specific terminology naturally
+
+4. OUTPUT: For each keyword, generate exactly {prompts_per_keyword} prompts
+
+RESPONSE FORMAT:
+Return ONLY valid JSON in this structure:
+{{
+  "prompts": [
+    {{"prompt": "First prompt text...", "source_keyword": "original keyword"}},
+    {{"prompt": "Second prompt text...", "source_keyword": "original keyword"}},
+    ...
+  ]
+}}
+
+REMEMBER:
+- Generate {prompts_per_keyword} prompts per keyword
+- Total prompts: {len(keywords) * prompts_per_keyword}
+- All prompts in {language}
+- Short, casual, conversational style
+- Stay within {business_domain} domain context"""
 
 
 # Global instance for dependency injection

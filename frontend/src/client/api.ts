@@ -1151,6 +1151,9 @@ export interface GSCKeywordExtractRequest {
   site_url: string
   min_word_count?: number
   result_limit?: number
+  generate_prompts?: boolean
+  country_id?: number
+  business_domain?: string
 }
 
 export interface GSCKeywordInfo {
@@ -1161,14 +1164,20 @@ export interface GSCKeywordInfo {
   position: number
 }
 
+export interface GeneratedPromptResponse {
+  prompt: string
+  source_keyword: string
+}
+
 export interface GSCKeywordExtractResponse {
   keywords: GSCKeywordInfo[]
   total_fetched: number
   total_after_filter: number
+  generated_prompts?: GeneratedPromptResponse[]
 }
 
 export interface GSCCreatePromptsRequest {
-  keywords: string[]
+  prompts: string[]
   group_title: string
   country_id: number
   brand: {
@@ -1247,6 +1256,7 @@ export const gscApi = {
 
   /**
    * Extract long-tail keywords from GSC search analytics
+   * When generate_prompts=true and country_id is provided, returns AI-generated prompts
    */
   async extractKeywords(request: GSCKeywordExtractRequest): Promise<GSCKeywordExtractResponse> {
     const response = await fetchWithAuth("/onboarding/api/v1/gsc/extract-keywords", {
@@ -1258,7 +1268,7 @@ export const gscApi = {
   },
 
   /**
-   * Create prompts and group from selected GSC keywords
+   * Create prompts and group from selected prompts
    */
   async createPromptsFromGSC(request: GSCCreatePromptsRequest): Promise<GSCCreatePromptsResponse> {
     const response = await fetchWithAuth("/onboarding/api/v1/gsc/create-prompts", {
