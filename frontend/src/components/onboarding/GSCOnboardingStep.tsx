@@ -19,27 +19,21 @@ import {
   useGSCExtractKeywords,
   useGSCCreatePrompts,
 } from "@/hooks/useGSC"
-import type { GSCKeywordInfo } from "@/client/api"
+import type { GeneratedPromptResponse } from "@/client/api"
 
 type GSCSubState =
   | "connect"
   | "matching"
   | "select-site"
   | "loading-keywords"
-  | "select-keywords"
+  | "select-prompts"
   | "creating"
   | "no-data"
-
-function formatNumber(n: number): string {
-  if (n >= 1000) {
-    return (n / 1000).toFixed(1) + "k"
-  }
-  return n.toString()
-}
 
 interface GSCOnboardingStepProps {
   brandDomain: string | null
   countryId: number
+  businessDomain?: string
   brand: { name: string; domain?: string | null; variations: string[] }
   competitors: { name: string; domain?: string | null; variations: string[] }[]
   onComplete: (result: { groupId: number; promptCount: number } | null) => void
@@ -50,6 +44,7 @@ interface GSCOnboardingStepProps {
 export function GSCOnboardingStep({
   brandDomain,
   countryId,
+  businessDomain,
   brand,
   competitors,
   onComplete,
@@ -58,7 +53,7 @@ export function GSCOnboardingStep({
 }: GSCOnboardingStepProps) {
   // User-driven state (only changes via user actions)
   const [userSelectedSite, setUserSelectedSite] = useState<string | null>(null)
-  const [manualKeywordSelection, setManualKeywordSelection] = useState<Set<string> | null>(null)
+  const [manualPromptSelection, setManualPromptSelection] = useState<Set<string> | null>(null)
   const [groupName, setGroupName] = useState("GSC Keywords")
   const [error, setError] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
@@ -91,20 +86,33 @@ export function GSCOnboardingStep({
   }, [userSelectedSite, matchResult])
 
   // Extract keywords query - enabled when we have a site
+  // Pass generatePrompts=true and countryId to get AI-generated prompts
   const { data: keywordsResult, isLoading: isLoadingKeywords } = useGSCExtractKeywords(
     selectedSiteUrl,
-    { minWordCount: 3, resultLimit: 10 },
+    {
+      minWordCount: 3,
+      resultLimit: 10,
+      generatePrompts: true,
+      countryId,
+      businessDomain,
+    },
     selectedSiteUrl !== null
   )
 
-  // Derive selected keywords - default to all selected, unless user has manually changed
-  const selectedKeywords = useMemo(() => {
-    if (manualKeywordSelection !== null) return manualKeywordSelection
-    if (keywordsResult && keywordsResult.keywords.length > 0) {
-      return new Set(keywordsResult.keywords.map((k) => k.query))
+  // Get generated prompts from the result
+  const generatedPrompts = useMemo(
+    () => keywordsResult?.generated_prompts ?? [],
+    [keywordsResult?.generated_prompts]
+  )
+
+  // Derive selected prompts - default to all selected, unless user has manually changed
+  const selectedPrompts = useMemo(() => {
+    if (manualPromptSelection !== null) return manualPromptSelection
+    if (generatedPrompts.length > 0) {
+      return new Set(generatedPrompts.map((p) => p.prompt))
     }
     return new Set<string>()
-  }, [manualKeywordSelection, keywordsResult])
+  }, [manualPromptSelection, generatedPrompts])
 
   // Derive the current sub-state from data
   const subState: GSCSubState = useMemo(() => {
@@ -118,8 +126,9 @@ export function GSCOnboardingStep({
     if (selectedSiteUrl) {
       if (isLoadingKeywords) return "loading-keywords"
       if (keywordsResult) {
-        if (keywordsResult.keywords.length === 0) return "no-data"
-        return "select-keywords"
+        // Check if we have generated prompts (preferred) or fall back to keywords
+        if (generatedPrompts.length === 0 && keywordsResult.keywords.length === 0) return "no-data"
+        return "select-prompts"
       }
       return "loading-keywords"
     }
@@ -136,6 +145,7 @@ export function GSCOnboardingStep({
     selectedSiteUrl,
     isLoadingKeywords,
     keywordsResult,
+    generatedPrompts,
   ])
 
   // Handlers
@@ -146,42 +156,42 @@ export function GSCOnboardingStep({
 
   const handleSelectSite = useCallback((siteUrl: string) => {
     setUserSelectedSite(siteUrl)
-    setManualKeywordSelection(null) // Reset to auto-select all for new site
+    setManualPromptSelection(null) // Reset to auto-select all for new site
   }, [])
 
-  const handleToggleKeyword = useCallback((query: string) => {
-    setManualKeywordSelection((prev) => {
-      // If null, start from current selectedKeywords
-      const current = prev ?? selectedKeywords
+  const handleTogglePrompt = useCallback((prompt: string) => {
+    setManualPromptSelection((prev) => {
+      // If null, start from current selectedPrompts
+      const current = prev ?? selectedPrompts
       const next = new Set(current)
-      if (next.has(query)) {
-        next.delete(query)
+      if (next.has(prompt)) {
+        next.delete(prompt)
       } else {
-        next.add(query)
+        next.add(prompt)
       }
       return next
     })
-  }, [selectedKeywords])
+  }, [selectedPrompts])
 
   const handleToggleAll = useCallback(() => {
-    if (!keywordsResult) return
-    const allQueries = keywordsResult.keywords.map((k) => k.query)
-    if (selectedKeywords.size === allQueries.length) {
-      setManualKeywordSelection(new Set())
+    if (generatedPrompts.length === 0) return
+    const allPrompts = generatedPrompts.map((p) => p.prompt)
+    if (selectedPrompts.size === allPrompts.length) {
+      setManualPromptSelection(new Set())
     } else {
-      setManualKeywordSelection(new Set(allQueries))
+      setManualPromptSelection(new Set(allPrompts))
     }
-  }, [keywordsResult, selectedKeywords])
+  }, [generatedPrompts, selectedPrompts])
 
   const handleCreateGroup = useCallback(async () => {
-    if (selectedKeywords.size === 0 || !groupName.trim()) return
+    if (selectedPrompts.size === 0 || !groupName.trim()) return
 
     setIsCreating(true)
     setError(null)
 
     try {
       const result = await createPromptsMutation.mutateAsync({
-        keywords: Array.from(selectedKeywords),
+        prompts: Array.from(selectedPrompts),
         groupTitle: groupName.trim(),
         countryId,
         brand,
@@ -195,7 +205,7 @@ export function GSCOnboardingStep({
       setError(err instanceof Error ? err.message : "Failed to create group")
       setIsCreating(false)
     }
-  }, [selectedKeywords, groupName, createPromptsMutation, onComplete, countryId, brand, competitors])
+  }, [selectedPrompts, groupName, createPromptsMutation, onComplete, countryId, brand, competitors])
 
   // Loading state
   if (isLoadingStatus) {
@@ -222,8 +232,8 @@ export function GSCOnboardingStep({
             {subState === "connect" && "Connect to import your top keywords"}
             {subState === "matching" && "Finding your website..."}
             {subState === "select-site" && "Select your website property"}
-            {subState === "loading-keywords" && "Loading keywords..."}
-            {subState === "select-keywords" && "Select keywords to track"}
+            {subState === "loading-keywords" && "Generating prompts from keywords..."}
+            {subState === "select-prompts" && "Select prompts to track"}
             {subState === "creating" && "Creating your group..."}
             {subState === "no-data" && "No matching keywords found"}
           </p>
@@ -315,38 +325,37 @@ export function GSCOnboardingStep({
         </div>
       )}
 
-      {/* Select Keywords State */}
-      {subState === "select-keywords" && keywordsResult && (
+      {/* Select Prompts State */}
+      {subState === "select-prompts" && generatedPrompts.length > 0 && (
         <div className="space-y-4">
           {/* Select All Toggle */}
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
-              checked={selectedKeywords.size === keywordsResult.keywords.length}
+              checked={selectedPrompts.size === generatedPrompts.length}
               onChange={handleToggleAll}
               className="w-4 h-4 rounded border-gray-300 text-[#C4553D] focus:ring-[#C4553D]/30"
             />
             <span className="text-sm font-medium text-gray-700">
-              Select All ({keywordsResult.keywords.length} keywords)
+              Select All ({generatedPrompts.length} prompts)
             </span>
           </label>
 
-          {/* Keywords List */}
+          {/* Prompts List */}
           <div className="max-h-64 overflow-y-auto space-y-2 border border-gray-200 rounded-xl p-2">
-            {keywordsResult.keywords.map((keyword) => (
-              <KeywordItem
-                key={keyword.query}
-                keyword={keyword}
-                isSelected={selectedKeywords.has(keyword.query)}
-                onToggle={() => handleToggleKeyword(keyword.query)}
-                formatNumber={formatNumber}
+            {generatedPrompts.map((prompt) => (
+              <PromptItem
+                key={prompt.prompt}
+                prompt={prompt}
+                isSelected={selectedPrompts.has(prompt.prompt)}
+                onToggle={() => handleTogglePrompt(prompt.prompt)}
               />
             ))}
           </div>
 
           {/* Selection count */}
           <p className="text-sm text-gray-500">
-            {selectedKeywords.size} keyword{selectedKeywords.size !== 1 ? "s" : ""} selected
+            {selectedPrompts.size} prompt{selectedPrompts.size !== 1 ? "s" : ""} selected
           </p>
 
           {/* Group Name Input */}
@@ -400,7 +409,7 @@ export function GSCOnboardingStep({
       )}
 
       {/* Action Buttons */}
-      {(subState === "select-keywords" || subState === "no-data" || subState === "connect" || subState === "select-site") && (
+      {(subState === "select-prompts" || subState === "no-data" || subState === "connect" || subState === "select-site") && (
         <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-100">
           <button
             onClick={onSkip}
@@ -408,10 +417,10 @@ export function GSCOnboardingStep({
           >
             Skip this step
           </button>
-          {subState === "select-keywords" && (
+          {subState === "select-prompts" && (
             <button
               onClick={handleCreateGroup}
-              disabled={selectedKeywords.size === 0 || !groupName.trim()}
+              disabled={selectedPrompts.size === 0 || !groupName.trim()}
               className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white
                 bg-[#C4553D] rounded-xl hover:bg-[#B34835] transition-colors
                 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -425,15 +434,14 @@ export function GSCOnboardingStep({
   )
 }
 
-// Keyword item component
-interface KeywordItemProps {
-  keyword: GSCKeywordInfo
+// Prompt item component
+interface PromptItemProps {
+  prompt: GeneratedPromptResponse
   isSelected: boolean
   onToggle: () => void
-  formatNumber: (n: number) => string
 }
 
-function KeywordItem({ keyword, isSelected, onToggle, formatNumber }: KeywordItemProps) {
+function PromptItem({ prompt, isSelected, onToggle }: PromptItemProps) {
   return (
     <label
       className={`flex items-start gap-3 p-3 rounded-lg cursor-pointer transition-colors
@@ -447,10 +455,10 @@ function KeywordItem({ keyword, isSelected, onToggle, formatNumber }: KeywordIte
       />
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-gray-800 break-words">
-          {keyword.query}
+          {prompt.prompt}
         </p>
         <p className="text-xs text-gray-400 mt-0.5">
-          {formatNumber(keyword.clicks)} clicks · {formatNumber(keyword.impressions)} impressions
+          From: "{prompt.source_keyword}"
         </p>
       </div>
       {isSelected && <Check className="w-4 h-4 text-[#C4553D] mt-0.5 flex-shrink-0" />}

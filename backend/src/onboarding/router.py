@@ -8,10 +8,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from src.approval.policies import ApprovalPolicy, get_approval_policy
 from src.auth.deps import CurrentUser, UsersSessionDep, SessionDep
 from src.embeddings.embeddings_service import EmbeddingsService, get_embeddings_service
+from src.geography.services import CountryService, get_country_service
 from src.geography.services.country_resolver import CountryResolution
 from src.gsc.deps import get_oauth_service, get_token_manager, get_valid_access_token
 from src.gsc.exceptions import GSCError, GSCTokenRefreshError
 from src.gsc.models import (
+    GeneratedPromptResponse,
     GSCKeywordExtractRequest,
     GSCKeywordExtractResponse,
     GSCKeywordResponse,
@@ -20,6 +22,7 @@ from src.gsc.models import (
     GSCPropertyMatchRequest,
     GSCPropertyMatchResponse,
 )
+from src.prompts.services.prompts_generator_service import get_prompts_generator_service
 from src.gsc.repository import GSCCredentialRepository
 from src.gsc.services import (
     GSCClient,
@@ -236,6 +239,7 @@ async def extract_gsc_keywords(
     request: GSCKeywordExtractRequest,
     current_user: CurrentUser,
     session: UsersSessionDep,
+    prompts_session: SessionDep,
     oauth_service: OAuthService = Depends(get_oauth_service),
     token_manager: TokenManager = Depends(get_token_manager),
 ) -> Any:
@@ -286,10 +290,41 @@ async def extract_gsc_keywords(
         for row in result.keywords
     ]
 
+    # Generate prompts if requested
+    generated_prompts: list[GeneratedPromptResponse] | None = None
+    if request.generate_prompts:
+        if not request.country_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="country_id is required when generate_prompts=True",
+            )
+
+        country_service = CountryService(prompts_session)
+        country = await country_service.get_by_id(request.country_id)
+        if not country:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Country not found",
+            )
+        language = country.languages[0].name if country.languages else "English"
+
+        keyword_texts = [kw.query for kw in keywords]
+        if keyword_texts:
+            generator = get_prompts_generator_service()
+            domain = request.business_domain or "general"
+            prompt_tuples = await generator.generate_prompts_from_keywords(
+                keyword_texts, domain, language
+            )
+            generated_prompts = [
+                GeneratedPromptResponse(prompt=prompt, source_keyword=source)
+                for prompt, source in prompt_tuples
+            ]
+
     return GSCKeywordExtractResponse(
         keywords=keywords,
         total_fetched=result.total_fetched,
         total_after_filter=result.total_after_filter,
+        generated_prompts=generated_prompts,
     )
 
 
@@ -320,9 +355,9 @@ async def create_prompts_from_gsc(
 
     # Create prompts (pending approval, no topic, user_id set)
     prompt_ids: list[int] = []
-    for keyword in request.keywords:
+    for prompt_text in request.prompts:
         prompt = await prompt_service.add_prompt(
-            prompt_text=keyword,
+            prompt_text=prompt_text,
             topic_id=None,
             user_id=current_user.id,
             is_admin=False,  # Forces pending status

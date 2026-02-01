@@ -346,23 +346,23 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
     }
   }, [brand, competitors, countryId, businessDomainId, completeOnboarding, createGroupsFromSelection])
 
-  // Handle step 4 continue -> go to topics or submit
+  // Handle step 4 continue -> go to topics or GSC
   const handleStep4Continue = useCallback(() => {
     if (shouldShowTopicSteps) {
       setCurrentStep(5) // Go to topic selection
     } else {
-      handleSubmit() // No topics available, submit directly
+      setCurrentStep(7) // Skip to GSC step
     }
-  }, [shouldShowTopicSteps, handleSubmit])
+  }, [shouldShowTopicSteps])
 
-  // Handle step 5 continue -> go to prompts or submit
+  // Handle step 5 continue -> go to prompts or GSC
   const handleStep5Continue = useCallback(() => {
     if (selectedTopics.length > 0) {
       setCurrentStep(6) // Go to prompt selection
     } else {
-      handleSubmit() // No topics selected, skip prompts
+      setCurrentStep(7) // No topics selected, skip to GSC
     }
-  }, [selectedTopics, handleSubmit])
+  }, [selectedTopics])
 
   // Handle step 6 continue -> go to GSC step
   const handleStep6Continue = useCallback(() => {
@@ -405,12 +405,12 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
     }
   }
 
-  // Skip handler for topic/prompt steps
+  // Skip handler for topic/prompt steps -> go to GSC
   const handleSkipTopics = useCallback(() => {
     setSelectedTopics([])
     setSelectedPromptsByTopic({})
-    handleSubmit()
-  }, [handleSubmit])
+    setCurrentStep(7) // Go to GSC step
+  }, [])
 
   // Get country and domain names for summary
   const selectedCountry = countriesData?.countries.find((c) => c.id === countryId)
@@ -735,6 +735,7 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
               <GSCOnboardingStep
                 brandDomain={normalizeDomain(brand.domain) || brand.name}
                 countryId={countryId}
+                businessDomain={selectedDomain?.name}
                 brand={{
                   name: brand.name.trim(),
                   domain: normalizeDomain(brand.domain) || null,

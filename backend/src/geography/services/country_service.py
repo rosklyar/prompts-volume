@@ -43,7 +43,7 @@ class CountryService:
 
     async def get_by_id(self, country_id: int) -> Optional[Country]:
         """
-        Get a country by its ID.
+        Get a country by its ID with eager-loaded languages.
 
         Args:
             country_id: Country ID
@@ -52,7 +52,11 @@ class CountryService:
             Country object if found, None otherwise
         """
         result = await self.session.execute(
-            select(Country).where(Country.id == country_id)
+            select(Country)
+            .where(Country.id == country_id)
+            .options(
+                selectinload(Country.country_languages).selectinload(CountryLanguage.language)
+            )
         )
         return result.scalar_one_or_none()
 
