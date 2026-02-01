@@ -5,6 +5,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 
 from src.auth.deps import CurrentUser
+from src.daily_scheduling.models.api_models import (
+    ScheduleConfigRequest,
+    ScheduleConfigResponse,
+)
 from src.geography.services.country_resolver import (
     CountryLockedError as ResolverCountryLockedError,
     CountryResolutionError as ResolverCountryResolutionError,
@@ -19,6 +23,8 @@ from src.prompt_groups.exceptions import (
     to_http_exception,
 )
 from src.prompt_groups.models.api_models import (
+    AddGSCPromptsRequest,
+    AddGSCPromptsResultResponse,
     AddPromptsResultResponse,
     AddPromptsToGroupRequest,
     AvailablePromptResponse,
@@ -42,6 +48,7 @@ from src.prompt_groups.services import (
     get_prompt_group_service,
     get_topic_resolution_service,
 )
+from src.prompts.services import PromptService, get_prompt_service
 
 router = APIRouter(prefix="/prompt-groups/api/v1", tags=["prompt-groups"])
 
@@ -57,6 +64,7 @@ TopicResolutionServiceDep = Annotated[
 CountryResolverDep = Annotated[
     CountryResolver, Depends(get_country_resolver)
 ]
+PromptServiceDep = Annotated[PromptService, Depends(get_prompt_service)]
 
 
 @router.get("/groups", response_model=GroupListResponse)
@@ -379,11 +387,53 @@ async def get_available_prompts(
 
 
 # ============================================================================
-# Schedule endpoints
+# GSC Prompts endpoint
 # ============================================================================
 
 
-from src.daily_scheduling.models.api_models import ScheduleConfigRequest, ScheduleConfigResponse
+@router.post(
+    "/groups/{group_id}/gsc-prompts",
+    response_model=AddGSCPromptsResultResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_gsc_prompts_to_group(
+    group_id: int,
+    request: AddGSCPromptsRequest,
+    current_user: CurrentUser,
+    group_service: PromptGroupServiceDep,
+    binding_service: PromptGroupBindingServiceDep,
+    prompt_service: PromptServiceDep,
+):
+    """Add GSC-generated prompts to an existing group.
+
+    Creates new prompts from the provided text and binds them to the group.
+    Prompts are created with pending approval status for non-admin users.
+    """
+    try:
+        # Verify group belongs to user
+        group = await group_service.get_by_id_for_user(group_id, current_user.id)
+
+        # Create prompts and collect their IDs
+        prompt_ids = []
+        for prompt_text in request.prompts:
+            prompt = await prompt_service.add_prompt(
+                prompt_text=prompt_text,
+                user_id=current_user.id,
+                is_admin=current_user.is_superuser,
+            )
+            prompt_ids.append(prompt.id)
+
+        # Bind prompts to group
+        await binding_service.add_prompts_to_group(group, prompt_ids)
+
+        return AddGSCPromptsResultResponse(prompts_added=len(prompt_ids))
+    except PromptGroupError as e:
+        raise to_http_exception(e)
+
+
+# ============================================================================
+# Schedule endpoints
+# ============================================================================
 
 
 @router.put("/groups/{group_id}/schedule", response_model=ScheduleConfigResponse)

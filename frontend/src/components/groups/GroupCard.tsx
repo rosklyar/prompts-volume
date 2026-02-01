@@ -28,6 +28,7 @@ import type { PromptSelection, PromptSelectionInfo } from "@/types/billing"
 import { getGroupColor } from "./constants"
 import { BatchUploadModal } from "./BatchUploadModal"
 import { AddFromTopicModal } from "./AddFromTopicModal"
+import { AddFromGSCModal } from "./AddFromGSCModal"
 import { CountrySelector } from "./CountrySelector"
 import { ScheduleToggle } from "./ScheduleToggle"
 
@@ -82,6 +83,7 @@ export function GroupCard({
   const [brandEditorFocus, setBrandEditorFocus] = useState<"brand" | "competitors">("brand")
   const [showBatchUpload, setShowBatchUpload] = useState(false)
   const [showAddFromTopic, setShowAddFromTopic] = useState(false)
+  const [showAddFromGSC, setShowAddFromGSC] = useState(false)
   const [showCountrySelector, setShowCountrySelector] = useState(false)
   const [isReportCollapsed, setIsReportCollapsed] = useState(true)
   const [showReportModal, setShowReportModal] = useState(false)
@@ -361,6 +363,28 @@ export function GroupCard({
                 )}
               </div>
 
+              {/* Add from GSC button */}
+              <button
+                onClick={() => setShowAddFromGSC(true)}
+                className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-white/80 transition-colors"
+                aria-label="Add prompts from Google Search Console"
+                title="Add prompts from Google Search Console"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
+              </button>
+
               {/* Batch upload button */}
               <button
                 onClick={() => setShowBatchUpload(true)}
@@ -563,6 +587,18 @@ export function GroupCard({
           onClose={() => setShowAddFromTopic(false)}
         />
       )}
+
+      {/* Add From GSC Modal */}
+      <AddFromGSCModal
+        groupId={group.id}
+        groupTitle={group.title}
+        brandDomain={brand?.domain ?? null}
+        countryId={group.country?.id ?? 1}
+        businessDomain={undefined}
+        accentColor={colors.accent}
+        isOpen={showAddFromGSC}
+        onClose={() => setShowAddFromGSC(false)}
+      />
 
       {/* Report Modal */}
       <ReportModal

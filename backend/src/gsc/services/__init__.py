@@ -4,7 +4,7 @@ from src.gsc.services.token_manager import TokenManager
 from src.gsc.services.oauth_service import OAuthService
 from src.gsc.services.gsc_client import GSCClient
 from src.gsc.services.property_matcher import PropertyMatcher, PropertyMatch
-from src.gsc.services.keyword_filter import KeywordFilter, MinWordCountFilter, CompositeFilter
+from src.gsc.services.keyword_filter import KeywordFilter, MinWordCountFilter, NoOpFilter, CompositeFilter
 from src.gsc.services.keyword_extractor import KeywordExtractor, ExtractedKeywords
 
 __all__ = [
@@ -15,6 +15,7 @@ __all__ = [
     "PropertyMatch",
     "KeywordFilter",
     "MinWordCountFilter",
+    "NoOpFilter",
     "CompositeFilter",
     "KeywordExtractor",
     "ExtractedKeywords",

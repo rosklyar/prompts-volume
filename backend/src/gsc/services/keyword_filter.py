@@ -51,6 +51,21 @@ class MinWordCountFilter:
         return result
 
 
+class NoOpFilter:
+    """Passthrough filter that returns all keywords without filtering."""
+
+    def filter(self, rows: list[SearchQueryRow]) -> list[SearchQueryRow]:
+        """Return all rows unchanged.
+
+        Args:
+            rows: List of search query rows from GSC
+
+        Returns:
+            Same list of rows, unfiltered
+        """
+        return rows
+
+
 class CompositeFilter:
     """Combines multiple filters with AND logic."""
 

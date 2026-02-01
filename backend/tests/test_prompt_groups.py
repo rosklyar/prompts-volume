@@ -154,3 +154,45 @@ def test_get_available_prompts_with_topic(client, auth_headers):
     if data["total"] > 0:
         assert "id" in data["prompts"][0]
         assert "prompt_text" in data["prompts"][0]
+
+
+def test_add_gsc_prompts_to_group(client, auth_headers):
+    """Test adding GSC-generated prompts to an existing group."""
+    # Create a group first
+    create_response = client.post(
+        "/prompt-groups/api/v1/groups",
+        json={
+            "title": "GSC Prompts Test Group",
+            "topic": DEFAULT_TOPIC,
+            "brand": {"name": "TestBrand", "domain": "test.com", "variations": []},
+        },
+        headers=auth_headers,
+    )
+    assert create_response.status_code == 201
+    group_id = create_response.json()["id"]
+
+    # Add GSC prompts
+    prompts_to_add = [
+        "best laptop for programming 2024",
+        "how to choose a gaming laptop",
+        "macbook vs windows laptop comparison",
+    ]
+    response = client.post(
+        f"/prompt-groups/api/v1/groups/{group_id}/gsc-prompts",
+        json={"prompts": prompts_to_add},
+        headers=auth_headers,
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert data["prompts_added"] == 3
+
+    # Verify prompts are in the group
+    detail_response = client.get(
+        f"/prompt-groups/api/v1/groups/{group_id}",
+        headers=auth_headers,
+    )
+    assert detail_response.status_code == 200
+    group_data = detail_response.json()
+    prompt_texts = [p["prompt_text"] for p in group_data["prompts"]]
+    for prompt in prompts_to_add:
+        assert prompt in prompt_texts

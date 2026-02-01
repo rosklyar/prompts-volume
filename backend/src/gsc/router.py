@@ -2,6 +2,7 @@
 
 import logging
 from typing import Any
+from urllib.parse import urlencode, urlparse, urlunparse, parse_qs
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse
@@ -123,9 +124,18 @@ async def gsc_oauth_callback(
     await session.commit()
 
     logger.info(f"GSC connected successfully for user {user_id}")
-    # Use provided redirect_uri or default to settings page
-    final_redirect = redirect_uri or f"{settings.frontend_url}/settings"
-    return RedirectResponse(url=f"{final_redirect}?gsc=connected")
+    # Build redirect URL with gsc=connected parameter
+    base_redirect = redirect_uri or "/settings"
+    # Prepend frontend URL if redirect is relative
+    if base_redirect.startswith("/"):
+        base_redirect = f"{settings.frontend_url}{base_redirect}"
+    # Add gsc=connected query param properly
+    parsed = urlparse(base_redirect)
+    query_params = parse_qs(parsed.query)
+    query_params["gsc"] = ["connected"]
+    new_query = urlencode(query_params, doseq=True)
+    final_url = urlunparse(parsed._replace(query=new_query))
+    return RedirectResponse(url=final_url)
 
 
 @router.get("/status", response_model=GSCConnectionStatus)

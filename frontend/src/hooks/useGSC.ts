@@ -6,6 +6,9 @@ import {
   type GSCPropertyMatchResponse,
   type GSCKeywordExtractResponse,
   type GSCCreatePromptsResponse,
+  type GSCFetchKeywordsResponse,
+  type GSCGeneratePromptsResponse,
+  type GSCSortBy,
 } from "@/client/api"
 import { isLoggedIn } from "./useAuth"
 
@@ -135,5 +138,54 @@ export function useGSCCreatePrompts() {
       // Invalidate groups list so the new group appears
       queryClient.invalidateQueries({ queryKey: ["groups"] })
     },
+  })
+}
+
+// ===== Two-Step GSC Flow Hooks =====
+
+/**
+ * Fetch ALL keywords from GSC (no word count filter).
+ * Step 1 of two-step flow: user selects which keywords to use.
+ */
+export function useGSCFetchKeywords(
+  siteUrl: string | null,
+  sortBy: GSCSortBy = "clicks",
+  resultLimit: number = 100,
+  enabled: boolean = true
+) {
+  return useQuery<GSCFetchKeywordsResponse, Error>({
+    queryKey: ["gscFetchKeywords", siteUrl, sortBy, resultLimit],
+    queryFn: () =>
+      gscApi.fetchKeywords({
+        site_url: siteUrl!,
+        sort_by: sortBy,
+        result_limit: resultLimit,
+      }),
+    enabled: isLoggedIn() && siteUrl !== null && enabled,
+    retry: false,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  })
+}
+
+/**
+ * Generate prompts from selected keywords (max 20).
+ * Step 2 of two-step flow: generates 3 prompts per keyword.
+ */
+export function useGSCGeneratePrompts() {
+  return useMutation<
+    GSCGeneratePromptsResponse,
+    Error,
+    {
+      keywords: string[]
+      countryId: number
+      businessDomain?: string
+    }
+  >({
+    mutationFn: ({ keywords, countryId, businessDomain }) =>
+      gscApi.generatePromptsFromKeywords({
+        keywords,
+        country_id: countryId,
+        business_domain: businessDomain,
+      }),
   })
 }

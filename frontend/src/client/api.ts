@@ -552,6 +552,21 @@ export const groupsApi = {
     )
     return response.json()
   },
+
+  async addGSCPromptsToGroup(
+    groupId: number,
+    prompts: string[]
+  ): Promise<{ prompts_added: number }> {
+    const response = await fetchWithAuth(
+      `/prompt-groups/api/v1/groups/${groupId}/gsc-prompts`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompts }),
+      }
+    )
+    return response.json()
+  },
 }
 
 // ===== Billing API =====
@@ -1199,6 +1214,30 @@ export interface GSCCreatePromptsResponse {
   prompt_ids: number[]
 }
 
+// Two-step GSC flow types
+export type GSCSortBy = "clicks" | "impressions" | "ctr" | "position"
+
+export interface GSCFetchKeywordsRequest {
+  site_url: string
+  sort_by?: GSCSortBy
+  result_limit?: number
+}
+
+export interface GSCFetchKeywordsResponse {
+  keywords: GSCKeywordInfo[]
+  total_fetched: number
+}
+
+export interface GSCGeneratePromptsRequest {
+  keywords: string[]
+  country_id: number
+  business_domain?: string
+}
+
+export interface GSCGeneratePromptsResponse {
+  prompts: string[]
+}
+
 export const gscApi = {
   /**
    * Initiate GSC OAuth flow - returns URL to redirect user to
@@ -1272,6 +1311,34 @@ export const gscApi = {
    */
   async createPromptsFromGSC(request: GSCCreatePromptsRequest): Promise<GSCCreatePromptsResponse> {
     const response = await fetchWithAuth("/onboarding/api/v1/gsc/create-prompts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    })
+    return response.json()
+  },
+
+  // ===== Two-step GSC flow endpoints =====
+
+  /**
+   * Fetch ALL keywords from GSC (no word count filter)
+   * Step 1 of two-step flow: user selects which keywords to use
+   */
+  async fetchKeywords(request: GSCFetchKeywordsRequest): Promise<GSCFetchKeywordsResponse> {
+    const response = await fetchWithAuth("/onboarding/api/v1/gsc/fetch-keywords", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    })
+    return response.json()
+  },
+
+  /**
+   * Generate prompts from selected keywords (max 20)
+   * Step 2 of two-step flow: generates 3 prompts per keyword
+   */
+  async generatePromptsFromKeywords(request: GSCGeneratePromptsRequest): Promise<GSCGeneratePromptsResponse> {
+    const response = await fetchWithAuth("/onboarding/api/v1/gsc/generate-prompts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request),
