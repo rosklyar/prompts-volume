@@ -5,10 +5,11 @@
  * Supports both numeric IDs (for topic prompts) and string IDs (for GSC prompts).
  */
 
+import { ArrowLeft } from "lucide-react"
+
 interface Prompt {
   id: number | string
   text: string
-  subtitle?: string
 }
 
 interface PromptSelectorProps {
@@ -16,6 +17,7 @@ interface PromptSelectorProps {
   selectedIds: Set<number | string>
   onToggle: (id: number | string) => void
   onSelectAll: () => void
+  onBack?: () => void
   accentColor?: string
   isLoading?: boolean
   emptyMessage?: string
@@ -28,6 +30,7 @@ export function PromptSelector({
   selectedIds,
   onToggle,
   onSelectAll,
+  onBack,
   accentColor = "#C4553D",
   isLoading = false,
   emptyMessage = "No prompts available",
@@ -66,11 +69,22 @@ export function PromptSelector({
 
   return (
     <div className="space-y-3">
-      {/* Header with count and Select All */}
+      {/* Header with back button, count and Select All */}
       <div className="flex items-center justify-between">
-        <span className="text-sm text-gray-500">
-          {prompts.length} prompt{prompts.length !== 1 ? "s" : ""} available
-        </span>
+        <div className="flex items-center gap-3">
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back
+            </button>
+          )}
+          <span className="text-sm text-gray-500">
+            {prompts.length} prompt{prompts.length !== 1 ? "s" : ""} available
+          </span>
+        </div>
         <button
           onClick={onSelectAll}
           className="text-sm font-medium transition-colors"
@@ -106,9 +120,6 @@ export function PromptSelector({
               />
               <div className="flex-1 min-w-0">
                 <span className="text-sm text-gray-700">{prompt.text}</span>
-                {prompt.subtitle && (
-                  <p className="text-xs text-gray-400 mt-0.5">{prompt.subtitle}</p>
-                )}
               </div>
             </label>
           )

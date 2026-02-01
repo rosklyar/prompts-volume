@@ -140,3 +140,35 @@ class GSCOnboardingCreateResponse(BaseModel):
     group_title: str
     prompts_created: int
     prompt_ids: list[int]
+
+
+# ===== Two-Step GSC Flow Models =====
+
+
+class GSCFetchKeywordsRequest(BaseModel):
+    """Request to fetch keywords from GSC (no word count filter)."""
+
+    site_url: str
+    sort_by: Literal["clicks", "impressions", "ctr", "position"] = "clicks"
+    result_limit: int = 100
+
+
+class GSCFetchKeywordsResponse(BaseModel):
+    """Response containing fetched keywords."""
+
+    keywords: list[GSCKeywordResponse]
+    total_fetched: int
+
+
+class GSCGeneratePromptsRequest(BaseModel):
+    """Request to generate prompts from selected keywords."""
+
+    keywords: list[str]  # Max 20 enforced at endpoint
+    country_id: int
+    business_domain: str | None = None
+
+
+class GSCGeneratePromptsResponse(BaseModel):
+    """Response containing generated prompts (no source keyword)."""
+
+    prompts: list[str]

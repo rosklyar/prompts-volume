@@ -1,6 +1,9 @@
 /**
  * GSCOnboardingStep - Google Search Console integration step
- * Allows users to connect GSC, select a property, choose keywords, and create a group
+ *
+ * Two-step flow:
+ * 1. Select keywords from GSC (no word filter, all keywords shown)
+ * 2. Generate and select prompts from selected keywords, then create group
  */
 
 import { useState, useMemo, useCallback } from "react"
@@ -11,21 +14,26 @@ import {
   AlertCircle,
   Loader2,
   ExternalLink,
+  ArrowLeft,
 } from "lucide-react"
 import {
   useGSCStatus,
   useGSCConnect,
   useGSCMatchProperty,
-  useGSCExtractKeywords,
+  useGSCFetchKeywords,
+  useGSCGeneratePrompts,
   useGSCCreatePrompts,
 } from "@/hooks/useGSC"
-import type { GeneratedPromptResponse } from "@/client/api"
+import { KeywordSelector } from "@/components/groups/shared/KeywordSelector"
+import type { GSCSortBy } from "@/client/api"
 
 type GSCSubState =
   | "connect"
   | "matching"
   | "select-site"
   | "loading-keywords"
+  | "select-keywords"
+  | "generating-prompts"
   | "select-prompts"
   | "creating"
   | "no-data"
@@ -51,8 +59,12 @@ export function GSCOnboardingStep({
   onSkip,
   onBeforeConnect,
 }: GSCOnboardingStepProps) {
-  // User-driven state (only changes via user actions)
+  // User-driven state
   const [userSelectedSite, setUserSelectedSite] = useState<string | null>(null)
+  const [sortBy, setSortBy] = useState<GSCSortBy>("clicks")
+  const [selectedKeywords, setSelectedKeywords] = useState<Set<string>>(new Set())
+  const [generatedPrompts, setGeneratedPrompts] = useState<string[]>([])
+  const [isInPromptsStep, setIsInPromptsStep] = useState(false)
   const [manualPromptSelection, setManualPromptSelection] = useState<Set<string> | null>(null)
   const [groupName, setGroupName] = useState("GSC Keywords")
   const [error, setError] = useState<string | null>(null)
@@ -60,8 +72,8 @@ export function GSCOnboardingStep({
 
   // Hooks
   const { data: gscStatus, isLoading: isLoadingStatus } = useGSCStatus()
-  // Pass onboarding URL as redirect so user returns here after OAuth
   const connectMutation = useGSCConnect(`${window.location.origin}/onboarding`)
+  const generatePromptsMutation = useGSCGeneratePrompts()
   const createPromptsMutation = useGSCCreatePrompts()
 
   // Determine if GSC is connected
@@ -85,31 +97,25 @@ export function GSCOnboardingStep({
     return null
   }, [userSelectedSite, matchResult])
 
-  // Extract keywords query - enabled when we have a site
-  // Pass generatePrompts=true and countryId to get AI-generated prompts
-  const { data: keywordsResult, isLoading: isLoadingKeywords } = useGSCExtractKeywords(
+  // Fetch keywords query - enabled when we have a site and not in prompts step
+  const { data: keywordsResult, isLoading: isLoadingKeywords } = useGSCFetchKeywords(
     selectedSiteUrl,
-    {
-      minWordCount: 3,
-      resultLimit: 10,
-      generatePrompts: true,
-      countryId,
-      businessDomain,
-    },
-    selectedSiteUrl !== null
+    sortBy,
+    100,
+    selectedSiteUrl !== null && !isInPromptsStep
   )
 
-  // Get generated prompts from the result
-  const generatedPrompts = useMemo(
-    () => keywordsResult?.generated_prompts ?? [],
-    [keywordsResult?.generated_prompts]
+  // Get keywords from the result
+  const keywords = useMemo(
+    () => keywordsResult?.keywords ?? [],
+    [keywordsResult?.keywords]
   )
 
   // Derive selected prompts - default to all selected, unless user has manually changed
   const selectedPrompts = useMemo(() => {
     if (manualPromptSelection !== null) return manualPromptSelection
     if (generatedPrompts.length > 0) {
-      return new Set(generatedPrompts.map((p) => p.prompt))
+      return new Set(generatedPrompts)
     }
     return new Set<string>()
   }, [manualPromptSelection, generatedPrompts])
@@ -117,7 +123,7 @@ export function GSCOnboardingStep({
   // Derive the current sub-state from data
   const subState: GSCSubState = useMemo(() => {
     if (isCreating) return "creating"
-    if (isLoadingStatus) return "connect" // Show connect while loading status
+    if (isLoadingStatus) return "connect"
     if (!isConnected) return "connect"
     if (isMatching) return "matching"
     if (!matchResult) return "matching"
@@ -126,9 +132,15 @@ export function GSCOnboardingStep({
     if (selectedSiteUrl) {
       if (isLoadingKeywords) return "loading-keywords"
       if (keywordsResult) {
-        // Check if we have generated prompts (preferred) or fall back to keywords
-        if (generatedPrompts.length === 0 && keywordsResult.keywords.length === 0) return "no-data"
-        return "select-prompts"
+        if (keywords.length === 0) return "no-data"
+
+        // Check if we're in the prompts step
+        if (isInPromptsStep) {
+          if (generatePromptsMutation.isPending) return "generating-prompts"
+          return "select-prompts"
+        }
+
+        return "select-keywords"
       }
       return "loading-keywords"
     }
@@ -145,23 +157,66 @@ export function GSCOnboardingStep({
     selectedSiteUrl,
     isLoadingKeywords,
     keywordsResult,
-    generatedPrompts,
+    keywords,
+    isInPromptsStep,
+    generatePromptsMutation.isPending,
   ])
 
   // Handlers
   const handleConnect = useCallback(() => {
-    onBeforeConnect?.()  // Save state before OAuth redirect
+    onBeforeConnect?.()
     connectMutation.mutate()
   }, [connectMutation, onBeforeConnect])
 
   const handleSelectSite = useCallback((siteUrl: string) => {
     setUserSelectedSite(siteUrl)
-    setManualPromptSelection(null) // Reset to auto-select all for new site
+    setSelectedKeywords(new Set())
+    setGeneratedPrompts([])
+    setIsInPromptsStep(false)
+    setManualPromptSelection(null)
+  }, [])
+
+  const handleToggleKeyword = useCallback((query: string) => {
+    setSelectedKeywords((prev) => {
+      const next = new Set(prev)
+      if (next.has(query)) {
+        next.delete(query)
+      } else {
+        next.add(query)
+      }
+      return next
+    })
+  }, [])
+
+  const handleSortChange = useCallback((newSortBy: GSCSortBy) => {
+    setSortBy(newSortBy)
+  }, [])
+
+  const handleGeneratePrompts = useCallback(() => {
+    if (selectedKeywords.size === 0) return
+
+    generatePromptsMutation.mutate(
+      {
+        keywords: Array.from(selectedKeywords),
+        countryId,
+        businessDomain,
+      },
+      {
+        onSuccess: (data) => {
+          setGeneratedPrompts(data.prompts)
+          setIsInPromptsStep(true)
+          setManualPromptSelection(null) // Auto-select all
+        },
+      }
+    )
+  }, [selectedKeywords, countryId, businessDomain, generatePromptsMutation])
+
+  const handleBackToKeywords = useCallback(() => {
+    setIsInPromptsStep(false)
   }, [])
 
   const handleTogglePrompt = useCallback((prompt: string) => {
     setManualPromptSelection((prev) => {
-      // If null, start from current selectedPrompts
       const current = prev ?? selectedPrompts
       const next = new Set(current)
       if (next.has(prompt)) {
@@ -175,11 +230,10 @@ export function GSCOnboardingStep({
 
   const handleToggleAll = useCallback(() => {
     if (generatedPrompts.length === 0) return
-    const allPrompts = generatedPrompts.map((p) => p.prompt)
-    if (selectedPrompts.size === allPrompts.length) {
+    if (selectedPrompts.size === generatedPrompts.length) {
       setManualPromptSelection(new Set())
     } else {
-      setManualPromptSelection(new Set(allPrompts))
+      setManualPromptSelection(new Set(generatedPrompts))
     }
   }, [generatedPrompts, selectedPrompts])
 
@@ -232,10 +286,12 @@ export function GSCOnboardingStep({
             {subState === "connect" && "Connect to import your top keywords"}
             {subState === "matching" && "Finding your website..."}
             {subState === "select-site" && "Select your website property"}
-            {subState === "loading-keywords" && "Generating prompts from keywords..."}
+            {subState === "loading-keywords" && "Fetching keywords..."}
+            {subState === "select-keywords" && "Select keywords to generate prompts"}
+            {subState === "generating-prompts" && "Generating prompts..."}
             {subState === "select-prompts" && "Select prompts to track"}
             {subState === "creating" && "Creating your group..."}
-            {subState === "no-data" && "No matching keywords found"}
+            {subState === "no-data" && "No keywords found"}
           </p>
         </div>
       </div>
@@ -318,37 +374,69 @@ export function GSCOnboardingStep({
       {subState === "loading-keywords" && (
         <div className="text-center py-8">
           <Loader2 className="w-8 h-8 animate-spin text-[#C4553D] mx-auto mb-4" />
-          <p className="text-gray-600">Extracting keywords...</p>
+          <p className="text-gray-600">Fetching keywords...</p>
+        </div>
+      )}
+
+      {/* Select Keywords State (Step 1) */}
+      {subState === "select-keywords" && keywords.length > 0 && (
+        <KeywordSelector
+          keywords={keywords}
+          selectedKeywords={selectedKeywords}
+          onToggleKeyword={handleToggleKeyword}
+          sortBy={sortBy}
+          onSortChange={handleSortChange}
+          onGeneratePrompts={handleGeneratePrompts}
+          isGenerating={generatePromptsMutation.isPending}
+          accentColor="#C4553D"
+          maxHeight="280px"
+        />
+      )}
+
+      {/* Generating Prompts State */}
+      {subState === "generating-prompts" && (
+        <div className="text-center py-8">
+          <Loader2 className="w-8 h-8 animate-spin text-[#C4553D] mx-auto mb-4" />
+          <p className="text-gray-600">Generating prompts from keywords...</p>
           <p className="text-xs text-gray-400 mt-1">
-            Looking for long-tail keywords (3+ words)
+            Creating 3 prompts per keyword
           </p>
         </div>
       )}
 
-      {/* Select Prompts State */}
+      {/* Select Prompts State (Step 2) */}
       {subState === "select-prompts" && generatedPrompts.length > 0 && (
         <div className="space-y-4">
-          {/* Select All Toggle */}
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={selectedPrompts.size === generatedPrompts.length}
-              onChange={handleToggleAll}
-              className="w-4 h-4 rounded border-gray-300 text-[#C4553D] focus:ring-[#C4553D]/30"
-            />
-            <span className="text-sm font-medium text-gray-700">
-              Select All ({generatedPrompts.length} prompts)
-            </span>
-          </label>
+          {/* Back button and Select All */}
+          <div className="flex items-center justify-between">
+            <button
+              onClick={handleBackToKeywords}
+              className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back to keywords
+            </button>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={selectedPrompts.size === generatedPrompts.length}
+                onChange={handleToggleAll}
+                className="w-4 h-4 rounded border-gray-300 text-[#C4553D] focus:ring-[#C4553D]/30"
+              />
+              <span className="text-sm font-medium text-gray-700">
+                Select All
+              </span>
+            </label>
+          </div>
 
           {/* Prompts List */}
           <div className="max-h-64 overflow-y-auto space-y-2 border border-gray-200 rounded-xl p-2">
             {generatedPrompts.map((prompt) => (
               <PromptItem
-                key={prompt.prompt}
+                key={prompt}
                 prompt={prompt}
-                isSelected={selectedPrompts.has(prompt.prompt)}
-                onToggle={() => handleTogglePrompt(prompt.prompt)}
+                isSelected={selectedPrompts.has(prompt)}
+                onToggle={() => handleTogglePrompt(prompt)}
               />
             ))}
           </div>
@@ -398,10 +486,10 @@ export function GSCOnboardingStep({
             <Search className="w-8 h-8 text-gray-400" />
           </div>
           <p className="text-gray-600 mb-2">
-            No long-tail keywords found
+            No keywords found
           </p>
           <p className="text-xs text-gray-400 mb-6">
-            We couldn't find keywords with 3+ words in the last 28 days.
+            We couldn't find any keywords in the last 28 days.
             <br />
             You can skip this step and add keywords manually later.
           </p>
@@ -409,7 +497,7 @@ export function GSCOnboardingStep({
       )}
 
       {/* Action Buttons */}
-      {(subState === "select-prompts" || subState === "no-data" || subState === "connect" || subState === "select-site") && (
+      {(subState === "select-prompts" || subState === "select-keywords" || subState === "no-data" || subState === "connect" || subState === "select-site") && (
         <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-100">
           <button
             onClick={onSkip}
@@ -434,9 +522,9 @@ export function GSCOnboardingStep({
   )
 }
 
-// Prompt item component
+// Prompt item component (without source keyword)
 interface PromptItemProps {
-  prompt: GeneratedPromptResponse
+  prompt: string
   isSelected: boolean
   onToggle: () => void
 }
@@ -455,10 +543,7 @@ function PromptItem({ prompt, isSelected, onToggle }: PromptItemProps) {
       />
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-gray-800 break-words">
-          {prompt.prompt}
-        </p>
-        <p className="text-xs text-gray-400 mt-0.5">
-          From: "{prompt.source_keyword}"
+          {prompt}
         </p>
       </div>
       {isSelected && <Check className="w-4 h-4 text-[#C4553D] mt-0.5 flex-shrink-0" />}

@@ -344,22 +344,26 @@ class TestGSCPromptGeneration:
         # Mock GSC search analytics API
         mock_gsc_response = _create_mock_response(200, mock_gsc_analytics_response)
 
+        # Create mock generator service
+        mock_generator_service = MagicMock()
+        mock_generator_service.generate_prompts_from_keywords = AsyncMock(
+            return_value=[
+                ("What are the best running shoes for flat feet?", "best running shoes for flat feet"),
+                ("How do I choose marathon running shoes?", "how to choose marathon running shoes"),
+            ]
+        )
+
         with (
             patch("httpx.AsyncClient") as mock_httpx,
             patch(
-                "src.prompts.services.prompts_generator_service.PromptsGeneratorService.generate_prompts_from_keywords"
-            ) as mock_generator,
+                "src.onboarding.router.get_prompts_generator_service",
+                return_value=mock_generator_service,
+            ),
         ):
             # Setup httpx mock
             mock_client = AsyncMock()
             mock_client.post.return_value = mock_gsc_response
             mock_httpx.return_value.__aenter__.return_value = mock_client
-
-            # Setup prompt generator mock - returns list of (prompt, source_keyword) tuples
-            mock_generator.return_value = [
-                ("What are the best running shoes for flat feet?", "best running shoes for flat feet"),
-                ("How do I choose marathon running shoes?", "how to choose marathon running shoes"),
-            ]
 
             response = client.post(
                 "/onboarding/api/v1/gsc/extract-keywords",

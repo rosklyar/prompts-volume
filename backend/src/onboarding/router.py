@@ -14,6 +14,10 @@ from src.gsc.deps import get_oauth_service, get_token_manager, get_valid_access_
 from src.gsc.exceptions import GSCError, GSCTokenRefreshError
 from src.gsc.models import (
     GeneratedPromptResponse,
+    GSCFetchKeywordsRequest,
+    GSCFetchKeywordsResponse,
+    GSCGeneratePromptsRequest,
+    GSCGeneratePromptsResponse,
     GSCKeywordExtractRequest,
     GSCKeywordExtractResponse,
     GSCKeywordResponse,
@@ -28,6 +32,7 @@ from src.gsc.services import (
     GSCClient,
     KeywordExtractor,
     MinWordCountFilter,
+    NoOpFilter,
     PropertyMatcher,
 )
 from src.gsc.services.oauth_service import OAuthService
@@ -390,3 +395,124 @@ async def create_prompts_from_gsc(
         prompts_created=len(prompt_ids),
         prompt_ids=prompt_ids,
     )
+
+
+# ===== Two-Step GSC Flow Endpoints =====
+
+
+@router.post("/gsc/fetch-keywords", response_model=GSCFetchKeywordsResponse)
+async def fetch_gsc_keywords(
+    request: GSCFetchKeywordsRequest,
+    current_user: CurrentUser,
+    session: UsersSessionDep,
+    oauth_service: OAuthService = Depends(get_oauth_service),
+    token_manager: TokenManager = Depends(get_token_manager),
+) -> Any:
+    """Fetch ALL keywords from GSC (no word count filter).
+
+    Returns up to result_limit keywords sorted by the requested metric.
+    This is Step 1 of the two-step GSC flow where users select keywords.
+    """
+    repo = GSCCredentialRepository(session)
+    credential = await repo.get_by_user_id(current_user.id)
+
+    if not credential:
+        raise HTTPException(status_code=400, detail="GSC is not connected")
+
+    try:
+        access_token = await get_valid_access_token(
+            credential, repo, session, token_manager, oauth_service
+        )
+    except GSCTokenRefreshError:
+        await repo.delete(credential)
+        await session.commit()
+        raise HTTPException(status_code=400, detail="GSC connection expired. Please reconnect.")
+
+    # Fetch keywords from GSC without word count filter
+    gsc_client = GSCClient()
+    extractor = KeywordExtractor(gsc_client, keyword_filter=NoOpFilter())
+
+    try:
+        result = await extractor.extract(
+            access_token,
+            request.site_url,
+            days_back=28,
+            result_limit=request.result_limit,
+        )
+    except GSCError as e:
+        logger.error(f"Failed to fetch keywords: {e}")
+        raise HTTPException(status_code=502, detail="Failed to fetch search analytics")
+
+    # Convert to response format
+    keywords = [
+        GSCKeywordResponse(
+            query=row.keys[0] if row.keys else "",
+            clicks=row.clicks,
+            impressions=row.impressions,
+            ctr=row.ctr,
+            position=row.position,
+        )
+        for row in result.keywords
+    ]
+
+    # Sort by requested metric (client can also sort, but we do it server-side for consistency)
+    if request.sort_by == "clicks":
+        keywords.sort(key=lambda k: k.clicks, reverse=True)
+    elif request.sort_by == "impressions":
+        keywords.sort(key=lambda k: k.impressions, reverse=True)
+    elif request.sort_by == "ctr":
+        keywords.sort(key=lambda k: k.ctr, reverse=True)
+    elif request.sort_by == "position":
+        keywords.sort(key=lambda k: k.position)  # Lower position is better
+
+    return GSCFetchKeywordsResponse(
+        keywords=keywords,
+        total_fetched=result.total_fetched,
+    )
+
+
+@router.post("/gsc/generate-prompts", response_model=GSCGeneratePromptsResponse)
+async def generate_prompts_from_keywords(
+    request: GSCGeneratePromptsRequest,
+    current_user: CurrentUser,
+    prompts_session: SessionDep,
+) -> Any:
+    """Generate prompts from selected keywords.
+
+    This is Step 2 of the two-step GSC flow. Takes user-selected keywords
+    (max 20) and generates 3 prompts per keyword.
+    """
+    # Enforce max 20 keywords limit
+    if len(request.keywords) > 20:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Maximum 20 keywords allowed",
+        )
+
+    if len(request.keywords) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one keyword is required",
+        )
+
+    # Get language from country
+    country_service = CountryService(prompts_session)
+    country = await country_service.get_by_id(request.country_id)
+    if not country:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Country not found",
+        )
+    language = country.languages[0].name if country.languages else "English"
+
+    # Generate prompts
+    generator = get_prompts_generator_service()
+    domain = request.business_domain or "general"
+    prompt_tuples = await generator.generate_prompts_from_keywords(
+        request.keywords, domain, language
+    )
+
+    # Return just the prompt texts (no source keyword)
+    prompts = [prompt for prompt, _source in prompt_tuples]
+
+    return GSCGeneratePromptsResponse(prompts=prompts)

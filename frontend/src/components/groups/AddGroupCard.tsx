@@ -42,7 +42,7 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
   // Topic selection state - default to "no topic" (skipTopicBinding = true)
   const [selectedCountryId, setSelectedCountryId] = useState<number | undefined>()
   const [selectedBusinessDomainId, setSelectedBusinessDomainId] = useState<number | undefined>()
-  const [selectedTopicId, setSelectedTopicId] = useState<number | undefined>()
+  const [selectedTopicId, setSelectedTopicId] = useState<number | null>(null)
   const [skipTopicBinding, setSkipTopicBinding] = useState(true)
 
   // Brand state
@@ -84,7 +84,7 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
   const { data: topicPromptsData, isLoading: isLoadingTopicPrompts } = useQuery({
     queryKey: ["topicPrompts", selectedTopicId],
     queryFn: () => promptsApi.getPromptsByTopicIds([selectedTopicId!]),
-    enabled: !skipTopicBinding && selectedTopicId !== undefined,
+    enabled: !skipTopicBinding && selectedTopicId !== null,
   })
 
   // Get prompts for selected topic
@@ -275,7 +275,7 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
     setTitle("")
     setSelectedCountryId(undefined)
     setSelectedBusinessDomainId(undefined)
-    setSelectedTopicId(undefined)
+    setSelectedTopicId(null)
     setSkipTopicBinding(true)
     setBrandName("")
     setBrandDomain("")
@@ -349,13 +349,13 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
 
 
   const canProceedToDetails =
-    skipTopicBinding || (selectedTopicId !== undefined)
+    skipTopicBinding || (selectedTopicId !== null)
 
   const canProceedToTopicPrompts =
     title.trim() && brandName.trim() && canProceedToDetails
 
   // Determine if we should show the topic prompts step
-  const showTopicPromptsStep = !skipTopicBinding && selectedTopicId !== undefined
+  const showTopicPromptsStep = !skipTopicBinding && selectedTopicId !== null
 
   // Determine the next step after details
   const getNextStepAfterDetails = () => {
@@ -454,7 +454,7 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
                 <div
                   onClick={() => {
                     setSkipTopicBinding(true)
-                    setSelectedTopicId(undefined)
+                    setSelectedTopicId(null)
                   }}
                   className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex items-center gap-3 ${
                     skipTopicBinding
@@ -515,7 +515,7 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
                       value={selectedCountryId ?? ""}
                       onChange={(e) => {
                         setSelectedCountryId(e.target.value ? parseInt(e.target.value, 10) : undefined)
-                        setSelectedTopicId(undefined)
+                        setSelectedTopicId(null)
                       }}
                       disabled={isLoadingCountries}
                       className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-lg
@@ -541,7 +541,7 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
                       value={selectedBusinessDomainId ?? ""}
                       onChange={(e) => {
                         setSelectedBusinessDomainId(e.target.value ? parseInt(e.target.value, 10) : undefined)
-                        setSelectedTopicId(undefined)
+                        setSelectedTopicId(null)
                       }}
                       disabled={isLoadingDomains || !selectedCountryId}
                       className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-lg
@@ -574,7 +574,7 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
                         <div className="space-y-2">
                           <select
                             value={selectedTopicId ?? ""}
-                            onChange={(e) => setSelectedTopicId(e.target.value ? parseInt(e.target.value, 10) : undefined)}
+                            onChange={(e) => setSelectedTopicId(e.target.value ? parseInt(e.target.value, 10) : null)}
                             className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-lg
                               focus:outline-none focus:ring-2 focus:ring-[#C4553D]/30 focus:border-[#C4553D]"
                           >
