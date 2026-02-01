@@ -1,24 +1,38 @@
 /**
  * AddGroupCard - Full-width card for creating a new group
- * Two-step flow:
- * 1. Topic Selection (required) - cascading dropdowns or create new
+ * Four-step flow:
+ * 1. Topic Selection (optional) - cascading dropdowns or skip
  * 2. Brand & Competitors info
+ * 3. Topic Prompts Selection (only if topic selected in step 1)
+ * 4. GSC Prompts (skippable)
  */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from "react"
-import { ChevronDown, ChevronRight, Plus, X, Globe, Sparkles, MapPin, Briefcase, Tag, Check } from "lucide-react"
+import { ChevronDown, ChevronRight, Plus, X, Globe, Sparkles, MapPin, Briefcase, Tag, Check, Search } from "lucide-react"
 import type { BrandInfo, CompetitorInfo, TopicInput } from "@/types/groups"
 import { useCountries, useBusinessDomains, useTopicsFiltered } from "@/hooks/useTopics"
 import { useUserPreferences } from "@/hooks/useOnboarding"
+import { promptsApi } from "@/client/api"
+import { useQuery } from "@tanstack/react-query"
 import { normalizeDomain } from "@/lib/domain"
 import { MAX_GROUPS } from "./constants"
+import { PromptSelector } from "./shared/PromptSelector"
+import { GSCPromptsStep } from "./shared/GSCPromptsStep"
 
 interface AddGroupCardProps {
-  onAdd: (title: string, topic: TopicInput | null, brand: BrandInfo, competitors?: CompetitorInfo[], topicTitle?: string | null) => void
+  onAdd: (
+    title: string,
+    topic: TopicInput | null,
+    brand: BrandInfo,
+    competitors?: CompetitorInfo[],
+    topicTitle?: string | null,
+    selectedTopicPromptIds?: number[],
+    selectedGSCPrompts?: string[]
+  ) => void
   isLoading: boolean
 }
 
-type CreationStep = "topic" | "details"
+type CreationStep = "topic" | "details" | "topic-prompts" | "gsc-prompts"
 
 export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
   const [isCreating, setIsCreating] = useState(false)
@@ -45,6 +59,12 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
   const [newCompVariations, setNewCompVariations] = useState("")
   const [newCompVariationsTouched, setNewCompVariationsTouched] = useState(false)
 
+  // Topic prompts selection state (step 3)
+  const [selectedTopicPromptIds, setSelectedTopicPromptIds] = useState<Set<number>>(new Set())
+
+  // GSC prompts selection state (step 4)
+  const [selectedGSCPrompts, setSelectedGSCPrompts] = useState<Set<string>>(new Set())
+
   const titleInputRef = useRef<HTMLInputElement>(null)
   const topicStepRef = useRef<HTMLDivElement>(null)
   const hasPrefilledRef = useRef(false)
@@ -59,6 +79,20 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
     selectedCountryId,
     selectedBusinessDomainId
   )
+
+  // Fetch topic prompts when we have a selected topic (for step 3)
+  const { data: topicPromptsData, isLoading: isLoadingTopicPrompts } = useQuery({
+    queryKey: ["topicPrompts", selectedTopicId],
+    queryFn: () => promptsApi.getPromptsByTopicIds([selectedTopicId!]),
+    enabled: !skipTopicBinding && selectedTopicId !== undefined,
+  })
+
+  // Get prompts for selected topic
+  const topicPrompts = useMemo(() => {
+    if (!topicPromptsData?.topics || !selectedTopicId) return []
+    const topicGroup = topicPromptsData.topics.find((t) => t.topic_id === selectedTopicId)
+    return topicGroup?.prompts ?? []
+  }, [topicPromptsData, selectedTopicId])
 
   // Get selected topic info for display
   const selectedTopic = useMemo(() => {
@@ -81,6 +115,30 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
       titleInputRef.current.focus()
     }
   }, [isCreating, step])
+
+  // Auto-select all topic prompts when prompts load
+  // Track the last topic id for which we auto-selected prompts
+  const lastAutoSelectTopicIdRef = useRef<number | null>(null)
+  useEffect(() => {
+    // Only auto-select if:
+    // 1. We have topic prompts
+    // 2. We haven't already auto-selected for this topic
+    // 3. Current selection is empty (user hasn't manually changed anything)
+    if (
+      topicPrompts.length > 0 &&
+      selectedTopicId !== null &&
+      lastAutoSelectTopicIdRef.current !== selectedTopicId &&
+      selectedTopicPromptIds.size === 0
+    ) {
+      lastAutoSelectTopicIdRef.current = selectedTopicId
+      setSelectedTopicPromptIds(new Set(topicPrompts.map((p) => p.id)))
+    }
+    // Reset when topic is cleared
+    if (selectedTopicId === null) {
+      lastAutoSelectTopicIdRef.current = null
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topicPrompts, selectedTopicId])
 
   // Prefill brand, competitors, and market from user preferences
   const applyPrefill = useCallback(() => {
@@ -190,7 +248,24 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
       // Get the topic title to pass to the modal (null if skipping)
       const topicTitleForModal = skipTopicBinding ? null : selectedTopic?.title
 
-      onAdd(trimmedTitle, topicInput, brand, competitors.length > 0 ? competitors : undefined, topicTitleForModal)
+      // Collect selected prompts
+      const topicPromptIds = !skipTopicBinding && selectedTopicPromptIds.size > 0
+        ? Array.from(selectedTopicPromptIds)
+        : undefined
+
+      const gscPrompts = selectedGSCPrompts.size > 0
+        ? Array.from(selectedGSCPrompts)
+        : undefined
+
+      onAdd(
+        trimmedTitle,
+        topicInput,
+        brand,
+        competitors.length > 0 ? competitors : undefined,
+        topicTitleForModal,
+        topicPromptIds,
+        gscPrompts
+      )
       resetForm()
     }
   }
@@ -212,6 +287,8 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
     setNewCompVariations("")
     setNewCompVariationsTouched(false)
     setShowCompetitors(false)
+    setSelectedTopicPromptIds(new Set())
+    setSelectedGSCPrompts(new Set())
     setIsCreating(false)
     // Note: hasPrefilledRef is reset in the useEffect when isCreating becomes false
   }
@@ -235,8 +312,56 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
     }
   }
 
+  // Topic prompts handlers
+  const handleToggleTopicPrompt = (promptId: number | string) => {
+    if (typeof promptId !== "number") return
+    setSelectedTopicPromptIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(promptId)) {
+        next.delete(promptId)
+      } else {
+        next.add(promptId)
+      }
+      return next
+    })
+  }
+
+  const handleSelectAllTopicPrompts = () => {
+    if (selectedTopicPromptIds.size === topicPrompts.length) {
+      setSelectedTopicPromptIds(new Set())
+    } else {
+      setSelectedTopicPromptIds(new Set(topicPrompts.map((p) => p.id)))
+    }
+  }
+
+  // GSC prompts handlers
+  const handleToggleGSCPrompt = (prompt: string) => {
+    setSelectedGSCPrompts((prev) => {
+      const next = new Set(prev)
+      if (next.has(prompt)) {
+        next.delete(prompt)
+      } else {
+        next.add(prompt)
+      }
+      return next
+    })
+  }
+
+
   const canProceedToDetails =
     skipTopicBinding || (selectedTopicId !== undefined)
+
+  const canProceedToTopicPrompts =
+    title.trim() && brandName.trim() && canProceedToDetails
+
+  // Determine if we should show the topic prompts step
+  const showTopicPromptsStep = !skipTopicBinding && selectedTopicId !== undefined
+
+  // Determine the next step after details
+  const getNextStepAfterDetails = () => {
+    if (showTopicPromptsStep) return "topic-prompts"
+    return "gsc-prompts"
+  }
 
   const canCreate = title.trim() && brandName.trim() && canProceedToDetails
 
@@ -252,7 +377,7 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
 
         <div className="px-5 py-5 space-y-5">
           {/* Step indicator */}
-          <div className="flex items-center gap-3 mb-2">
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
             <button
               onClick={() => setStep("topic")}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
@@ -264,7 +389,7 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
               <Tag className="w-3.5 h-3.5" />
               Topic
             </button>
-            <div className="w-4 h-px bg-gray-300" />
+            <div className="w-3 h-px bg-gray-300" />
             <button
               onClick={() => canProceedToDetails && setStep("details")}
               disabled={!canProceedToDetails}
@@ -278,6 +403,40 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
             >
               <Briefcase className="w-3.5 h-3.5" />
               Brand
+            </button>
+            {showTopicPromptsStep && (
+              <>
+                <div className="w-3 h-px bg-gray-300" />
+                <button
+                  onClick={() => canProceedToTopicPrompts && setStep("topic-prompts")}
+                  disabled={!canProceedToTopicPrompts}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                    step === "topic-prompts"
+                      ? "bg-[#C4553D] text-white"
+                      : canProceedToTopicPrompts
+                      ? "bg-white text-gray-500 hover:bg-gray-50"
+                      : "bg-gray-100 text-gray-300 cursor-not-allowed"
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Prompts
+                </button>
+              </>
+            )}
+            <div className="w-3 h-px bg-gray-300" />
+            <button
+              onClick={() => canProceedToTopicPrompts && setStep("gsc-prompts")}
+              disabled={!canProceedToTopicPrompts}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                step === "gsc-prompts"
+                  ? "bg-[#C4553D] text-white"
+                  : canProceedToTopicPrompts
+                  ? "bg-white text-gray-500 hover:bg-gray-50"
+                  : "bg-gray-100 text-gray-300 cursor-not-allowed"
+              }`}
+            >
+              <Search className="w-3.5 h-3.5" />
+              GSC
             </button>
           </div>
 
@@ -723,6 +882,119 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
                       hover:bg-gray-50 transition-colors disabled:opacity-50"
                   >
                     Cancel
+                  </button>
+                  <button
+                    onClick={() => setStep(getNextStepAfterDetails())}
+                    disabled={isLoading || !canProceedToTopicPrompts}
+                    className="py-2.5 px-5 text-sm font-medium text-white
+                      bg-[#C4553D] rounded-lg hover:bg-[#B34835]
+                      transition-colors disabled:opacity-50 disabled:cursor-not-allowed
+                      flex items-center gap-2"
+                  >
+                    Continue
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: Topic Prompts Selection (only if topic selected) */}
+          {step === "topic-prompts" && showTopicPromptsStep && (
+            <div className="space-y-5 animate-in fade-in duration-200">
+              <div className="flex items-center gap-2 mb-3">
+                <Sparkles className="w-4 h-4 text-[#C4553D]" />
+                <span className="text-sm font-medium text-gray-700">
+                  Select prompts from "{selectedTopic?.title}"
+                </span>
+              </div>
+
+              <PromptSelector
+                prompts={topicPrompts.map((p) => ({ id: p.id, text: p.prompt_text }))}
+                selectedIds={selectedTopicPromptIds}
+                onToggle={handleToggleTopicPrompt}
+                onSelectAll={handleSelectAllTopicPrompts}
+                accentColor="#C4553D"
+                isLoading={isLoadingTopicPrompts}
+                emptyMessage="No prompts available"
+                emptySubtitle="This topic doesn't have any prompts yet"
+                maxHeight="280px"
+              />
+
+              {/* Actions */}
+              <div className="flex justify-between pt-2 border-t border-gray-200">
+                <button
+                  onClick={() => setStep("details")}
+                  disabled={isLoading}
+                  className="py-2.5 px-4 text-sm font-medium text-gray-600
+                    bg-white border border-gray-200 rounded-lg
+                    hover:bg-gray-50 transition-colors disabled:opacity-50
+                    flex items-center gap-2"
+                >
+                  <ChevronDown className="w-4 h-4 -rotate-90" />
+                  Back
+                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleCancel}
+                    disabled={isLoading}
+                    className="py-2.5 px-4 text-sm font-medium text-gray-600
+                      bg-white border border-gray-200 rounded-lg
+                      hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => setStep("gsc-prompts")}
+                    disabled={isLoading}
+                    className="py-2.5 px-5 text-sm font-medium text-white
+                      bg-[#C4553D] rounded-lg hover:bg-[#B34835]
+                      transition-colors disabled:opacity-50 disabled:cursor-not-allowed
+                      flex items-center gap-2"
+                  >
+                    Continue
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Step 4: GSC Prompts */}
+          {step === "gsc-prompts" && (
+            <div className="space-y-5 animate-in fade-in duration-200">
+              <GSCPromptsStep
+                brandDomain={normalizeDomain(brandDomain) || null}
+                countryId={selectedCountryId ?? 1}
+                businessDomain={selectedBusinessDomain?.name}
+                selectedPrompts={selectedGSCPrompts}
+                onTogglePrompt={handleToggleGSCPrompt}
+                accentColor="#C4553D"
+                redirectUri={window.location.href}
+              />
+
+              {/* Actions */}
+              <div className="flex justify-between pt-2 border-t border-gray-200">
+                <button
+                  onClick={() => setStep(showTopicPromptsStep ? "topic-prompts" : "details")}
+                  disabled={isLoading}
+                  className="py-2.5 px-4 text-sm font-medium text-gray-600
+                    bg-white border border-gray-200 rounded-lg
+                    hover:bg-gray-50 transition-colors disabled:opacity-50
+                    flex items-center gap-2"
+                >
+                  <ChevronDown className="w-4 h-4 -rotate-90" />
+                  Back
+                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleSubmit}
+                    disabled={isLoading || !canCreate}
+                    className="py-2.5 px-4 text-sm font-medium text-gray-600
+                      bg-white border border-gray-200 rounded-lg
+                      hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  >
+                    Skip & Create
                   </button>
                   <button
                     onClick={handleSubmit}

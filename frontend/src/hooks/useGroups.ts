@@ -297,3 +297,29 @@ export function useAvailablePrompts(groupId: number | undefined) {
   })
 }
 
+// ===== Add GSC Prompts Hook =====
+
+export function useAddGSCPromptsToGroup() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({
+      groupId,
+      prompts,
+    }: {
+      groupId: number
+      prompts: string[]
+    }) => groupsApi.addGSCPromptsToGroup(groupId, prompts),
+    onSuccess: (_data, variables) => {
+      const { groupId } = variables
+      // Invalidate all group queries to ensure UI updates
+      queryClient.invalidateQueries({ queryKey: groupKeys.all })
+      // Invalidate group details to update prompts in group cards
+      queryClient.invalidateQueries({ queryKey: groupKeys.details() })
+      // Invalidate report comparison to detect new data for Report button
+      queryClient.invalidateQueries({ queryKey: reportKeys.compare(groupId) })
+      queryClient.invalidateQueries({ queryKey: billingKeys.reportPreview(groupId) })
+    },
+  })
+}
+

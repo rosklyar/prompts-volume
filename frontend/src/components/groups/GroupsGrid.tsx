@@ -4,6 +4,7 @@
  */
 
 import { useState, useMemo, useCallback, useEffect } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import {
   DndContext,
   DragOverlay,
@@ -34,6 +35,8 @@ import {
   useDeleteGroup,
   useRemovePromptsFromGroup,
   useMovePrompt,
+  useAddPromptsToGroup,
+  useAddGSCPromptsToGroup,
 } from "@/hooks/useGroups"
 import { useGenerateReport } from "@/hooks/useBilling"
 import { useInvalidateReportQueries } from "@/hooks/useReports"
@@ -108,6 +111,8 @@ function saveExpandedGroups(expanded: Set<number>): void {
 }
 
 export function GroupsGrid() {
+  const queryClient = useQueryClient()
+
   // Fetch groups list
   const { data: groupsData, isLoading: isLoadingGroups } = useGroups()
 
@@ -128,6 +133,8 @@ export function GroupsGrid() {
   const removePrompts = useRemovePromptsFromGroup()
   const movePrompt = useMovePrompt()
   const generateReport = useGenerateReport()
+  const addPromptsToGroup = useAddPromptsToGroup()
+  const addGSCPromptsToGroup = useAddGSCPromptsToGroup()
 
   // Local state for answers and report data
   const [groupStates, setGroupStates] = useState<Record<number, GroupState>>({})
@@ -295,13 +302,21 @@ export function GroupsGrid() {
     topic: TopicInput | null,
     brand: BrandInfo,
     competitors?: CompetitorInfo[],
-    topicTitle?: string | null
+    topicTitle?: string | null,
+    selectedTopicPromptIds?: number[],
+    selectedGSCPrompts?: string[]
   ) => {
     try {
       const newGroup = await createGroup.mutateAsync({ title, topic, brand, competitors })
 
-      // If group was created with an existing public topic, show prompt selection modal
-      if (topic?.existing_topic_id && topicTitle && newGroup.topic_id) {
+      // Add selected topic prompts to group if any were selected
+      if (selectedTopicPromptIds && selectedTopicPromptIds.length > 0) {
+        await addPromptsToGroup.mutateAsync({
+          groupId: newGroup.id,
+          promptIds: selectedTopicPromptIds,
+        })
+      } else if (topic?.existing_topic_id && topicTitle && newGroup.topic_id) {
+        // Only show modal if no prompts were pre-selected (backward compatibility)
         setPromptSelectionModal({
           groupId: newGroup.id,
           groupTitle: title,
@@ -309,6 +324,17 @@ export function GroupsGrid() {
           topicTitle: topicTitle,
         })
       }
+
+      // Add selected GSC prompts to group if any were selected
+      if (selectedGSCPrompts && selectedGSCPrompts.length > 0) {
+        await addGSCPromptsToGroup.mutateAsync({
+          groupId: newGroup.id,
+          prompts: selectedGSCPrompts,
+        })
+      }
+
+      // Force refetch of all group queries to ensure UI shows added prompts
+      await queryClient.refetchQueries({ queryKey: groupKeys.all })
     } catch (error) {
       console.error("Failed to create group:", error)
     }

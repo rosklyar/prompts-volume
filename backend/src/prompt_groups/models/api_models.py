@@ -141,6 +141,14 @@ class AddPromptsToGroupRequest(BaseModel):
     )
 
 
+class AddGSCPromptsRequest(BaseModel):
+    """Request to add GSC-generated prompts to a group."""
+
+    prompts: List[str] = Field(
+        ..., min_length=1, max_length=100, description="List of prompt texts to create and add"
+    )
+
+
 class RemovePromptsFromGroupRequest(BaseModel):
     """Request to remove prompts from a group."""
 
@@ -210,6 +218,12 @@ class AddPromptsResultResponse(BaseModel):
     added_count: int
     skipped_count: int
     bindings: List[PromptInGroupResponse]
+
+
+class AddGSCPromptsResultResponse(BaseModel):
+    """Response after adding GSC prompts to a group."""
+
+    prompts_added: int
 
 
 class AvailablePromptResponse(BaseModel):

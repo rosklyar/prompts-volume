@@ -552,6 +552,21 @@ export const groupsApi = {
     )
     return response.json()
   },
+
+  async addGSCPromptsToGroup(
+    groupId: number,
+    prompts: string[]
+  ): Promise<{ prompts_added: number }> {
+    const response = await fetchWithAuth(
+      `/prompt-groups/api/v1/groups/${groupId}/gsc-prompts`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompts }),
+      }
+    )
+    return response.json()
+  },
 }
 
 // ===== Billing API =====

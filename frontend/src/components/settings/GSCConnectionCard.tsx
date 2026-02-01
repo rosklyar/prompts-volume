@@ -1,10 +1,9 @@
 import { useState, useEffect } from "react"
 import { useSearch } from "@tanstack/react-router"
-import { ExternalLink, Link2, Link2Off, Globe, CheckCircle2, XCircle, Loader2 } from "lucide-react"
+import { ExternalLink, Link2, Link2Off, Globe, CheckCircle2, XCircle, Loader2, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useGSCStatus, useGSCConnect, useGSCDisconnect } from "@/hooks/useGSC"
-import { GSCSearchKeysPanel } from "./GSCSearchKeysPanel"
 
 const ACCENT_COLOR = "#C4553D"
 
@@ -17,7 +16,7 @@ interface GSCConnectionContentProps {
  */
 export function GSCConnectionContent({ searchParams }: GSCConnectionContentProps) {
   const { data: status, isLoading, refetch } = useGSCStatus()
-  const connectMutation = useGSCConnect()
+  const connectMutation = useGSCConnect("/settings?tab=gsc")
   const disconnectMutation = useGSCDisconnect()
   const routeSearchParams = useSearch({ from: "/settings" })
 
@@ -55,7 +54,7 @@ export function GSCConnectionContent({ searchParams }: GSCConnectionContentProps
         refetch()
       }
       // Clear the query param
-      window.history.replaceState({}, "", "/settings")
+      window.history.replaceState({}, "", "/settings?tab=gsc")
     }
     // Only run once on mount - params is read synchronously
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -71,6 +70,12 @@ export function GSCConnectionContent({ searchParams }: GSCConnectionContentProps
 
   const handleConnect = () => {
     setFeedback(null)
+    connectMutation.mutate()
+  }
+
+  const handleReconnect = () => {
+    setFeedback(null)
+    // Connect again - Google will show account selector due to backend's consent prompt
     connectMutation.mutate()
   }
 
@@ -117,74 +122,91 @@ export function GSCConnectionContent({ searchParams }: GSCConnectionContentProps
 
   return (
     <div className="space-y-4">
-        {/* Feedback message */}
-        {feedback && (
-          <div
-            className={`flex items-center gap-2 p-3 rounded-lg text-sm ${
-              feedback.type === "success"
-                ? "bg-green-50 text-green-700"
-                : "bg-red-50 text-red-700"
-            }`}
-          >
-            {feedback.type === "success" ? (
-              <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-            ) : (
-              <XCircle className="w-4 h-4 flex-shrink-0" />
-            )}
-            {feedback.message}
-          </div>
-        )}
+      {/* Feedback message */}
+      {feedback && (
+        <div
+          className={`flex items-center gap-2 p-3 rounded-lg text-sm ${
+            feedback.type === "success"
+              ? "bg-green-50 text-green-700"
+              : "bg-red-50 text-red-700"
+          }`}
+        >
+          {feedback.type === "success" ? (
+            <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+          ) : (
+            <XCircle className="w-4 h-4 flex-shrink-0" />
+          )}
+          {feedback.message}
+        </div>
+      )}
 
-        {status?.is_connected ? (
-          <>
-            {/* Connection status */}
-            <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-100">
-              <div className="flex items-center gap-2">
-                <Link2 className="w-4 h-4 text-green-600" />
-                <span className="text-sm text-green-700 font-medium">Connected</span>
-              </div>
-              {status.connected_at && (
-                <span className="text-xs text-green-600">
-                  since {formatDate(status.connected_at)}
-                </span>
-              )}
+      {status?.is_connected ? (
+        <>
+          {/* Connection status */}
+          <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-100">
+            <div className="flex items-center gap-2">
+              <Link2 className="w-4 h-4 text-green-600" />
+              <span className="text-sm text-green-700 font-medium">Connected</span>
             </div>
-
-            {/* Sites list */}
-            {status.sites && status.sites.length > 0 && (
-              <div>
-                <p className="text-xs uppercase tracking-widest text-gray-400 font-sans mb-2">
-                  Your Properties ({status.sites.length})
-                </p>
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {status.sites.map((site) => (
-                    <div
-                      key={site.site_url}
-                      className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg border border-gray-100"
-                    >
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <Globe className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-                        <span className="text-sm text-gray-700 truncate">{site.site_url}</span>
-                      </div>
-                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded flex-shrink-0 ml-2">
-                        {getPermissionLabel(site.permission_level)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+            {status.connected_at && (
+              <span className="text-xs text-green-600">
+                since {formatDate(status.connected_at)}
+              </span>
             )}
+          </div>
 
-            {status.sites && status.sites.length === 0 && (
-              <p className="text-sm text-gray-500 py-2">
-                No properties found. Add sites to your Google Search Console first.
+          {/* Sites list */}
+          {status.sites && status.sites.length > 0 && (
+            <div>
+              <p className="text-xs uppercase tracking-widest text-gray-400 font-sans mb-2">
+                Your Properties ({status.sites.length})
               </p>
-            )}
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {status.sites.map((site) => (
+                  <div
+                    key={site.site_url}
+                    className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg border border-gray-100"
+                  >
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <Globe className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                      <span className="text-sm text-gray-700 truncate">{site.site_url}</span>
+                    </div>
+                    <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded flex-shrink-0 ml-2">
+                      {getPermissionLabel(site.permission_level)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
-            {/* Search Keys Panel */}
-            {status.sites && status.sites.length > 0 && (
-              <GSCSearchKeysPanel sites={status.sites} />
-            )}
+          {status.sites && status.sites.length === 0 && (
+            <p className="text-sm text-gray-500 py-2">
+              No properties found. Add sites to your Google Search Console first.
+            </p>
+          )}
+
+          {/* Action buttons */}
+          <div className="flex flex-col gap-2">
+            {/* Use different account button */}
+            <Button
+              variant="outline"
+              onClick={handleReconnect}
+              disabled={connectMutation.isPending}
+              className="w-full"
+            >
+              {connectMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  Connecting...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Use different account
+                </>
+              )}
+            </Button>
 
             {/* Disconnect button */}
             <Button
@@ -205,41 +227,42 @@ export function GSCConnectionContent({ searchParams }: GSCConnectionContentProps
                 </>
               )}
             </Button>
-          </>
-        ) : (
-          <>
-            {/* Not connected */}
-            <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
-              <Link2Off className="w-4 h-4 text-gray-400" />
-              <span className="text-sm text-gray-600">Not connected</span>
-            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          {/* Not connected */}
+          <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
+            <Link2Off className="w-4 h-4 text-gray-400" />
+            <span className="text-sm text-gray-600">Not connected</span>
+          </div>
 
-            <p className="text-sm text-gray-500">
-              Connect your Google Search Console to import keyword data and analyze your search
-              visibility alongside AI responses.
-            </p>
+          <p className="text-sm text-gray-500">
+            Connect your Google Search Console to import keyword data and analyze your search
+            visibility alongside AI responses.
+          </p>
 
-            {/* Connect button */}
-            <Button
-              onClick={handleConnect}
-              disabled={connectMutation.isPending}
-              className="w-full"
-              style={{ backgroundColor: ACCENT_COLOR }}
-            >
-              {connectMutation.isPending ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                  Connecting...
-                </>
-              ) : (
-                <>
-                  <ExternalLink className="w-4 h-4 mr-2" />
-                  Connect Google Search Console
-                </>
-              )}
-            </Button>
-          </>
-        )}
+          {/* Connect button */}
+          <Button
+            onClick={handleConnect}
+            disabled={connectMutation.isPending}
+            className="w-full"
+            style={{ backgroundColor: ACCENT_COLOR }}
+          >
+            {connectMutation.isPending ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                Connecting...
+              </>
+            ) : (
+              <>
+                <ExternalLink className="w-4 h-4 mr-2" />
+                Connect Google Search Console
+              </>
+            )}
+          </Button>
+        </>
+      )}
     </div>
   )
 }
