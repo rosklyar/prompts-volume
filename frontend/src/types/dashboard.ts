@@ -15,6 +15,7 @@ export interface SourceStat {
   domain: string
   citation_count: number
   citation_percent: number
+  coverage_percent?: number
 }
 
 export interface PromptGap {

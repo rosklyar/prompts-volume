@@ -60,6 +60,19 @@ function RankedList({
           </div>
         ) : (
           <div className="max-h-[480px] overflow-y-auto">
+            {/* Column headers */}
+            <div className="flex items-center gap-3 px-3 py-2 border-b border-gray-100 bg-gray-50/50">
+              <span className="w-5 flex-shrink-0" />
+              <span className="flex-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">
+                {isDomain ? "Domain" : "Path"}
+              </span>
+              <span className="w-16 text-[10px] font-medium uppercase tracking-wide text-gray-400 text-center flex-shrink-0">
+                Citations
+              </span>
+              <span className="w-16 text-[10px] font-medium uppercase tracking-wide text-gray-400 text-center flex-shrink-0">
+                Coverage
+              </span>
+            </div>
             {items.map((item, index) => (
               <div
                 key={item.path}
@@ -95,15 +108,20 @@ function RankedList({
                   </p>
                 </div>
 
-                {/* Count badge */}
+                {/* Citations count badge */}
                 <span
-                  className="text-xs font-sans font-medium px-2 py-0.5 rounded-full flex-shrink-0"
+                  className="w-16 text-xs font-sans font-medium px-2 py-0.5 rounded-full flex-shrink-0 text-center"
                   style={{
                     backgroundColor: `${accentColor}15`,
                     color: accentColor,
                   }}
                 >
                   {item.count}
+                </span>
+
+                {/* Coverage percentage */}
+                <span className="w-16 text-xs font-sans font-medium text-gray-500 tabular-nums flex-shrink-0 text-center">
+                  {(item.coverage_percent ?? 0).toFixed(1)}%
                 </span>
               </div>
             ))}

@@ -1,6 +1,6 @@
 """Citation leaderboard builder service."""
 
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from typing import List
 from urllib.parse import urlparse
@@ -21,6 +21,8 @@ class CitationCountItem:
     path: str
     count: int
     is_domain: bool
+    unique_answer_count: int = 0  # answers containing this domain/path
+    coverage_percent: float = 0.0  # (unique_answer_count / total_answers) * 100
 
 
 @dataclass
@@ -30,6 +32,7 @@ class CitationLeaderboard:
     domains: List[CitationCountItem]
     subpaths: List[CitationCountItem]
     total_citations: int
+    total_answers: int = 0
 
 
 class CitationLeaderboardBuilder:
@@ -45,7 +48,9 @@ class CitationLeaderboardBuilder:
         """
         self.max_path_depth = max_path_depth
 
-    def aggregate(self, citations: List[CitationInput]) -> CitationLeaderboard:
+    def aggregate(
+        self, citations_by_answer: List[List[CitationInput]]
+    ) -> CitationLeaderboard:
         """
         Aggregate citations by domain and sub-path.
 
@@ -54,38 +59,68 @@ class CitationLeaderboardBuilder:
         2. Path levels up to max_path_depth (e.g., "rozetka.com.ua/ua/mobile-phones")
 
         Args:
-            citations: List of citation URLs from evaluation results
+            citations_by_answer: List of citation lists (one per answer) to track coverage
 
         Returns:
             CitationLeaderboard with counts per domain and significant paths (separated)
         """
-        if not citations:
-            return CitationLeaderboard(domains=[], subpaths=[], total_citations=0)
+        total_answers = len(citations_by_answer)
+        if total_answers == 0:
+            return CitationLeaderboard(
+                domains=[], subpaths=[], total_citations=0, total_answers=0
+            )
 
         domain_counts: Counter[str] = Counter()
         path_counts: Counter[str] = Counter()
 
-        for citation in citations:
-            paths = self._extract_paths(citation.url)
-            if not paths:
-                continue
+        # Track which answers contain each domain/path for coverage calculation
+        domain_to_answers: dict[str, set[int]] = defaultdict(set)
+        path_to_answers: dict[str, set[int]] = defaultdict(set)
 
-            # First path is always domain-level
-            domain_counts[paths[0]] += 1
+        for answer_idx, citations in enumerate(citations_by_answer):
+            for citation in citations:
+                paths = self._extract_paths(citation.url)
+                if not paths:
+                    continue
 
-            # Remaining paths are sub-paths
-            for path in paths[1:]:
-                path_counts[path] += 1
+                # First path is always domain-level
+                domain_counts[paths[0]] += 1
+                domain_to_answers[paths[0]].add(answer_idx)
 
-        # Build domain items list
+                # Remaining paths are sub-paths
+                for path in paths[1:]:
+                    path_counts[path] += 1
+                    path_to_answers[path].add(answer_idx)
+
+        # Build domain items list with coverage
         domain_items = []
         for path, count in domain_counts.items():
-            domain_items.append(CitationCountItem(path=path, count=count, is_domain=True))
+            unique_answer_count = len(domain_to_answers[path])
+            coverage = (unique_answer_count / total_answers * 100) if total_answers else 0
+            domain_items.append(
+                CitationCountItem(
+                    path=path,
+                    count=count,
+                    is_domain=True,
+                    unique_answer_count=unique_answer_count,
+                    coverage_percent=round(coverage, 1),
+                )
+            )
 
-        # Build subpath items list
+        # Build subpath items list with coverage
         subpath_items = []
         for path, count in path_counts.items():
-            subpath_items.append(CitationCountItem(path=path, count=count, is_domain=False))
+            unique_answer_count = len(path_to_answers[path])
+            coverage = (unique_answer_count / total_answers * 100) if total_answers else 0
+            subpath_items.append(
+                CitationCountItem(
+                    path=path,
+                    count=count,
+                    is_domain=False,
+                    unique_answer_count=unique_answer_count,
+                    coverage_percent=round(coverage, 1),
+                )
+            )
 
         # Sort by count descending, then alphabetically
         domain_items.sort(key=lambda x: (-x.count, x.path))
@@ -95,6 +130,7 @@ class CitationLeaderboardBuilder:
             domains=domain_items,
             subpaths=subpath_items,
             total_citations=sum(domain_counts.values()),
+            total_answers=total_answers,
         )
 
     def _extract_paths(self, url: str) -> List[str]:

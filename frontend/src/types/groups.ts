@@ -162,12 +162,15 @@ export interface CitationCountItem {
   path: string
   count: number
   is_domain: boolean
+  unique_answer_count?: number
+  coverage_percent?: number
 }
 
 export interface CitationLeaderboard {
   domains: CitationCountItem[]
   subpaths: CitationCountItem[]
   total_citations: number
+  total_answers?: number
 }
 
 // ===== Aggregated Citations Types =====
