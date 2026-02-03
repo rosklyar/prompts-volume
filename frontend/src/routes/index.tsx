@@ -1,5 +1,6 @@
-import { createFileRoute, redirect, Link } from "@tanstack/react-router"
+import { createFileRoute, redirect, Link, useSearch, useNavigate } from "@tanstack/react-router"
 import { useState, useRef, useEffect, useCallback, useMemo } from "react"
+import { z } from "zod"
 import useAuth, { isLoggedIn } from "@/hooks/useAuth"
 import { useSimilarPrompts } from "@/hooks/useSimilarPrompts"
 import {
@@ -17,9 +18,15 @@ import { Check } from "lucide-react"
 import type { BrandInfo, CompetitorInfo, TopicInput } from "@/types/groups"
 import { TabSidebar } from "@/components/navigation/TabSidebar"
 import { CitationsView } from "@/components/citations/CitationsView"
+import { DashboardView } from "@/components/dashboard/DashboardView"
+
+const indexSearchSchema = z.object({
+  tab: z.enum(["dashboard", "prompts", "sources"]).optional(),
+})
 
 export const Route = createFileRoute("/")({
   component: PromptDiscovery,
+  validateSearch: indexSearchSchema,
   beforeLoad: async () => {
     if (!isLoggedIn()) {
       throw redirect({ to: "/login" })
@@ -35,6 +42,8 @@ interface PendingPrompts {
 
 function PromptDiscovery() {
   const { logout, isUserLoading, user } = useAuth()
+  const search = useSearch({ from: "/" })
+  const navigate = useNavigate()
   const [searchQuery, setSearchQuery] = useState("")
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState(-1)
@@ -47,8 +56,11 @@ function PromptDiscovery() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [anchorIndex, setAnchorIndex] = useState<number | null>(null)
 
-  // Tab navigation state
-  const [activeTab, setActiveTab] = useState<"prompts" | "sources">("prompts")
+  // Tab navigation state - use URL param if provided, otherwise default to "dashboard"
+  const activeTab = search.tab ?? "dashboard"
+  const setActiveTab = (tab: "dashboard" | "prompts" | "sources") => {
+    navigate({ to: "/", search: { tab } })
+  }
 
   // State for inline group selection
   const [pendingPrompts, setPendingPrompts] = useState<PendingPrompts | null>(null)
@@ -499,7 +511,9 @@ function PromptDiscovery() {
         {/* Main content */}
         <main className="flex-1 pb-12 px-4 md:px-8 lg:px-12">
           <div className="w-full">
-            {activeTab === "prompts" ? (
+            {activeTab === "dashboard" ? (
+              <DashboardView groups={groups} isLoadingGroups={isLoadingGroups} />
+            ) : activeTab === "prompts" ? (
               <>
                 {/* Search container */}
                 <div className="max-w-2xl mx-auto relative mb-10">

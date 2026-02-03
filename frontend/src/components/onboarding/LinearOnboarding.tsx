@@ -812,12 +812,12 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
                     </div>
 
                     <button
-                      onClick={() => navigate({ to: "/" })}
+                      onClick={() => navigate({ to: "/", search: { tab: "prompts" } })}
                       className="px-8 py-3 bg-[#C4553D] text-white font-medium rounded-xl
                         hover:bg-[#B34835] transition-colors shadow-lg shadow-[#C4553D]/20
                         flex items-center gap-2 mx-auto"
                     >
-                      Go to Dashboard
+                      Start Tracking
                       <ChevronRight className="w-4 h-4" />
                     </button>
                   </>

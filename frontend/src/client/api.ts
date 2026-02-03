@@ -45,6 +45,7 @@ import type {
   RequestFreshExecutionResponse,
 } from "@/types/execution"
 import type { AIAssistantListResponse } from "@/types/assistants"
+import type { DashboardResponse } from "@/types/dashboard"
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000"
 
@@ -968,6 +969,27 @@ export const reportsApi = {
     }
     const response = await fetchWithAuth(
       `/reports/api/v1/groups/${groupId}/citations-leaderboard?${params}`
+    )
+    return response.json()
+  },
+
+  /**
+   * Get dashboard analytics aggregated across reports in a time period
+   * @param groupId - The group ID
+   * @param assistantId - AI Assistant ID (required)
+   * @param period - Time period (1d, 7d, 30d) - defaults to 7d
+   */
+  async getDashboard(
+    groupId: number,
+    assistantId: number,
+    period: "1d" | "7d" | "30d" = "7d"
+  ): Promise<DashboardResponse> {
+    const params = new URLSearchParams({
+      assistant_id: assistantId.toString(),
+      period,
+    })
+    const response = await fetchWithAuth(
+      `/reports/api/v1/groups/${groupId}/dashboard?${params}`
     )
     return response.json()
   },
