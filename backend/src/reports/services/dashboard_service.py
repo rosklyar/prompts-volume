@@ -291,13 +291,14 @@ class DashboardService:
             return []
 
         sources: list[SourceStat] = []
-        for domain_item in citation_leaderboard.domains[:10]:  # Top 10 domains
+        for domain_item in citation_leaderboard.domains:  # All domains, no limit
             percent = (domain_item.count / total_citations) * 100
             sources.append(
                 SourceStat(
                     domain=domain_item.path,  # CitationCountItemModel uses 'path' for domain
                     citation_count=domain_item.count,
                     citation_percent=round(percent, 1),
+                    coverage_percent=domain_item.coverage_percent,
                 )
             )
 

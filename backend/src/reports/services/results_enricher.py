@@ -90,19 +90,20 @@ class ReportEnricher:
         Returns:
             CitationLeaderboardModel with domains and subpaths separated
         """
-        all_citations: List[CitationInput] = []
+        citations_by_answer: List[List[CitationInput]] = []
 
         for answer in answers:
-            if not answer:
-                continue
-            raw_citations = answer.get("citations", [])
-            for c in raw_citations:
-                if isinstance(c, dict) and "url" in c:
-                    all_citations.append(
-                        CitationInput(url=c["url"], text=c.get("text", ""))
-                    )
+            answer_citations: List[CitationInput] = []
+            if answer:
+                raw_citations = answer.get("citations", [])
+                for c in raw_citations:
+                    if isinstance(c, dict) and "url" in c:
+                        answer_citations.append(
+                            CitationInput(url=c["url"], text=c.get("text", ""))
+                        )
+            citations_by_answer.append(answer_citations)
 
-        leaderboard = self.citation_builder.aggregate(all_citations)
+        leaderboard = self.citation_builder.aggregate(citations_by_answer)
 
         return CitationLeaderboardModel(
             domains=[
@@ -110,6 +111,8 @@ class ReportEnricher:
                     path=item.path,
                     count=item.count,
                     is_domain=item.is_domain,
+                    unique_answer_count=item.unique_answer_count,
+                    coverage_percent=item.coverage_percent,
                 )
                 for item in leaderboard.domains
             ],
@@ -118,10 +121,13 @@ class ReportEnricher:
                     path=item.path,
                     count=item.count,
                     is_domain=item.is_domain,
+                    unique_answer_count=item.unique_answer_count,
+                    coverage_percent=item.coverage_percent,
                 )
                 for item in leaderboard.subpaths
             ],
             total_citations=leaderboard.total_citations,
+            total_answers=leaderboard.total_answers,
         )
 
     def detect_domain_mentions(

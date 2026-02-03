@@ -528,7 +528,7 @@ export function GroupCard({
               <div className="mt-3">
                 <ReportPanel
                   statistics={selectedReport?.statistics ?? null}
-                  citationLeaderboard={selectedReport?.citation_leaderboard ?? { domains: [], subpaths: [], total_citations: 0 }}
+                  citationLeaderboard={selectedReport?.citation_leaderboard ?? { domains: [], subpaths: [], total_citations: 0, total_answers: 0 }}
                   accentColor={colors.accent}
                   targetBrandName={brand?.name}
                   competitorNames={competitors.map((c) => c.name)}

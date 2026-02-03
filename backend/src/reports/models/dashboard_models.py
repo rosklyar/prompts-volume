@@ -23,6 +23,7 @@ class SourceStat(BaseModel):
     domain: str
     citation_count: int
     citation_percent: float  # relative to total citations
+    coverage_percent: float  # percentage of answers containing this domain
 
 
 class PromptGap(BaseModel):
