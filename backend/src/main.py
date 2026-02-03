@@ -23,6 +23,7 @@ from src.prompt_groups.router import router as prompt_groups_router
 from src.prompts import router as prompts_router
 from src.prompts.batch import batch_router
 from src.reports.router import router as reports_router
+from src.reports.dashboard_router import router as dashboard_router
 
 # Configure logging for application (Uvicorn only configures uvicorn.* loggers)
 logging.basicConfig(
@@ -100,6 +101,7 @@ app.include_router(onboarding_router)
 app.include_router(prompt_groups_router)
 app.include_router(billing_router)
 app.include_router(reports_router)
+app.include_router(dashboard_router)
 app.include_router(brightdata_router)
 app.include_router(gsc_router)
 
