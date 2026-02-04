@@ -1,6 +1,8 @@
 export { AdminUserCard } from "./AdminUserCard"
 export { AdminUserList } from "./AdminUserList"
 export { AdminTopUpModal } from "./AdminTopUpModal"
+export { AdminUserActionsModal } from "./AdminUserActionsModal"
+export { AdminDeleteUserDialog } from "./AdminDeleteUserDialog"
 export { AdminTabs } from "./AdminTabs"
 export { TopicSelector } from "./TopicSelector"
 export { CsvUploadForm } from "./CsvUploadForm"

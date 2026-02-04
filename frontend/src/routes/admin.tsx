@@ -9,6 +9,8 @@ import useAuth from "@/hooks/useAuth"
 import {
   AdminUserList,
   AdminTopUpModal,
+  AdminUserActionsModal,
+  AdminDeleteUserDialog,
   AdminTabs,
   AdminPromptsTab,
   AdminApprovalsTab,
@@ -26,10 +28,12 @@ export const Route = createFileRoute("/admin")({
   },
 })
 
+type ModalType = "actions" | "top-up" | "delete" | null
+
 function AdminDashboard() {
   const { user, isUserLoading } = useAuth()
   const [selectedUser, setSelectedUser] = useState<UserWithBalance | null>(null)
-  const [showTopUpModal, setShowTopUpModal] = useState(false)
+  const [modalType, setModalType] = useState<ModalType>(null)
   const [activeTab, setActiveTab] = useState<AdminTab>("users")
 
   // Get pending prompts count for badge
@@ -37,11 +41,24 @@ function AdminDashboard() {
 
   const handleSelectUser = (user: UserWithBalance) => {
     setSelectedUser(user)
-    setShowTopUpModal(true)
+    setModalType("actions")
   }
 
-  const handleTopUpSuccess = () => {
-    setShowTopUpModal(false)
+  const handleCloseModal = () => {
+    setModalType(null)
+    setSelectedUser(null)
+  }
+
+  const handleTopUp = () => {
+    setModalType("top-up")
+  }
+
+  const handleDelete = () => {
+    setModalType("delete")
+  }
+
+  const handleActionSuccess = () => {
+    setModalType(null)
     setSelectedUser(null)
   }
 
@@ -183,12 +200,31 @@ function AdminDashboard() {
         {activeTab === "prompts" && <AdminPromptsTab />}
         {activeTab === "approvals" && <AdminApprovalsTab />}
 
+        {/* User actions modal */}
+        {modalType === "actions" && selectedUser && (
+          <AdminUserActionsModal
+            user={selectedUser}
+            onClose={handleCloseModal}
+            onTopUp={handleTopUp}
+            onDelete={handleDelete}
+          />
+        )}
+
         {/* Top-up modal */}
-        {showTopUpModal && selectedUser && (
+        {modalType === "top-up" && selectedUser && (
           <AdminTopUpModal
             user={selectedUser}
-            onClose={() => setShowTopUpModal(false)}
-            onSuccess={handleTopUpSuccess}
+            onClose={handleCloseModal}
+            onSuccess={handleActionSuccess}
+          />
+        )}
+
+        {/* Delete confirmation dialog */}
+        {modalType === "delete" && selectedUser && (
+          <AdminDeleteUserDialog
+            user={selectedUser}
+            onClose={handleCloseModal}
+            onSuccess={handleActionSuccess}
           />
         )}
       </main>
