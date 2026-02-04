@@ -112,3 +112,18 @@ export interface BatchApprovalResponse {
   success_count: number
   failed_ids: number[]
 }
+
+// ===== User Deletion Types =====
+
+export interface DatabaseCleanupDetail {
+  database: "users_db" | "prompts_db" | "evals_db"
+  deleted: Record<string, number>
+  orphaned: Record<string, number>
+}
+
+export interface UserDeletionResponse {
+  user_id: string
+  user_email: string
+  total_records_deleted: number
+  details: DatabaseCleanupDetail[]
+}

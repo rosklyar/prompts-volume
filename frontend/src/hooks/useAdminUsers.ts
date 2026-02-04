@@ -46,3 +46,17 @@ export function useAdminTopUp() {
     },
   })
 }
+
+/**
+ * Admin hard delete user mutation
+ */
+export function useAdminDeleteUser() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (userId: string) => adminApi.hardDeleteUser(userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: adminKeys.all })
+    },
+  })
+}

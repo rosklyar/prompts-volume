@@ -4,6 +4,7 @@ Admin-only endpoints for:
 - Creating topics
 - Uploading prompts to topics
 - Approving/rejecting user-submitted prompts
+- Hard-deleting users
 
 Note: GET endpoints for topics, countries, and business domains have been
 moved to the shared reference router (/api/v1/reference/*) for all authenticated users.
@@ -21,6 +22,13 @@ from src.admin.models.api_models import (
     AdminUploadRequest,
     AdminUploadResponse,
     CreateTopicRequest,
+)
+from src.admin.user_deletion import (
+    CannotDeleteSelfError,
+    CannotDeleteSuperuserError,
+    UserDeletionResponse,
+    UserDeletionServiceDep,
+    UserNotFoundError,
 )
 from src.approval.exceptions import ApprovalError, to_http_exception as approval_to_http
 from src.approval.models import (
@@ -273,3 +281,39 @@ async def reject_prompt(
         )
     except ApprovalError as e:
         raise approval_to_http(e)
+
+
+# --- User Management Endpoints ---
+
+
+@router.delete("/users/{user_id}/hard-delete", response_model=UserDeletionResponse)
+async def hard_delete_user(
+    user_id: str,
+    current_user: CurrentUser,
+    deletion_service: UserDeletionServiceDep,
+):
+    """Permanently delete a user and all their data.
+
+    This is a hard delete that removes the user record and all associated data
+    across all 3 databases:
+    - users_db: User, CreditGrant, BalanceTransaction, UserPreferences, OAuthConnection, GSCCredential
+    - prompts_db: PromptGroup (cascades bindings), non-approved Prompts (approved are orphaned)
+    - evals_db: ConsumedEvaluation, GroupReport, ReportRequest, BrightDataBatch, DailyBatchGroupResult
+
+    PromptEvaluations (answers) are preserved as they're reusable across users.
+
+    Protections:
+    - Cannot delete superusers
+    - Cannot delete yourself
+    """
+    try:
+        return await deletion_service.hard_delete_user(
+            user_id,
+            acting_user_id=current_user.id,
+        )
+    except UserNotFoundError:
+        raise HTTPException(status_code=404, detail="User not found")
+    except CannotDeleteSuperuserError:
+        raise HTTPException(status_code=403, detail="Cannot delete superuser accounts")
+    except CannotDeleteSelfError:
+        raise HTTPException(status_code=403, detail="Cannot delete your own account")

@@ -39,6 +39,7 @@ import type {
   PendingPromptsListResponse,
   ApprovalResultResponse,
   BatchApprovalResponse,
+  UserDeletionResponse,
 } from "@/types/admin"
 import type {
   ReportDataResponse,
@@ -826,6 +827,17 @@ export const adminApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt_ids: promptIds }),
     })
+    return response.json()
+  },
+
+  /**
+   * Hard delete a user and all their data (admin only)
+   */
+  async hardDeleteUser(userId: string): Promise<UserDeletionResponse> {
+    const response = await fetchWithAuth(
+      `/admin/api/v1/users/${userId}/hard-delete`,
+      { method: "DELETE" }
+    )
     return response.json()
   },
 }
