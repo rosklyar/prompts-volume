@@ -4,6 +4,8 @@ import type {
   UserPreferencesResponse,
   CompleteOnboardingRequest,
   SavePreferencesRequest,
+  DiscoverCompetitorsRequest,
+  DiscoverCompetitorsResponse,
 } from "@/types/onboarding"
 import type {
   BatchAnalyzeResponse,
@@ -1138,6 +1140,18 @@ export const onboardingApi = {
   async updatePreferences(request: SavePreferencesRequest): Promise<UserPreferencesResponse> {
     const response = await fetchWithAuth("/onboarding/api/v1/preferences", {
       method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    })
+    return response.json()
+  },
+
+  /**
+   * Discover competitors using AI web search
+   */
+  async discoverCompetitors(request: DiscoverCompetitorsRequest): Promise<DiscoverCompetitorsResponse> {
+    const response = await fetchWithAuth("/onboarding/api/v1/discover-competitors", {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request),
     })
