@@ -8,6 +8,40 @@ from pydantic import BaseModel, Field, field_validator
 from src.prompt_groups.models.brand_models import BrandModel, CompetitorModel
 
 
+# ===== Competitor Discovery API Models =====
+
+
+class DiscoverCompetitorsRequest(BaseModel):
+    """Request to discover competitors using AI."""
+
+    country_id: int = Field(..., gt=0, description="Country ID for localized search")
+    business_domain_id: Optional[int] = Field(
+        None, description="Business domain ID for context"
+    )
+    brand: BrandModel = Field(..., description="Brand to find competitors for")
+
+
+class DiscoveredCompetitorResponse(BaseModel):
+    """A discovered competitor with variations."""
+
+    brand_name: str = Field(description="Competitor brand name")
+    domain: Optional[str] = Field(None, description="Competitor website domain")
+    variations: List[str] = Field(
+        default_factory=list, description="Brand name variations for matching"
+    )
+
+
+class DiscoverCompetitorsResponse(BaseModel):
+    """Response containing discovered competitors."""
+
+    competitors: List[DiscoveredCompetitorResponse] = Field(
+        default_factory=list, description="List of discovered competitors"
+    )
+
+
+# ===== Onboarding Status Models =====
+
+
 class OnboardingStatusResponse(BaseModel):
     """Response for onboarding status check."""
 

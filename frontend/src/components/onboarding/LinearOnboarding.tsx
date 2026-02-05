@@ -10,11 +10,8 @@ import {
   MapPin,
   Briefcase,
   Tag,
-  Users,
   ChevronLeft,
   ChevronRight,
-  Plus,
-  X,
   Check,
   Sparkles
 } from "lucide-react"
@@ -25,8 +22,11 @@ import { normalizeDomain } from "@/lib/domain"
 import { TopicSelectionStep } from "./TopicSelectionStep"
 import { PromptSelectionStep } from "./PromptSelectionStep"
 import { GSCOnboardingStep } from "./GSCOnboardingStep"
+import { CompetitorDiscoveryStep } from "./CompetitorDiscoveryStep"
+import { VariationsInput } from "./VariationsInput"
 import type { CompetitorInfo } from "@/types/groups"
 import type { Topic } from "@/types/admin"
+import type { DiscoveredCompetitor } from "@/types/onboarding"
 
 type OnboardingStep = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
 
@@ -36,7 +36,7 @@ const ONBOARDING_STATE_KEY = "onboardingState"
 interface BrandData {
   name: string
   domain: string
-  variations: string
+  variations: string[]
 }
 
 interface SavedOnboardingState {
@@ -47,6 +47,11 @@ interface SavedOnboardingState {
   selectedTopics: Topic[]
   selectedPromptsByTopic: Record<number, number[]>
   groupsCreatedCount: number
+  // Discovery state
+  discoveredCompetitors: DiscoveredCompetitor[]
+  selectedDiscovered: number[]
+  editedDiscovered: Record<number, CompetitorInfo>
+  isDiscoveryDone: boolean
 }
 
 interface LinearOnboardingProps {
@@ -106,14 +111,21 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
   const [countryId, setCountryId] = useState<number | undefined>(savedState?.countryId)
   const [businessDomainId, setBusinessDomainId] = useState<number | undefined>(savedState?.businessDomainId)
   const [brand, setBrand] = useState<BrandData>(
-    savedState?.brand || { name: "", domain: "", variations: "" }
+    savedState?.brand || { name: "", domain: "", variations: [] }
   )
-  const [brandVariationsTouched, setBrandVariationsTouched] = useState(false)
   const [competitors, setCompetitors] = useState<CompetitorInfo[]>(savedState?.competitors || [])
-  const [newCompName, setNewCompName] = useState("")
-  const [newCompDomain, setNewCompDomain] = useState("")
-  const [newCompVariations, setNewCompVariations] = useState("")
-  const [newCompVariationsTouched, setNewCompVariationsTouched] = useState(false)
+
+  // Discovery state
+  const [discoveredCompetitors, setDiscoveredCompetitors] = useState<DiscoveredCompetitor[]>(
+    savedState?.discoveredCompetitors || []
+  )
+  const [selectedDiscovered, setSelectedDiscovered] = useState<Set<number>>(
+    new Set(savedState?.selectedDiscovered || [])
+  )
+  const [editedDiscovered, setEditedDiscovered] = useState<Record<number, CompetitorInfo>>(
+    savedState?.editedDiscovered || {}
+  )
+  const [isDiscoveryDone, setIsDiscoveryDone] = useState(savedState?.isDiscoveryDone || false)
 
   // Topic/Prompt selection state (steps 5-6) - restore from saved state
   const [selectedTopics, setSelectedTopics] = useState<Topic[]>(savedState?.selectedTopics || [])
@@ -154,49 +166,72 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
     }
   }, [currentStep])
 
-  // Brand name change with auto-fill variations
+  // Brand name change
   const handleBrandNameChange = (value: string) => {
     setBrand((prev) => ({ ...prev, name: value }))
-    if (!brandVariationsTouched) {
-      setBrand((prev) => ({ ...prev, variations: value.trim() }))
-    }
   }
+
+  // Brand variations change
+  const handleBrandVariationsChange = useCallback((variations: string[]) => {
+    setBrand((prev) => ({ ...prev, variations }))
+  }, [])
 
   // Competitor handlers
-  const handleNewCompNameChange = (value: string) => {
-    setNewCompName(value)
-    if (!newCompVariationsTouched) {
-      setNewCompVariations(value.trim())
-    }
-  }
+  const handleAddCompetitor = useCallback((competitor: CompetitorInfo) => {
+    setCompetitors((prev) => [...prev, competitor])
+  }, [])
 
-  const handleAddCompetitor = () => {
-    if (!newCompName.trim()) return
-    if (competitors.length >= 10) return
+  const handleRemoveCompetitor = useCallback((index: number) => {
+    setCompetitors((prev) => prev.filter((_, i) => i !== index))
+  }, [])
 
-    const variations = newCompVariations
-      .split(",")
-      .map((v) => v.trim())
-      .filter(Boolean)
+  // Discovery handlers
+  const handleDiscoveryComplete = useCallback((competitors: DiscoveredCompetitor[]) => {
+    setDiscoveredCompetitors(competitors)
+    // Select all by default
+    setSelectedDiscovered(new Set(competitors.map((_, idx) => idx)))
+    setIsDiscoveryDone(true)
+  }, [])
 
-    setCompetitors([
-      ...competitors,
-      {
-        name: newCompName.trim(),
-        domain: normalizeDomain(newCompDomain) || null,
-        variations,
-      },
-    ])
+  const handleToggleDiscoveredSelection = useCallback((index: number) => {
+    setSelectedDiscovered((prev) => {
+      const next = new Set(prev)
+      if (next.has(index)) {
+        next.delete(index)
+      } else {
+        next.add(index)
+      }
+      return next
+    })
+  }, [])
 
-    setNewCompName("")
-    setNewCompDomain("")
-    setNewCompVariations("")
-    setNewCompVariationsTouched(false)
-  }
+  const handleUpdateDiscovered = useCallback((index: number, updated: CompetitorInfo) => {
+    setEditedDiscovered((prev) => ({
+      ...prev,
+      [index]: updated,
+    }))
+  }, [])
 
-  const handleRemoveCompetitor = (index: number) => {
-    setCompetitors(competitors.filter((_, i) => i !== index))
-  }
+  // Get merged competitors list (manual + selected discovered)
+  const getFinalCompetitors = useCallback((): CompetitorInfo[] => {
+    // Start with manually added competitors
+    const manual = [...competitors]
+
+    // Add selected discovered competitors (with any edits applied)
+    const discovered: CompetitorInfo[] = []
+    discoveredCompetitors.forEach((dc, idx) => {
+      if (selectedDiscovered.has(idx)) {
+        const edited = editedDiscovered[idx]
+        discovered.push(edited || {
+          name: dc.brand_name,
+          domain: dc.domain,
+          variations: dc.variations,
+        })
+      }
+    })
+
+    return [...manual, ...discovered].slice(0, 10) // Max 10
+  }, [competitors, discoveredCompetitors, selectedDiscovered, editedDiscovered])
 
   // Topic selection handlers
   const handleToggleTopic = useCallback((topic: Topic) => {
@@ -270,12 +305,10 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
     const brandInfo = {
       name: brand.name.trim(),
       domain: normalizeDomain(brand.domain) || null,
-      variations: brand.variations
-        .split(",")
-        .map((v) => v.trim())
-        .filter(Boolean),
+      variations: [brand.name.trim().toLowerCase(), ...brand.variations],
     }
 
+    const finalCompetitors = getFinalCompetitors()
     let createdCount = 0
 
     for (const topic of topicsWithPrompts) {
@@ -288,7 +321,7 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
           title: topic.title,
           topic: { existing_topic_id: topic.id },
           brand: brandInfo,
-          competitors: competitors.length > 0 ? competitors : undefined,
+          competitors: finalCompetitors.length > 0 ? finalCompetitors : undefined,
           countryId,
         })
 
@@ -306,7 +339,7 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
     }
 
     return createdCount
-  }, [selectedTopics, selectedPromptsByTopic, brand, competitors, countryId, createGroup, addPromptsToGroup])
+  }, [selectedTopics, selectedPromptsByTopic, brand, countryId, createGroup, addPromptsToGroup, getFinalCompetitors])
 
   // Submit handler
   const handleSubmit = useCallback(async () => {
@@ -319,10 +352,7 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
       const groupsCreated = await createGroupsFromSelection()
       setGroupsCreatedCount(groupsCreated)
 
-      const variations = brand.variations
-        .split(",")
-        .map((v) => v.trim())
-        .filter(Boolean)
+      const finalCompetitors = getFinalCompetitors()
 
       // Complete onboarding
       await completeOnboarding.mutateAsync({
@@ -331,9 +361,9 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
         default_brand: {
           name: brand.name.trim(),
           domain: normalizeDomain(brand.domain) || null,
-          variations,
+          variations: [brand.name.trim().toLowerCase(), ...brand.variations],
         },
-        default_competitors: competitors.length > 0 ? competitors : undefined,
+        default_competitors: finalCompetitors.length > 0 ? finalCompetitors : undefined,
       })
 
       // Go to complete step
@@ -344,7 +374,7 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
     } finally {
       setIsCreatingGroups(false)
     }
-  }, [brand, competitors, countryId, businessDomainId, completeOnboarding, createGroupsFromSelection])
+  }, [brand, countryId, businessDomainId, completeOnboarding, createGroupsFromSelection, getFinalCompetitors])
 
   // Handle step 4 continue -> go to topics or GSC
   const handleStep4Continue = useCallback(() => {
@@ -391,9 +421,13 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
       selectedTopics,
       selectedPromptsByTopic,
       groupsCreatedCount,
+      discoveredCompetitors,
+      selectedDiscovered: Array.from(selectedDiscovered),
+      editedDiscovered,
+      isDiscoveryDone,
     }
     sessionStorage.setItem(ONBOARDING_STATE_KEY, JSON.stringify(stateToSave))
-  }, [countryId, businessDomainId, brand, competitors, selectedTopics, selectedPromptsByTopic, groupsCreatedCount])
+  }, [countryId, businessDomainId, brand, competitors, selectedTopics, selectedPromptsByTopic, groupsCreatedCount, discoveredCompetitors, selectedDiscovered, editedDiscovered, isDiscoveryDone])
 
   // Get the appropriate handler for each step's continue button
   const getStepContinueHandler = (step: number) => {
@@ -421,7 +455,7 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
 
   return (
     <div className="min-h-screen bg-[#FDFBF7] font-['DM_Sans']">
-      <div className="max-w-xl mx-auto px-4 py-12">
+      <div className="max-w-2xl mx-auto px-4 py-12">
         {/* Header */}
         <div className="text-center mb-6">
           <h1 className="font-['Fraunces'] text-3xl font-semibold text-[#1F2937] mb-2">
@@ -592,121 +626,41 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
                     <label className="block text-xs uppercase tracking-widest text-gray-400 mb-2">
                       Name variations <span className="text-gray-300">(optional)</span>
                     </label>
-                    <input
-                      type="text"
-                      value={brand.variations}
-                      onChange={(e) => {
-                        setBrand((prev) => ({ ...prev, variations: e.target.value }))
-                        setBrandVariationsTouched(true)
-                      }}
-                      placeholder="Nike, Nike Inc, Just Do It"
-                      className="w-full px-4 py-3 text-base bg-white border-2 border-gray-200 rounded-xl
-                        focus:outline-none focus:ring-2 focus:ring-[#C4553D]/30 focus:border-[#C4553D]
-                        placeholder:text-gray-400"
+                    <VariationsInput
+                      variations={brand.variations}
+                      onChange={handleBrandVariationsChange}
+                      primaryValue={brand.name.trim() || undefined}
+                      placeholder="+ add variation"
                     />
                     <p className="mt-1.5 text-xs text-gray-400">
-                      Different ways people might refer to your brand, comma-separated
+                      Different ways people might refer to your brand
                     </p>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Step 4: Competitors */}
-            {currentStep === 4 && (
-              <div className="animate-in fade-in duration-300">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-10 h-10 rounded-full bg-[#C4553D]/10 flex items-center justify-center">
-                    <Users className="w-5 h-5 text-[#C4553D]" />
-                  </div>
-                  <div>
-                    <h2 className="font-['Fraunces'] text-xl font-semibold text-[#1F2937]">
-                      Add competitors
-                    </h2>
-                    <p className="text-sm text-[#6B7280]">
-                      Track how your brand compares · Optional
-                    </p>
-                  </div>
-                </div>
-
-                {/* Existing competitors */}
-                {competitors.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {competitors.map((comp, index) => (
-                      <div
-                        key={index}
-                        className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl"
-                      >
-                        <span className="text-sm font-medium text-gray-700">{comp.name}</span>
-                        {comp.domain && (
-                          <span className="text-xs text-gray-400">{comp.domain}</span>
-                        )}
-                        <button
-                          onClick={() => handleRemoveCompetitor(index)}
-                          className="p-1 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Add competitor form */}
-                {competitors.length < 10 && (
-                  <div className="p-4 bg-gray-50/70 rounded-xl border-2 border-dashed border-gray-200 space-y-3">
-                    <input
-                      type="text"
-                      value={newCompName}
-                      onChange={(e) => handleNewCompNameChange(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleAddCompetitor()}
-                      placeholder="Competitor name"
-                      className="w-full px-4 py-2.5 text-sm bg-white border border-gray-200 rounded-lg
-                        focus:outline-none focus:ring-2 focus:ring-[#C4553D]/30 focus:border-[#C4553D]"
-                    />
-                    <div className="relative">
-                      <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                      <input
-                        type="text"
-                        value={newCompDomain}
-                        onChange={(e) => setNewCompDomain(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && handleAddCompetitor()}
-                        placeholder="Website (optional)"
-                        className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-gray-200 rounded-lg
-                          focus:outline-none focus:ring-2 focus:ring-[#C4553D]/30 focus:border-[#C4553D]"
-                      />
-                    </div>
-                    <input
-                      type="text"
-                      value={newCompVariations}
-                      onChange={(e) => {
-                        setNewCompVariations(e.target.value)
-                        setNewCompVariationsTouched(true)
-                      }}
-                      onKeyDown={(e) => e.key === "Enter" && handleAddCompetitor()}
-                      placeholder="Name variations (optional)"
-                      className="w-full px-4 py-2.5 text-sm bg-white border border-gray-200 rounded-lg
-                        focus:outline-none focus:ring-2 focus:ring-[#C4553D]/30 focus:border-[#C4553D]"
-                    />
-                    <button
-                      onClick={handleAddCompetitor}
-                      disabled={!newCompName.trim()}
-                      className="w-full py-2.5 text-sm font-medium text-white bg-[#C4553D] rounded-lg
-                        hover:bg-[#B34835] transition-colors disabled:opacity-40 disabled:cursor-not-allowed
-                        flex items-center justify-center gap-2"
-                    >
-                      <Plus className="w-4 h-4" />
-                      Add competitor
-                    </button>
-                  </div>
-                )}
-
-                {competitors.length >= 10 && (
-                  <p className="text-sm text-gray-500 text-center">
-                    Maximum 10 competitors reached
-                  </p>
-                )}
-              </div>
+            {/* Step 4: Competitors with Discovery */}
+            {currentStep === 4 && countryId && (
+              <CompetitorDiscoveryStep
+                countryId={countryId}
+                businessDomainId={businessDomainId}
+                brand={{
+                  name: brand.name.trim(),
+                  domain: normalizeDomain(brand.domain) || null,
+                  variations: [brand.name.trim().toLowerCase(), ...brand.variations],
+                }}
+                competitors={competitors}
+                onAddCompetitor={handleAddCompetitor}
+                onRemoveCompetitor={handleRemoveCompetitor}
+                discoveredCompetitors={discoveredCompetitors}
+                selectedDiscovered={selectedDiscovered}
+                editedDiscovered={editedDiscovered}
+                isDiscoveryDone={isDiscoveryDone}
+                onDiscoveryComplete={handleDiscoveryComplete}
+                onToggleDiscoveredSelection={handleToggleDiscoveredSelection}
+                onUpdateDiscovered={handleUpdateDiscovered}
+              />
             )}
 
             {/* Step 5: Topic Selection */}
@@ -739,12 +693,9 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
                 brand={{
                   name: brand.name.trim(),
                   domain: normalizeDomain(brand.domain) || null,
-                  variations: brand.variations
-                    .split(",")
-                    .map((v) => v.trim())
-                    .filter(Boolean),
+                  variations: [brand.name.trim().toLowerCase(), ...brand.variations],
                 }}
-                competitors={competitors}
+                competitors={getFinalCompetitors()}
                 onComplete={handleGSCComplete}
                 onSkip={handleGSCSkip}
                 onBeforeConnect={saveOnboardingState}
@@ -791,7 +742,10 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
                         <div className="flex items-center gap-2">
                           <span className="text-gray-400">Competitors:</span>
                           <span className="text-gray-700">
-                            {competitors.length === 0 ? "None" : competitors.length}
+                            {(() => {
+                              const total = competitors.length + selectedDiscovered.size
+                              return total === 0 ? "None" : total
+                            })()}
                           </span>
                         </div>
                         {(groupsCreatedCount > 0 || gscGroupCreated) && (

@@ -27,3 +27,21 @@ export interface SavePreferencesRequest {
   default_brand: BrandInfo
   default_competitors?: CompetitorInfo[]
 }
+
+// ===== Competitor Discovery Types =====
+
+export interface DiscoverCompetitorsRequest {
+  country_id: number
+  business_domain_id?: number
+  brand: BrandInfo
+}
+
+export interface DiscoveredCompetitor {
+  brand_name: string
+  domain: string | null
+  variations: string[]
+}
+
+export interface DiscoverCompetitorsResponse {
+  competitors: DiscoveredCompetitor[]
+}

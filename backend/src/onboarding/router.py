@@ -40,11 +40,15 @@ from src.gsc.services.token_manager import TokenManager
 from src.onboarding.exceptions import OnboardingError, to_http_exception
 from src.onboarding.models.api_models import (
     CompleteOnboardingRequest,
+    DiscoverCompetitorsRequest,
+    DiscoverCompetitorsResponse,
+    DiscoveredCompetitorResponse,
     OnboardingStatusResponse,
     SavePreferencesRequest,
     UserPreferencesResponse,
 )
 from src.onboarding.services import OnboardingServiceDep, PreferencesServiceDep
+from src.onboarding.services.competitor_discovery.deps import CompetitorDiscoveryServiceDep
 from src.prompt_groups.models.brand_models import BrandModel, CompetitorModel
 from src.prompt_groups.services.prompt_group_binding_service import PromptGroupBindingService
 from src.prompt_groups.services.prompt_group_service import PromptGroupService
@@ -187,6 +191,56 @@ def _build_preferences_response(prefs) -> UserPreferencesResponse:
             has_preferences=prefs.default_brand is not None,
         ),
     )
+
+
+# ===== Competitor Discovery Endpoints =====
+
+
+@router.post("/discover-competitors", response_model=DiscoverCompetitorsResponse)
+async def discover_competitors(
+    request: DiscoverCompetitorsRequest,
+    current_user: CurrentUser,
+    prompts_session: SessionDep,
+    competitor_service: CompetitorDiscoveryServiceDep,
+):
+    """Discover competitors using AI-powered web search.
+
+    Uses the brand name and domain to find relevant competitors
+    in the specified country. Returns competitors with name variations
+    for brand matching.
+    """
+    # Get country and languages for localized search
+    country_service = get_country_service(prompts_session)
+    country = await country_service.get_by_id(request.country_id)
+    if not country:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Country not found",
+        )
+
+    # Extract language names
+    languages = [lang.name for lang in country.languages] if country.languages else ["English"]
+
+    # Discover competitors
+    discovered = await competitor_service.discover_competitors(
+        brand_name=request.brand.name,
+        brand_domain=request.brand.domain or "",
+        country_name=country.name,
+        languages=languages,
+        num_competitors=5,
+    )
+
+    # Convert to response model
+    competitors = [
+        DiscoveredCompetitorResponse(
+            brand_name=c.brand_name,
+            domain=c.domain,
+            variations=c.variations,
+        )
+        for c in discovered
+    ]
+
+    return DiscoverCompetitorsResponse(competitors=competitors)
 
 
 # ===== GSC Onboarding Endpoints =====
