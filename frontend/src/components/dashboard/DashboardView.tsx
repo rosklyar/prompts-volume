@@ -3,14 +3,13 @@
  * Assembles GroupChipsSelector + AssistantSelector + DateRangePicker + Dashboard cards
  */
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import type { GroupSummary } from "@/types/groups"
-import type { DashboardPeriod } from "@/types/dashboard"
 import { useDashboardData, type DateRangeOption } from "@/hooks/useDashboardData"
 import { useAssistants } from "@/hooks/useAssistants"
+import { useFilterPreferences } from "@/hooks/useFilterPreferences"
 import { GroupChipsSelector } from "@/components/citations/GroupChipsSelector"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
-import type { DateRange } from "@/types/date-range"
 import { DashboardSkeleton } from "./DashboardSkeleton"
 import { BrandVisibilityCard } from "./BrandVisibilityCard"
 import { CompetitorsList } from "./CompetitorsList"
@@ -24,23 +23,35 @@ interface DashboardViewProps {
 
 export function DashboardView({ groups, isLoadingGroups }: DashboardViewProps) {
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
-  const [assistantId, setAssistantId] = useState<number | undefined>(undefined)
-  // Default to 30d preset
-  const [activePreset, setActivePreset] = useState<DashboardPeriod | null>("30d")
-  const [dateRange, setDateRange] = useState<DateRange | null>(null)
+
+  const {
+    activePreset,
+    dateRange,
+    assistantId,
+    setAssistantId,
+    handleDateRangeChange,
+  } = useFilterPreferences()
 
   const { data: assistantsData, isLoading: isLoadingAssistants } = useAssistants()
-  const assistants = assistantsData?.assistants ?? []
+  const assistants = useMemo(() => assistantsData?.assistants ?? [], [assistantsData?.assistants])
 
   // Auto-select first group when groups load
   if (groups.length > 0 && selectedGroupId === null) {
     setSelectedGroupId(groups[0].id)
   }
 
-  // Set default assistant to first one (usually ChatGPT)
-  if (assistants.length > 0 && assistantId === undefined) {
-    setAssistantId(assistants[0].id)
-  }
+  // Validate stored assistant exists in current list, otherwise reset to first
+  useEffect(() => {
+    if (assistants.length === 0) return
+    if (assistantId === undefined) {
+      setAssistantId(assistants[0].id)
+    } else {
+      const exists = assistants.some(a => a.id === assistantId)
+      if (!exists) {
+        setAssistantId(assistants[0].id)
+      }
+    }
+  }, [assistants, assistantId, setAssistantId])
 
   // Convert date range state to API option
   const dateRangeOption: DateRangeOption | undefined = useMemo(() => {
@@ -55,11 +66,6 @@ export function DashboardView({ groups, isLoadingGroups }: DashboardViewProps) {
     }
     return undefined // Will default to 30d on backend
   }, [activePreset, dateRange])
-
-  const handleDateRangeChange = (range: DateRange, preset: string | null) => {
-    setDateRange(range)
-    setActivePreset(preset as DashboardPeriod | null)
-  }
 
   const { data, isLoading } = useDashboardData(selectedGroupId, assistantId, dateRangeOption)
 

@@ -3,17 +3,15 @@
  * Assembles GroupChipsSelector + CitationFilters + CitationLeaderboardDisplay
  */
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import type { GroupSummary } from "@/types/groups"
 import { useCitationsLeaderboard, type CitationsDateRangeOption } from "@/hooks/useCitationsLeaderboard"
 import { useAssistants } from "@/hooks/useAssistants"
+import { useFilterPreferences } from "@/hooks/useFilterPreferences"
 import { getGroupColor } from "@/components/groups/constants"
 import { GroupChipsSelector } from "./GroupChipsSelector"
 import { CitationFilters } from "./CitationFilters"
 import { CitationLeaderboardDisplay } from "./CitationLeaderboardDisplay"
-import type { DateRange } from "@/types/date-range"
-
-type PresetPeriod = "1d" | "7d" | "30d"
 
 interface CitationsViewProps {
   groups: GroupSummary[]
@@ -22,13 +20,17 @@ interface CitationsViewProps {
 
 export function CitationsView({ groups, isLoadingGroups }: CitationsViewProps) {
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
-  // Default to 30d preset
-  const [activePreset, setActivePreset] = useState<PresetPeriod | null>("30d")
-  const [dateRange, setDateRange] = useState<DateRange | null>(null)
-  const [assistantId, setAssistantId] = useState<number | undefined>(undefined)
+
+  const {
+    activePreset,
+    dateRange,
+    assistantId,
+    setAssistantId,
+    handleDateRangeChange,
+  } = useFilterPreferences()
 
   const { data: assistantsData, isLoading: isLoadingAssistants } = useAssistants()
-  const assistants = assistantsData?.assistants ?? []
+  const assistants = useMemo(() => assistantsData?.assistants ?? [], [assistantsData?.assistants])
 
   // Convert date range state to API option
   const dateRangeOption: CitationsDateRangeOption = useMemo(() => {
@@ -45,11 +47,6 @@ export function CitationsView({ groups, isLoadingGroups }: CitationsViewProps) {
     return { period: "30d" }
   }, [activePreset, dateRange])
 
-  const handleDateRangeChange = (range: DateRange, preset: string | null) => {
-    setDateRange(range)
-    setActivePreset(preset as PresetPeriod | null)
-  }
-
   const { data, isLoading } = useCitationsLeaderboard(
     selectedGroupId,
     dateRangeOption,
@@ -60,6 +57,19 @@ export function CitationsView({ groups, isLoadingGroups }: CitationsViewProps) {
   if (groups.length > 0 && selectedGroupId === null) {
     setSelectedGroupId(groups[0].id)
   }
+
+  // Validate stored assistant exists in current list, otherwise reset to first
+  useEffect(() => {
+    if (assistants.length === 0) return
+    if (assistantId === undefined) {
+      setAssistantId(assistants[0].id)
+    } else {
+      const exists = assistants.some(a => a.id === assistantId)
+      if (!exists) {
+        setAssistantId(assistants[0].id)
+      }
+    }
+  }, [assistants, assistantId, setAssistantId])
 
   // Determine accent color based on selected group index
   const selectedGroupIndex = groups.findIndex((g) => g.id === selectedGroupId)
