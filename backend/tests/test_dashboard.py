@@ -259,7 +259,9 @@ def test_dashboard_analytics(
 
     # Verify basic structure
     assert data["group_id"] == group_id
-    assert data["period"] == "7d"  # Default period
+    assert data["preset_used"] == "30d"  # Default period is now 30d
+    assert "from_date" in data
+    assert "to_date" in data
     assert data["reports_included"] == 1
     assert data["assistant_name"] == "ChatGPT"
     assert data["brand_name"] == brand_name
@@ -314,7 +316,9 @@ def test_dashboard_no_report_returns_empty(
 
     data = resp.json()
     assert data["group_id"] == group_id
-    assert data["period"] == "7d"
+    assert data["preset_used"] == "30d"  # Default period is now 30d
+    assert "from_date" in data
+    assert "to_date" in data
     assert data["reports_included"] == 0
     assert data["brand_visibility_percent"] == 0.0
     assert data["competitors"] == []
@@ -404,7 +408,9 @@ def test_dashboard_period_parameter(
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert data["period"] == "7d"
+    assert data["preset_used"] == "7d"
+    assert "from_date" in data
+    assert "to_date" in data
     assert data["reports_included"] == 1
 
     # Test with 1d period - should also include (just created)
@@ -414,7 +420,7 @@ def test_dashboard_period_parameter(
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert data["period"] == "1d"
+    assert data["preset_used"] == "1d"
     assert data["reports_included"] == 1
 
     # Test with 30d period
@@ -424,7 +430,7 @@ def test_dashboard_period_parameter(
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert data["period"] == "30d"
+    assert data["preset_used"] == "30d"
     assert data["reports_included"] == 1
 
 

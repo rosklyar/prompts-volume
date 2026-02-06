@@ -1,5 +1,6 @@
 """Pydantic models for dashboard API endpoints."""
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel
@@ -37,7 +38,9 @@ class DashboardResponse(BaseModel):
     """Response for the dashboard endpoint."""
 
     group_id: int
-    period: PeriodLiteral
+    from_date: datetime
+    to_date: datetime
+    preset_used: PeriodLiteral | None
     reports_included: int
     assistant_name: str
 

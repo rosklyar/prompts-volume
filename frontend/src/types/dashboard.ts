@@ -4,6 +4,12 @@
 
 export type DashboardPeriod = "1d" | "7d" | "30d"
 
+/** Date range for API requests */
+export interface DateRangeParams {
+  from_date: string  // ISO 8601
+  to_date: string    // ISO 8601
+}
+
 export interface CompetitorVisibility {
   name: string
   domain: string | null
@@ -25,7 +31,9 @@ export interface PromptGap {
 
 export interface DashboardResponse {
   group_id: number
-  period: DashboardPeriod
+  from_date: string      // ISO 8601
+  to_date: string        // ISO 8601
+  preset_used: DashboardPeriod | null
   reports_included: number
   assistant_name: string
   brand_name: string | null

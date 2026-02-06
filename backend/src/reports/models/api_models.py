@@ -292,7 +292,9 @@ class AggregatedCitationsResponse(BaseModel):
     """Aggregated citation leaderboard across multiple reports."""
 
     group_id: int
-    period: str
+    from_date: datetime
+    to_date: datetime
+    preset_used: str | None
     assistant_id: int | None
     reports_included: int
     citation_leaderboard: CitationLeaderboardModel

@@ -971,13 +971,22 @@ export const reportsApi = {
 
   /**
    * Get aggregated citation leaderboard across reports for a group
+   * @param groupId - The group ID
+   * @param options - Either period (preset) OR fromDate/toDate (custom range)
+   * @param assistantId - Optional assistant ID filter
    */
   async getCitationsLeaderboard(
     groupId: number,
-    period: "1d" | "7d" | "30d",
+    options: { period: "1d" | "7d" | "30d" } | { fromDate: string; toDate: string },
     assistantId?: number
   ): Promise<AggregatedCitationsResponse> {
-    const params = new URLSearchParams({ period })
+    const params = new URLSearchParams()
+    if ("period" in options) {
+      params.set("period", options.period)
+    } else {
+      params.set("from_date", options.fromDate)
+      params.set("to_date", options.toDate)
+    }
     if (assistantId !== undefined) {
       params.set("assistant_id", assistantId.toString())
     }
@@ -991,17 +1000,25 @@ export const reportsApi = {
    * Get dashboard analytics aggregated across reports in a time period
    * @param groupId - The group ID
    * @param assistantId - AI Assistant ID (required)
-   * @param period - Time period (1d, 7d, 30d) - defaults to 7d
+   * @param options - Either period (preset) OR fromDate/toDate (custom range). Defaults to last 30 days.
    */
   async getDashboard(
     groupId: number,
     assistantId: number,
-    period: "1d" | "7d" | "30d" = "7d"
+    options?: { period: "1d" | "7d" | "30d" } | { fromDate: string; toDate: string }
   ): Promise<DashboardResponse> {
     const params = new URLSearchParams({
       assistant_id: assistantId.toString(),
-      period,
     })
+    if (options) {
+      if ("period" in options) {
+        params.set("period", options.period)
+      } else {
+        params.set("from_date", options.fromDate)
+        params.set("to_date", options.toDate)
+      }
+    }
+    // If no options provided, backend defaults to last 30 days
     const response = await fetchWithAuth(
       `/reports/api/v1/groups/${groupId}/dashboard?${params}`
     )

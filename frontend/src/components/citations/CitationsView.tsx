@@ -3,14 +3,17 @@
  * Assembles GroupChipsSelector + CitationFilters + CitationLeaderboardDisplay
  */
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import type { GroupSummary } from "@/types/groups"
-import { useCitationsLeaderboard } from "@/hooks/useCitationsLeaderboard"
+import { useCitationsLeaderboard, type CitationsDateRangeOption } from "@/hooks/useCitationsLeaderboard"
 import { useAssistants } from "@/hooks/useAssistants"
 import { getGroupColor } from "@/components/groups/constants"
 import { GroupChipsSelector } from "./GroupChipsSelector"
 import { CitationFilters } from "./CitationFilters"
 import { CitationLeaderboardDisplay } from "./CitationLeaderboardDisplay"
+import type { DateRange } from "@/types/date-range"
+
+type PresetPeriod = "1d" | "7d" | "30d"
 
 interface CitationsViewProps {
   groups: GroupSummary[]
@@ -19,15 +22,37 @@ interface CitationsViewProps {
 
 export function CitationsView({ groups, isLoadingGroups }: CitationsViewProps) {
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
-  const [period, setPeriod] = useState<"1d" | "7d" | "30d">("7d")
+  // Default to 30d preset
+  const [activePreset, setActivePreset] = useState<PresetPeriod | null>("30d")
+  const [dateRange, setDateRange] = useState<DateRange | null>(null)
   const [assistantId, setAssistantId] = useState<number | undefined>(undefined)
 
   const { data: assistantsData, isLoading: isLoadingAssistants } = useAssistants()
   const assistants = assistantsData?.assistants ?? []
 
+  // Convert date range state to API option
+  const dateRangeOption: CitationsDateRangeOption = useMemo(() => {
+    if (activePreset) {
+      return { period: activePreset }
+    }
+    if (dateRange) {
+      return {
+        fromDate: dateRange.from.toISOString(),
+        toDate: dateRange.to.toISOString(),
+      }
+    }
+    // Default to 30d
+    return { period: "30d" }
+  }, [activePreset, dateRange])
+
+  const handleDateRangeChange = (range: DateRange, preset: string | null) => {
+    setDateRange(range)
+    setActivePreset(preset as PresetPeriod | null)
+  }
+
   const { data, isLoading } = useCitationsLeaderboard(
     selectedGroupId,
-    period,
+    dateRangeOption,
     assistantId
   )
 
@@ -56,8 +81,9 @@ export function CitationsView({ groups, isLoadingGroups }: CitationsViewProps) {
           />
         </div>
         <CitationFilters
-          period={period}
-          onPeriodChange={setPeriod}
+          dateRange={dateRange}
+          activePreset={activePreset}
+          onDateRangeChange={handleDateRangeChange}
           assistantId={assistantId}
           onAssistantChange={setAssistantId}
           assistants={assistants}
