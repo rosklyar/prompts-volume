@@ -3,7 +3,7 @@
  * Clean progression through steps with clear navigation
  */
 
-import { useState, useCallback, useRef, useMemo } from "react"
+import { useState, useCallback, useRef, useMemo, useEffect } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import {
   Globe,
@@ -127,6 +127,29 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
   )
   const [isDiscoveryDone, setIsDiscoveryDone] = useState(savedState?.isDiscoveryDone || false)
 
+  // Track previous brand to detect changes and reset discovery state
+  const prevBrandRef = useRef({ name: brand.name, domain: brand.domain })
+
+  useEffect(() => {
+    const prevBrand = prevBrandRef.current
+    const brandChanged =
+      prevBrand.name !== brand.name ||
+      prevBrand.domain !== brand.domain
+
+    // Update ref for next comparison
+    prevBrandRef.current = { name: brand.name, domain: brand.domain }
+
+    // Skip if no actual change or initial empty state
+    if (!brandChanged || (!prevBrand.name && !prevBrand.domain)) return
+
+    // Reset ALL competitor/discovery state when brand changes
+    setIsDiscoveryDone(false)
+    setDiscoveredCompetitors([])
+    setSelectedDiscovered(new Set())
+    setEditedDiscovered({})
+    setCompetitors([])
+  }, [brand.name, brand.domain])
+
   // Topic/Prompt selection state (steps 5-6) - restore from saved state
   const [selectedTopics, setSelectedTopics] = useState<Topic[]>(savedState?.selectedTopics || [])
   const [selectedPromptsByTopic, setSelectedPromptsByTopic] = useState<Record<number, number[]>>(
@@ -214,19 +237,26 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
 
   // Get merged competitors list (manual + selected discovered)
   const getFinalCompetitors = useCallback((): CompetitorInfo[] => {
-    // Start with manually added competitors
-    const manual = [...competitors]
+    // Helper to ensure lowercase name is in variations
+    const withLowercaseName = (comp: CompetitorInfo): CompetitorInfo => ({
+      ...comp,
+      variations: [comp.name.trim().toLowerCase(), ...(comp.variations || [])],
+    })
+
+    // Start with manually added competitors (add lowercase name to variations)
+    const manual = competitors.map(withLowercaseName)
 
     // Add selected discovered competitors (with any edits applied)
     const discovered: CompetitorInfo[] = []
     discoveredCompetitors.forEach((dc, idx) => {
       if (selectedDiscovered.has(idx)) {
         const edited = editedDiscovered[idx]
-        discovered.push(edited || {
+        const base = edited || {
           name: dc.brand_name,
           domain: dc.domain,
-          variations: dc.variations,
-        })
+          variations: dc.variations || [],
+        }
+        discovered.push(withLowercaseName(base))
       }
     })
 
@@ -797,8 +827,8 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
                   Back
                 </button>
                 <div className="flex items-center gap-3">
-                  {/* Skip link for steps 5-6 */}
-                  {(currentStep === 5 || currentStep === 6) && (
+                  {/* Skip link for step 6 only - allows undoing topic selection */}
+                  {currentStep === 6 && (
                     <button
                       onClick={handleSkipTopics}
                       disabled={isPending}

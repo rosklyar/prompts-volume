@@ -987,15 +987,21 @@ export function AddGroupCard({ onAdd, isLoading }: AddGroupCardProps) {
                   Back
                 </button>
                 <div className="flex gap-2">
-                  <button
-                    onClick={handleSubmit}
-                    disabled={isLoading || !canCreate}
-                    className="py-2.5 px-4 text-sm font-medium text-gray-600
-                      bg-white border border-gray-200 rounded-lg
-                      hover:bg-gray-50 transition-colors disabled:opacity-50"
-                  >
-                    Skip & Create
-                  </button>
+                  {/* Show Skip & Create only when GSC prompts are selected */}
+                  {selectedGSCPrompts.size > 0 && (
+                    <button
+                      onClick={() => {
+                        setSelectedGSCPrompts(new Set())
+                        handleSubmit()
+                      }}
+                      disabled={isLoading || !canCreate}
+                      className="py-2.5 px-4 text-sm font-medium text-gray-600
+                        bg-white border border-gray-200 rounded-lg
+                        hover:bg-gray-50 transition-colors disabled:opacity-50"
+                    >
+                      Skip & Create
+                    </button>
+                  )}
                   <button
                     onClick={handleSubmit}
                     disabled={isLoading || !canCreate}

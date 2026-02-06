@@ -130,10 +130,18 @@ class OpenAIBrandVariationGenerator:
                 logger.warning(f"Expected dict, got {type(variations_map)}")
                 return {name: [] for name in brand_names}
 
+            # Build case-insensitive lookup for LLM response keys
+            lowercase_map: Dict[str, List[str]] = {
+                k.lower(): v for k, v in variations_map.items()
+            }
+
             # Normalize variations for each brand
             result: Dict[str, List[str]] = {}
             for brand_name in brand_names:
-                raw_variations = variations_map.get(brand_name, [])
+                # Try exact match first, then case-insensitive
+                raw_variations = variations_map.get(brand_name)
+                if raw_variations is None:
+                    raw_variations = lowercase_map.get(brand_name.lower(), [])
                 if not isinstance(raw_variations, list):
                     raw_variations = []
                 filtered = [v for v in raw_variations if isinstance(v, str) and v.strip()]
