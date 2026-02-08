@@ -114,11 +114,11 @@ export function DashboardView({ groups, isLoadingGroups }: DashboardViewProps) {
         </p>
       )}
 
-      {/* Dashboard cards grid */}
+      {/* Dashboard cards grid - fixed height with equal card sizes */}
       {isLoading ? (
         <DashboardSkeleton />
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 lg:grid-rows-2 gap-6 flex-1 min-h-0" style={{ height: "calc(100vh - 280px)" }}>
           <BrandVisibilityCard
             brandName={data?.brand_name ?? null}
             visibilityPercent={data?.brand_visibility_percent ?? 0}

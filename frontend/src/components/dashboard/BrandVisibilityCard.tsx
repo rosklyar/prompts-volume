@@ -62,12 +62,12 @@ export function BrandVisibilityCard({
   const strokeDashoffset = circumference - (displayValue / 100) * circumference
 
   return (
-    <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6]">
-      <h3 className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-6">
+    <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full flex flex-col">
+      <h3 className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-6 shrink-0">
         Brand Visibility
       </h3>
 
-      <div className="flex justify-center">
+      <div className="flex-1 flex items-center justify-center min-h-0">
         <div className="relative">
           <svg
             width={size}
@@ -119,7 +119,7 @@ export function BrandVisibilityCard({
       </div>
 
       {/* Brand name */}
-      <p className="text-center mt-4 text-sm text-[#6B7280] font-['DM_Sans']">
+      <p className="text-center mt-4 text-sm text-[#6B7280] font-['DM_Sans'] shrink-0">
         {brandName || "No brand configured"}
       </p>
     </div>

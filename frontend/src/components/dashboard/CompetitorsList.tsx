@@ -13,13 +13,15 @@ interface CompetitorsListProps {
 export function CompetitorsList({ competitors, hasData }: CompetitorsListProps) {
   if (!hasData || competitors.length === 0) {
     return (
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6]">
-        <h3 className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-6">
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full flex flex-col">
+        <h3 className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-6 shrink-0">
           Competitors
         </h3>
-        <p className="text-sm text-[#9CA3AF] text-center py-8">
-          No visibility data available
-        </p>
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-sm text-[#9CA3AF] text-center">
+            No visibility data available
+          </p>
+        </div>
       </div>
     )
   }
@@ -28,13 +30,13 @@ export function CompetitorsList({ competitors, hasData }: CompetitorsListProps) 
   const maxVisibility = Math.max(...competitors.map((c) => c.visibility_percent), 1)
 
   return (
-    <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6]">
-      <h3 className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-6">
+    <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full flex flex-col">
+      <h3 className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-6 shrink-0">
         Competitors
       </h3>
 
-      <div className="space-y-2">
-        {competitors.slice(0, 10).map((competitor, index) => {
+      <div className="space-y-2 flex-1 overflow-y-auto min-h-0">
+        {competitors.map((competitor, index) => {
           const barWidth = (competitor.visibility_percent / maxVisibility) * 100
 
           return (

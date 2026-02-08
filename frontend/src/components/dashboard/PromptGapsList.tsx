@@ -3,7 +3,6 @@
  * Warning-styled cards with amber accent
  */
 
-import { useState } from "react"
 import type { PromptGap } from "@/types/dashboard"
 
 interface PromptGapsListProps {
@@ -12,35 +11,34 @@ interface PromptGapsListProps {
   hasData: boolean
 }
 
-const INITIAL_VISIBLE = 5
-
 export function PromptGapsList({
   promptGaps,
   totalCount,
   hasData,
 }: PromptGapsListProps) {
-  const [expanded, setExpanded] = useState(false)
 
   if (!hasData) {
     return (
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6]">
-        <h3 className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-6">
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full flex flex-col">
+        <h3 className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-6 shrink-0">
           Prompt Gaps
         </h3>
-        <p className="text-sm text-[#9CA3AF] text-center py-8">
-          No report data available
-        </p>
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-sm text-[#9CA3AF] text-center">
+            No report data available
+          </p>
+        </div>
       </div>
     )
   }
 
   if (promptGaps.length === 0) {
     return (
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6]">
-        <h3 className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-6">
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full flex flex-col">
+        <h3 className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-6 shrink-0">
           Prompt Gaps
         </h3>
-        <div className="flex flex-col items-center py-8">
+        <div className="flex-1 flex flex-col items-center justify-center">
           <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center mb-3">
             <svg
               className="w-5 h-5 text-green-600"
@@ -64,12 +62,9 @@ export function PromptGapsList({
     )
   }
 
-  const visibleGaps = expanded ? promptGaps : promptGaps.slice(0, INITIAL_VISIBLE)
-  const hasMore = promptGaps.length > INITIAL_VISIBLE
-
   return (
-    <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6]">
-      <div className="flex items-center justify-between mb-6">
+    <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full flex flex-col">
+      <div className="flex items-center justify-between mb-6 shrink-0">
         <h3 className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide">
           Prompt Gaps
         </h3>
@@ -78,8 +73,8 @@ export function PromptGapsList({
         </span>
       </div>
 
-      <div className="space-y-2 max-h-64 overflow-y-auto">
-        {visibleGaps.map((gap) => (
+      <div className="space-y-2 flex-1 overflow-y-auto min-h-0">
+        {promptGaps.map((gap) => (
           <div
             key={gap.prompt_id}
             className="p-3 bg-amber-50/50 rounded-lg border-l-2 border-amber-400"
@@ -108,17 +103,6 @@ export function PromptGapsList({
           </div>
         ))}
       </div>
-
-      {hasMore && (
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="mt-4 w-full text-center text-sm text-[#C4553D] hover:text-[#A3442F] font-medium transition-colors"
-        >
-          {expanded
-            ? "Show less"
-            : `View all ${totalCount} prompts`}
-        </button>
-      )}
     </div>
   )
 }
