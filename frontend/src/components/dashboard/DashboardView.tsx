@@ -1,25 +1,20 @@
 /**
  * DashboardView - Container component for the Dashboard tab
- * Assembles GroupChipsSelector + AssistantSelector + PeriodSelector + Dashboard cards
+ * Assembles GroupChipsSelector + AssistantSelector + DateRangePicker + Dashboard cards
  */
 
-import { useState } from "react"
+import { useState, useMemo, useEffect } from "react"
 import type { GroupSummary } from "@/types/groups"
-import type { DashboardPeriod } from "@/types/dashboard"
-import { useDashboardData } from "@/hooks/useDashboardData"
+import { useDashboardData, type DateRangeOption } from "@/hooks/useDashboardData"
 import { useAssistants } from "@/hooks/useAssistants"
+import { useFilterPreferences } from "@/hooks/useFilterPreferences"
 import { GroupChipsSelector } from "@/components/citations/GroupChipsSelector"
+import { DateRangePicker } from "@/components/ui/date-range-picker"
 import { DashboardSkeleton } from "./DashboardSkeleton"
 import { BrandVisibilityCard } from "./BrandVisibilityCard"
 import { CompetitorsList } from "./CompetitorsList"
 import { SourcesLeaderboard } from "./SourcesLeaderboard"
 import { PromptGapsList } from "./PromptGapsList"
-
-const PERIOD_OPTIONS = [
-  { value: "1d", label: "Last 24 hours" },
-  { value: "7d", label: "Last 7 days" },
-  { value: "30d", label: "Last 30 days" },
-] as const
 
 interface DashboardViewProps {
   groups: GroupSummary[]
@@ -28,23 +23,51 @@ interface DashboardViewProps {
 
 export function DashboardView({ groups, isLoadingGroups }: DashboardViewProps) {
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
-  const [assistantId, setAssistantId] = useState<number | undefined>(undefined)
-  const [period, setPeriod] = useState<DashboardPeriod>("7d")
+
+  const {
+    activePreset,
+    dateRange,
+    assistantId,
+    setAssistantId,
+    handleDateRangeChange,
+  } = useFilterPreferences()
 
   const { data: assistantsData, isLoading: isLoadingAssistants } = useAssistants()
-  const assistants = assistantsData?.assistants ?? []
+  const assistants = useMemo(() => assistantsData?.assistants ?? [], [assistantsData?.assistants])
 
   // Auto-select first group when groups load
   if (groups.length > 0 && selectedGroupId === null) {
     setSelectedGroupId(groups[0].id)
   }
 
-  // Set default assistant to first one (usually ChatGPT)
-  if (assistants.length > 0 && assistantId === undefined) {
-    setAssistantId(assistants[0].id)
-  }
+  // Validate stored assistant exists in current list, otherwise reset to first
+  useEffect(() => {
+    if (assistants.length === 0) return
+    if (assistantId === undefined) {
+      setAssistantId(assistants[0].id)
+    } else {
+      const exists = assistants.some(a => a.id === assistantId)
+      if (!exists) {
+        setAssistantId(assistants[0].id)
+      }
+    }
+  }, [assistants, assistantId, setAssistantId])
 
-  const { data, isLoading } = useDashboardData(selectedGroupId, assistantId, period)
+  // Convert date range state to API option
+  const dateRangeOption: DateRangeOption | undefined = useMemo(() => {
+    if (activePreset) {
+      return { period: activePreset }
+    }
+    if (dateRange) {
+      return {
+        fromDate: dateRange.from.toISOString(),
+        toDate: dateRange.to.toISOString(),
+      }
+    }
+    return undefined // Will default to 30d on backend
+  }, [activePreset, dateRange])
+
+  const { data, isLoading } = useDashboardData(selectedGroupId, assistantId, dateRangeOption)
 
   const hasData = (data?.reports_included ?? 0) > 0
 
@@ -61,18 +84,11 @@ export function DashboardView({ groups, isLoadingGroups }: DashboardViewProps) {
           />
         </div>
         <div className="flex-shrink-0 flex gap-2">
-          <select
-            value={period}
-            onChange={(e) => setPeriod(e.target.value as DashboardPeriod)}
-            className="text-[10px] h-6 px-2 py-0.5 rounded border bg-white text-gray-600 focus:outline-none focus:ring-1 cursor-pointer"
-            style={{ borderColor: "#C4553D30" }}
-          >
-            {PERIOD_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+          <DateRangePicker
+            value={dateRange}
+            onChange={handleDateRangeChange}
+            activePreset={activePreset}
+          />
           <select
             value={assistantId ?? ""}
             onChange={(e) =>
@@ -98,11 +114,11 @@ export function DashboardView({ groups, isLoadingGroups }: DashboardViewProps) {
         </p>
       )}
 
-      {/* Dashboard cards grid */}
+      {/* Dashboard cards grid - fixed height with equal card sizes */}
       {isLoading ? (
         <DashboardSkeleton />
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 lg:grid-rows-2 gap-6 flex-1 min-h-0" style={{ height: "calc(100vh - 280px)" }}>
           <BrandVisibilityCard
             brandName={data?.brand_name ?? null}
             visibilityPercent={data?.brand_visibility_percent ?? 0}

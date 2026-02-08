@@ -1,6 +1,6 @@
 """Service for aggregating dashboard data across reports in a time period."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,13 +26,6 @@ from src.reports.services.results_enricher import (
 )
 
 
-_PERIOD_DAYS: dict[PeriodLiteral, int] = {
-    "1d": 1,
-    "7d": 7,
-    "30d": 30,
-}
-
-
 class DashboardService:
     """Service for building dashboard analytics from reports in a time period.
 
@@ -56,7 +49,9 @@ class DashboardService:
         group_id: int,
         user_id: str,
         assistant_id: int,
-        period: PeriodLiteral = "7d",
+        from_date: datetime,
+        to_date: datetime,
+        preset_used: PeriodLiteral | None = None,
     ) -> DashboardResponse:
         """Get dashboard analytics aggregated across reports in a time period.
 
@@ -64,7 +59,9 @@ class DashboardService:
             group_id: The prompt group ID
             user_id: The user ID
             assistant_id: The AI assistant ID to filter by
-            period: Time period to aggregate ("1d", "7d", "30d")
+            from_date: Start date (inclusive)
+            to_date: End date (exclusive)
+            preset_used: Preset period used to resolve dates, if any
 
         Returns:
             DashboardResponse with brand visibility, competitors, sources, and prompt gaps
@@ -75,9 +72,6 @@ class DashboardService:
         assistant = assistant_result.scalar_one_or_none()
         assistant_name = assistant.name if assistant else "Unknown"
 
-        # Calculate time window
-        from_date = datetime.now(timezone.utc) - timedelta(days=_PERIOD_DAYS[period])
-
         # Get all reports in time window for this group and assistant
         report_query = (
             select(GroupReport)
@@ -86,6 +80,7 @@ class DashboardService:
                 GroupReport.user_id == user_id,
                 GroupReport.assistant_id == assistant_id,
                 GroupReport.created_at >= from_date,
+                GroupReport.created_at < to_date,
             )
             .options(
                 selectinload(GroupReport.items).selectinload(GroupReportItem.evaluation)
@@ -99,7 +94,9 @@ class DashboardService:
         if not reports:
             return DashboardResponse(
                 group_id=group_id,
-                period=period,
+                from_date=from_date,
+                to_date=to_date,
+                preset_used=preset_used,
                 reports_included=0,
                 assistant_name=assistant_name,
                 brand_name=None,
@@ -198,7 +195,9 @@ class DashboardService:
 
         return DashboardResponse(
             group_id=group_id,
-            period=period,
+            from_date=from_date,
+            to_date=to_date,
+            preset_used=preset_used,
             reports_included=len(reports),
             assistant_name=assistant_name,
             brand_name=brand_name,

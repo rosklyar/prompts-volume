@@ -177,7 +177,9 @@ export interface CitationLeaderboard {
 
 export interface AggregatedCitationsResponse {
   group_id: number
-  period: string
+  from_date: string      // ISO 8601
+  to_date: string        // ISO 8601
+  preset_used: string | null
   assistant_id: number | null
   reports_included: number
   citation_leaderboard: CitationLeaderboard

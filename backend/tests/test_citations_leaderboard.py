@@ -242,7 +242,9 @@ def test_citations_leaderboard_aggregation(
 
     data = resp.json()
     assert data["group_id"] == group_id
-    assert data["period"] == "30d"
+    assert data["preset_used"] == "30d"
+    assert "from_date" in data
+    assert "to_date" in data
     assert data["assistant_id"] is None
     assert data["reports_included"] == 2
 

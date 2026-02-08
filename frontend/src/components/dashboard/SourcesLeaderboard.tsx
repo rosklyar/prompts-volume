@@ -16,25 +16,27 @@ const accentColor = "#C4553D"
 export function SourcesLeaderboard({ sources, hasData }: SourcesLeaderboardProps) {
   if (!hasData || sources.length === 0) {
     return (
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6]">
-        <h3 className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-6">
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full flex flex-col">
+        <h3 className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-6 shrink-0">
           Sources
         </h3>
-        <p className="text-sm text-[#9CA3AF] text-center py-8">
-          No citations available
-        </p>
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-sm text-[#9CA3AF] text-center">
+            No citations available
+          </p>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6]">
-      <h3 className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-4">
+    <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full flex flex-col">
+      <h3 className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-4 shrink-0">
         Sources
       </h3>
 
       {/* Column headers */}
-      <div className="flex items-center gap-3 px-2 pb-2 border-b border-gray-100">
+      <div className="flex items-center gap-3 px-2 pb-2 border-b border-gray-100 shrink-0">
         <span className="w-5" />
         <span className="flex-1 text-[10px] font-medium uppercase tracking-wide text-[#9CA3AF]">
           Domain
@@ -48,7 +50,7 @@ export function SourcesLeaderboard({ sources, hasData }: SourcesLeaderboardProps
       </div>
 
       {/* Scrollable list */}
-      <div className="max-h-[400px] overflow-y-auto">
+      <div className="flex-1 overflow-y-auto min-h-0">
         <div className="space-y-1 pt-2">
           {sources.map((source, index) => (
             <div

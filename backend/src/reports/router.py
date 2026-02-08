@@ -874,29 +874,64 @@ async def get_citations_leaderboard(
     current_user: CurrentUser,
     group_service: PromptGroupServiceDep,
     citations_service: CitationsLeaderboardServiceDep,
-    period: Literal["1d", "7d", "30d"] = Query(..., description="Time period for aggregation"),
+    period: Literal["1d", "7d", "30d"] | None = Query(
+        None, description="Preset time period (1d, 7d, 30d)"
+    ),
+    from_date: datetime | None = Query(
+        None, description="Custom start date (ISO 8601, inclusive)"
+    ),
+    to_date: datetime | None = Query(
+        None, description="Custom end date (ISO 8601, exclusive)"
+    ),
     assistant_id: int | None = Query(None, description="Filter by assistant ID"),
 ):
     """Get aggregated citation leaderboard across reports in a time period.
 
     Deduplicates evaluations across reports and aggregates all citations
     into a single leaderboard with domain and subpath counts.
+
+    Supports two modes:
+    - Preset period: Use `period` parameter (1d, 7d, 30d)
+    - Custom date range: Use `from_date` and `to_date` parameters
+    - Default: Last 30 days if no parameters provided
+
+    Cannot mix period with from_date/to_date.
     """
+    from src.reports.utils.date_range import (
+        DateRangeValidationError,
+        resolve_date_range,
+    )
+
     try:
         await group_service.get_by_id_for_user(group_id, current_user.id)
     except Exception:
         raise to_http_exception(GroupNotFoundError(group_id))
 
+    # Resolve date range from parameters
+    try:
+        date_range = resolve_date_range(
+            period=period,
+            from_date=from_date,
+            to_date=to_date,
+            default_days=30,
+        )
+    except DateRangeValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     result = await citations_service.get_aggregated_leaderboard(
         group_id=group_id,
         user_id=current_user.id,
-        period=period,
+        from_date=date_range.from_date,
+        to_date=date_range.to_date,
+        preset_used=date_range.preset_used,
         assistant_id=assistant_id,
     )
 
     return AggregatedCitationsResponse(
         group_id=group_id,
-        period=period,
+        from_date=result.from_date,
+        to_date=result.to_date,
+        preset_used=result.preset_used,
         assistant_id=assistant_id,
         reports_included=result.reports_included,
         citation_leaderboard=result.citation_leaderboard,

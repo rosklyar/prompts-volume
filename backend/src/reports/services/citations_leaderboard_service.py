@@ -1,7 +1,6 @@
 """Service for aggregating citations across multiple reports."""
 
-from datetime import datetime, timedelta, timezone
-from typing import Literal
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,30 +8,34 @@ from sqlalchemy.orm import selectinload
 
 from src.database.evals_models import GroupReport, GroupReportItem, ReportItemStatus
 from src.reports.models.citation_models import CitationLeaderboardModel
+from src.reports.models.dashboard_models import PeriodLiteral
 from src.reports.services.results_enricher import ReportEnricher
-
-
-PeriodLiteral = Literal["1d", "7d", "30d"]
-
-_PERIOD_DAYS: dict[PeriodLiteral, int] = {
-    "1d": 1,
-    "7d": 7,
-    "30d": 30,
-}
 
 
 class AggregatedLeaderboardResult:
     """Result from aggregating citations across reports."""
 
-    __slots__ = ("citation_leaderboard", "reports_included")
+    __slots__ = (
+        "citation_leaderboard",
+        "reports_included",
+        "from_date",
+        "to_date",
+        "preset_used",
+    )
 
     def __init__(
         self,
         citation_leaderboard: CitationLeaderboardModel,
         reports_included: int,
+        from_date: datetime,
+        to_date: datetime,
+        preset_used: PeriodLiteral | None,
     ):
         self.citation_leaderboard = citation_leaderboard
         self.reports_included = reports_included
+        self.from_date = from_date
+        self.to_date = to_date
+        self.preset_used = preset_used
 
 
 class CitationsLeaderboardService:
@@ -51,7 +54,9 @@ class CitationsLeaderboardService:
         *,
         group_id: int,
         user_id: str,
-        period: PeriodLiteral,
+        from_date: datetime,
+        to_date: datetime,
+        preset_used: PeriodLiteral | None = None,
         assistant_id: int | None = None,
     ) -> AggregatedLeaderboardResult:
         """Aggregate citation leaderboard across reports in a time period.
@@ -59,19 +64,20 @@ class CitationsLeaderboardService:
         Args:
             group_id: The prompt group ID.
             user_id: The user who owns the group.
-            period: Time period literal ("1d", "7d", "30d").
+            from_date: Start date (inclusive).
+            to_date: End date (exclusive).
+            preset_used: Preset period used to resolve dates, if any.
             assistant_id: Optional AI assistant filter.
 
         Returns:
-            AggregatedLeaderboardResult with leaderboard and report count.
+            AggregatedLeaderboardResult with leaderboard, report count, and date range.
         """
-        from_date = datetime.now(timezone.utc) - timedelta(days=_PERIOD_DAYS[period])
-
         # Build query for reports in the time window
         conditions = [
             GroupReport.group_id == group_id,
             GroupReport.user_id == user_id,
             GroupReport.created_at >= from_date,
+            GroupReport.created_at < to_date,
         ]
         if assistant_id is not None:
             conditions.append(GroupReport.assistant_id == assistant_id)
@@ -108,4 +114,7 @@ class CitationsLeaderboardService:
         return AggregatedLeaderboardResult(
             citation_leaderboard=citation_leaderboard,
             reports_included=len(reports),
+            from_date=from_date,
+            to_date=to_date,
+            preset_used=preset_used,
         )

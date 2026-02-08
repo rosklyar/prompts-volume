@@ -1,26 +1,27 @@
 /**
- * CitationFilters - Period and assistant filter dropdowns
- * Matches the existing ReportHistoryPanel filter styling
+ * CitationFilters - Date range picker and assistant filter
+ * Uses the new DateRangePicker component with preset buttons and calendar
  */
 
+import { DateRangePicker } from "@/components/ui/date-range-picker"
+import type { DateRange } from "@/types/date-range"
+
+type PresetPeriod = "1d" | "7d" | "30d"
+
 interface CitationFiltersProps {
-  period: "1d" | "7d" | "30d"
-  onPeriodChange: (period: "1d" | "7d" | "30d") => void
+  dateRange: DateRange | null
+  activePreset: PresetPeriod | null
+  onDateRangeChange: (range: DateRange, preset: string | null) => void
   assistantId: number | undefined
   onAssistantChange: (assistantId: number | undefined) => void
   assistants: { id: number; name: string }[]
   isLoadingAssistants: boolean
 }
 
-const PERIOD_OPTIONS: { value: "1d" | "7d" | "30d"; label: string }[] = [
-  { value: "1d", label: "Last 24 hours" },
-  { value: "7d", label: "Last 7 days" },
-  { value: "30d", label: "Last 30 days" },
-]
-
 export function CitationFilters({
-  period,
-  onPeriodChange,
+  dateRange,
+  activePreset,
+  onDateRangeChange,
   assistantId,
   onAssistantChange,
   assistants,
@@ -28,18 +29,11 @@ export function CitationFilters({
 }: CitationFiltersProps) {
   return (
     <div className="flex items-center gap-2 flex-shrink-0">
-      <select
-        value={period}
-        onChange={(e) => onPeriodChange(e.target.value as "1d" | "7d" | "30d")}
-        className="text-[10px] h-6 px-2 py-0.5 rounded border bg-white text-gray-600 focus:outline-none focus:ring-1 cursor-pointer"
-        style={{ borderColor: "#C4553D30" }}
-      >
-        {PERIOD_OPTIONS.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
+      <DateRangePicker
+        value={dateRange}
+        onChange={onDateRangeChange}
+        activePreset={activePreset}
+      />
 
       <select
         value={assistantId ?? ""}

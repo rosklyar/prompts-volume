@@ -10,6 +10,7 @@ import { useState, useMemo, useCallback } from "react"
 import {
   Search,
   ChevronDown,
+  ChevronRight,
   Check,
   AlertCircle,
   Loader2,
@@ -499,22 +500,37 @@ export function GSCOnboardingStep({
       {/* Action Buttons */}
       {(subState === "select-prompts" || subState === "select-keywords" || subState === "no-data" || subState === "connect" || subState === "select-site") && (
         <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-100">
-          <button
-            onClick={onSkip}
-            className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
-          >
-            Skip this step
-          </button>
-          {subState === "select-prompts" && (
-            <button
-              onClick={handleCreateGroup}
-              disabled={selectedPrompts.size === 0 || !groupName.trim()}
-              className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white
-                bg-[#C4553D] rounded-xl hover:bg-[#B34835] transition-colors
-                disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Create Group
-            </button>
+          {/* Show Skip only when there are prompts to create (otherwise Continue does the same) */}
+          {subState === "select-prompts" && selectedPrompts.size > 0 ? (
+            <>
+              <button
+                onClick={onSkip}
+                className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
+              >
+                Skip this step
+              </button>
+              <button
+                onClick={handleCreateGroup}
+                disabled={!groupName.trim()}
+                className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white
+                  bg-[#C4553D] rounded-xl hover:bg-[#B34835] transition-colors
+                  disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Create Group
+              </button>
+            </>
+          ) : (
+            <>
+              <div /> {/* Spacer */}
+              <button
+                onClick={onSkip}
+                className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white
+                  bg-[#C4553D] rounded-xl hover:bg-[#B34835] transition-colors"
+              >
+                Continue
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </>
           )}
         </div>
       )}

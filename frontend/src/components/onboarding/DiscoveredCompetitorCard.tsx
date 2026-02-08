@@ -23,9 +23,10 @@ export function DiscoveredCompetitorCard({
   onUpdate,
 }: DiscoveredCompetitorCardProps) {
   const [isExpanded, setIsExpanded] = useState(false)
-  const [editedName, setEditedName] = useState(competitor.name)
-  const [editedDomain, setEditedDomain] = useState(competitor.domain || "")
-  const [editedVariations, setEditedVariations] = useState<string[]>(competitor.variations)
+  // Edit state - only used when expanded, initialized when entering edit mode
+  const [editedName, setEditedName] = useState("")
+  const [editedDomain, setEditedDomain] = useState("")
+  const [editedVariations, setEditedVariations] = useState<string[]>([])
   const [newVariation, setNewVariation] = useState("")
 
   const handleEditClick = useCallback(() => {
@@ -36,9 +37,16 @@ export function DiscoveredCompetitorCard({
         domain: editedDomain.trim() || null,
         variations: editedVariations,
       })
+      setIsExpanded(false)
+    } else {
+      // Enter edit mode - copy current values to state
+      setEditedName(competitor.name)
+      setEditedDomain(competitor.domain || "")
+      setEditedVariations(competitor.variations || [])
+      setNewVariation("")
+      setIsExpanded(true)
     }
-    setIsExpanded(!isExpanded)
-  }, [isExpanded, editedName, editedDomain, editedVariations, competitor.name, onUpdate])
+  }, [isExpanded, editedName, editedDomain, editedVariations, competitor, onUpdate])
 
   const handleRemoveVariation = useCallback((index: number) => {
     setEditedVariations((prev) => prev.filter((_, i) => i !== index))
@@ -66,9 +74,10 @@ export function DiscoveredCompetitorCard({
     setNewVariation(e.target.value)
   }, [])
 
-  // Display only first 3 variations in collapsed mode
-  const visibleVariations = competitor.variations.slice(0, MAX_VISIBLE_VARIATIONS)
-  const hiddenCount = competitor.variations.length - MAX_VISIBLE_VARIATIONS
+  // Use props directly for display (no stale state issues)
+  const variations = competitor.variations || []
+  const visibleVariations = variations.slice(0, MAX_VISIBLE_VARIATIONS)
+  const hiddenCount = variations.length - MAX_VISIBLE_VARIATIONS
 
   return (
     <div
@@ -174,7 +183,7 @@ export function DiscoveredCompetitorCard({
               </div>
             </div>
           ) : (
-            /* Collapsed view */
+            /* Collapsed view - uses props directly */
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <p className="font-medium text-gray-800">{competitor.name}</p>

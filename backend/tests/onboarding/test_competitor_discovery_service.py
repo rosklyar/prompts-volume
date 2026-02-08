@@ -1,6 +1,6 @@
 """Tests for competitor discovery service."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -233,3 +233,57 @@ class TestVariationNormalization:
         assert len(result) <= 3
         assert "comfy" not in result  # Excluded - matches brand name
         assert all(v == v.lower() for v in result)
+
+
+class TestBatchVariationCaseInsensitiveLookup:
+    """Tests for case-insensitive key lookup in generate_batch."""
+
+    @pytest.mark.asyncio
+    async def test_matches_brand_keys_case_insensitively(self):
+        """Test that LLM response keys are matched case-insensitively."""
+        # Create a generator with mocked OpenAI client
+        generator = object.__new__(OpenAIBrandVariationGenerator)
+        generator._model = "test-model"
+
+        # Mock the OpenAI client response
+        mock_response = MagicMock()
+        # LLM returns lowercase keys, but we pass mixed case brand names
+        mock_response.output_text = '{"citrus": ["цитрус"], "MOYO": ["мойо"]}'
+
+        mock_client = AsyncMock()
+        mock_client.responses.create = AsyncMock(return_value=mock_response)
+        generator._client = mock_client
+
+        # Call with mixed case brand names
+        result = await generator.generate_batch(
+            brand_names=["Citrus", "Moyo"],
+            languages=["Ukrainian"],
+        )
+
+        # Should find variations despite case mismatch
+        assert "Citrus" in result
+        assert "Moyo" in result
+        assert "цитрус" in result["Citrus"]
+        assert "мойо" in result["Moyo"]
+
+    @pytest.mark.asyncio
+    async def test_prefers_exact_match_over_case_insensitive(self):
+        """Test that exact key match is preferred when available."""
+        generator = object.__new__(OpenAIBrandVariationGenerator)
+        generator._model = "test-model"
+
+        mock_response = MagicMock()
+        # LLM returns both exact and different case keys
+        mock_response.output_text = '{"Brand": ["exact"], "brand": ["lowercase"]}'
+
+        mock_client = AsyncMock()
+        mock_client.responses.create = AsyncMock(return_value=mock_response)
+        generator._client = mock_client
+
+        result = await generator.generate_batch(
+            brand_names=["Brand"],
+            languages=["English"],
+        )
+
+        # Should use exact match "Brand" -> ["exact"]
+        assert result["Brand"] == ["exact"]

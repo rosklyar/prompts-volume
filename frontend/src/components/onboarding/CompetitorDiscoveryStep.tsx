@@ -95,21 +95,38 @@ export function CompetitorDiscoveryStep({
   const [newCompVariationsTouched, setNewCompVariationsTouched] = useState(false)
   const [showManualForm, setShowManualForm] = useState(false)
 
-  // Local discovery state
-  const [isLoading, setIsLoading] = useState(!isDiscoveryDone)
+  // Local discovery state - track the brand we last triggered discovery for
+  const [discoveredBrandKey, setDiscoveredBrandKey] = useState<string | null>(null)
+  const [isFetching, setIsFetching] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const discoveryTriggered = useRef(false)
+  // Ref to track in-flight request and prevent duplicate calls
+  const pendingBrandKeyRef = useRef<string | null>(null)
 
   // Total competitors (manual + selected discovered)
   const totalSelected = competitors.length + selectedDiscovered.size
   const canAddMore = totalSelected < 10
 
-  // Auto-trigger discovery when component mounts
+  // Create a stable brand key for comparison
+  const brandKey = `${brand.name.toLowerCase()}|${brand.domain?.toLowerCase() || ""}`
+
+  // Determine if we need to show loading state
+  const needsDiscovery = !isDiscoveryDone && discoveredBrandKey !== brandKey
+  const isLoading = needsDiscovery || isFetching
+
+  // Auto-trigger discovery when brand changes or component mounts
   useEffect(() => {
-    if (isDiscoveryDone || discoveryTriggered.current) {
+    // Skip if discovery is already done for current brand
+    if (isDiscoveryDone) {
       return
     }
-    discoveryTriggered.current = true
+
+    // Skip if we already triggered or completed discovery for this exact brand
+    if (discoveredBrandKey === brandKey || pendingBrandKeyRef.current === brandKey) {
+      return
+    }
+
+    // Mark this brand as pending (prevents duplicate calls before state updates)
+    pendingBrandKeyRef.current = brandKey
 
     const request = {
       country_id: countryId,
@@ -120,31 +137,38 @@ export function CompetitorDiscoveryStep({
     // Check cache first
     const cached = getCachedDiscovery(request)
     if (cached) {
-      // Use setTimeout to avoid setState in effect body synchronously
+      // Use setTimeout to call callbacks after render (avoids sync setState in effect)
       setTimeout(() => {
+        setDiscoveredBrandKey(brandKey)
         onDiscoveryComplete(cached)
-        setIsLoading(false)
       }, 0)
       return
     }
 
     // No cache - fetch from API
-    onboardingApi
-      .discoverCompetitors(request)
-      .then((data) => {
-        setCachedDiscovery(request, data.competitors)
-        onDiscoveryComplete(data.competitors)
-      })
-      .catch((err) => {
-        setError(err.message || "Discovery failed")
-      })
-      .finally(() => {
-        setIsLoading(false)
-      })
-  }, [isDiscoveryDone, countryId, businessDomainId, brand, onDiscoveryComplete])
+    // Use setTimeout to batch state updates and avoid sync setState in effect
+    setTimeout(() => {
+      setDiscoveredBrandKey(brandKey)
+      setIsFetching(true)
+      setError(null)
+
+      onboardingApi
+        .discoverCompetitors(request)
+        .then((data) => {
+          setCachedDiscovery(request, data.competitors)
+          onDiscoveryComplete(data.competitors)
+        })
+        .catch((err) => {
+          setError(err.message || "Discovery failed")
+        })
+        .finally(() => {
+          setIsFetching(false)
+        })
+    }, 0)
+  }, [isDiscoveryDone, discoveredBrandKey, brandKey, countryId, businessDomainId, brand, onDiscoveryComplete])
 
   const handleRetryDiscover = useCallback(() => {
-    setIsLoading(true)
+    setIsFetching(true)
     setError(null)
 
     const request = {
@@ -164,7 +188,7 @@ export function CompetitorDiscoveryStep({
         setError(err.message || "Discovery failed")
       })
       .finally(() => {
-        setIsLoading(false)
+        setIsFetching(false)
       })
   }, [countryId, businessDomainId, brand, onDiscoveryComplete])
 
@@ -268,12 +292,12 @@ export function CompetitorDiscoveryStep({
               const displayCompetitor: CompetitorInfo = edited || {
                 name: comp.brand_name,
                 domain: comp.domain,
-                variations: comp.variations,
+                variations: comp.variations || [],
               }
 
               return (
                 <DiscoveredCompetitorCard
-                  key={idx}
+                  key={`${comp.brand_name}-${comp.domain || idx}`}
                   competitor={displayCompetitor}
                   isSelected={selectedDiscovered.has(idx)}
                   onToggleSelect={() => onToggleDiscoveredSelection(idx)}
