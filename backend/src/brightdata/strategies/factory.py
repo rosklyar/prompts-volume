@@ -14,9 +14,9 @@ class AssistantStrategyFactory:
     """
 
     _strategies: dict[int, type[AssistantStrategy]] = {
-        ChatGPTStrategy.ASSISTANT_ID: ChatGPTStrategy,
-        PerplexityStrategy.ASSISTANT_ID: PerplexityStrategy,
-        GeminiStrategy.ASSISTANT_ID: GeminiStrategy,
+        1: ChatGPTStrategy,
+        2: PerplexityStrategy,
+        3: GeminiStrategy,
     }
 
     _strategies_by_key: dict[str, type[AssistantStrategy]] = {

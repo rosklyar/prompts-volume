@@ -34,11 +34,6 @@ _OUTPUT_FIELDS = [
 class ChatGPTStrategy(AssistantStrategy):
     """Strategy for ChatGPT assistant scraping."""
 
-    # Legacy class-level attributes for backward compatibility
-    ASSISTANT_ID = _CONFIG.assistant_id
-    ASSISTANT_NAME = _CONFIG.assistant_name
-    URL = _CONFIG.base_url
-
     @property
     def config(self) -> AssistantConfig:
         """Return ChatGPT configuration."""

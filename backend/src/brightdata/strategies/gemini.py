@@ -35,10 +35,6 @@ _OUTPUT_FIELDS = [
 class GeminiStrategy(AssistantStrategy):
     """Strategy for Gemini assistant scraping."""
 
-    ASSISTANT_ID = _CONFIG.assistant_id
-    ASSISTANT_NAME = _CONFIG.assistant_name
-    URL = _CONFIG.base_url
-
     @property
     def config(self) -> AssistantConfig:
         """Return Gemini configuration."""

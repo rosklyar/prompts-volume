@@ -137,7 +137,3 @@ class AssistantStrategy(ABC):
             ParsedWebhookItem with normalized fields
         """
         ...
-
-
-# Backwards compatibility alias
-AssistantUrlStrategy = AssistantStrategy

@@ -3,7 +3,6 @@
 from src.brightdata.strategies.base import (
     AssistantConfig,
     AssistantStrategy,
-    AssistantUrlStrategy,
     IndexBasedPromptMatcher,
     ParsedWebhookItem,
 )
@@ -16,7 +15,6 @@ __all__ = [
     "AssistantConfig",
     "AssistantStrategy",
     "AssistantStrategyFactory",
-    "AssistantUrlStrategy",
     "ChatGPTStrategy",
     "GeminiStrategy",
     "IndexBasedPromptMatcher",

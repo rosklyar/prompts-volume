@@ -44,9 +44,6 @@ class Settings(BaseSettings):
     topic_filter_similarity_threshold: float = 0.7
     topic_filter_min_relevant_ratio: float = 0.5
 
-    # Evaluation configuration
-    evaluation_api_tokens: str = ""  # CSV list of allowed tokens for evaluation API
-
     # Freshness thresholds (hours)
     freshness_scheduling_threshold_hours: int = 18  # At scheduling: < 18h = fresh
     freshness_generation_threshold_hours: int = 24  # At generation: look back 24h
@@ -54,9 +51,6 @@ class Settings(BaseSettings):
     # Chunk retry configuration
     chunk_timeout_hours: int = 2  # Timeout per chunk attempt
     chunk_max_retries: int = 2  # Max retries per chunk (total attempts = 3)
-
-    # Execution queue configuration
-    execution_timeout_hours: int = 2  # Hours before timed-out entries reset to PENDING
 
     # Similar prompts search configuration
     similar_prompts_max_k: int = 100
@@ -122,10 +116,8 @@ class Settings(BaseSettings):
     # Bright Data configuration
     brightdata_api_token: str = ""
     brightdata_seconds_per_prompt: int = 50  # Seconds per prompt for wait time estimation
-    brightdata_dataset_id: str = "gd_m7aof0k82r803d5bjm"
     brightdata_base_url: str = "https://api.brightdata.com/datasets/v3/trigger"
     brightdata_timeout: float = 30.0
-    brightdata_batch_ttl_hours: int = 24
     brightdata_webhook_secret: str = "dev-webhook-secret"  # For webhook auth
     brightdata_default_country: str = "UA"
     backend_webhook_base_url: str = "https://prompts-backend.jollydune-754acd02.canadacentral.azurecontainerapps.io"
