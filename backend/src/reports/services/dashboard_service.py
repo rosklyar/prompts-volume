@@ -14,11 +14,13 @@ from src.database.evals_models import (
 )
 from src.database.models import Prompt
 from src.reports.models.dashboard_models import (
+    BrandVisibilityPoint,
     CompetitorVisibility,
     DashboardResponse,
     PeriodLiteral,
     PromptGap,
     SourceStat,
+    TimelineDataPoint,
 )
 from src.reports.services.results_enricher import (
     ReportEnricher,
@@ -126,7 +128,12 @@ class DashboardService:
         brand_mentions_per_eval: list[list | None] = []
         all_answers: list[dict | None] = []
 
+        # Per-report tracking for timeline
+        per_report_mentions: list[tuple[datetime, int, list[list | None]]] = []
+
         for report in reports:
+            current_report_mentions: list[list | None] = []
+
             for item in report.items:
                 if item.status != ReportItemStatus.INCLUDED:
                     continue
@@ -152,6 +159,7 @@ class DashboardService:
                         response_text, brands
                     )
                 brand_mentions_per_eval.append(brand_mentions)
+                current_report_mentions.append(brand_mentions)
 
                 # Track if target brand is mentioned for this prompt (across any eval)
                 if target_brand_name and brand_mentions:
@@ -159,6 +167,11 @@ class DashboardService:
                         if mention.brand_name == target_brand_name:
                             prompt_brand_ever_mentioned[item.prompt_id] = True
                             break
+
+            if current_report_mentions:
+                per_report_mentions.append(
+                    (report.created_at, report.id, current_report_mentions)
+                )
 
         # Get prompt texts for gaps
         prompts_map = await self._get_prompts_by_ids(list(all_prompt_ids))
@@ -193,6 +206,11 @@ class DashboardService:
         # Convert to sources stats
         sources = self._build_sources(citation_leaderboard)
 
+        # Build visibility timeline (chronological, oldest first)
+        timeline = self._calculate_timeline(
+            brand_config, competitors_config, per_report_mentions
+        )
+
         return DashboardResponse(
             group_id=group_id,
             from_date=from_date,
@@ -206,6 +224,7 @@ class DashboardService:
             sources=sources,
             prompt_gaps=prompt_gaps,
             prompt_gaps_count=len(prompt_gaps),
+            timeline=timeline,
         )
 
     async def _get_prompts_by_ids(self, prompt_ids: list[int]) -> dict[int, Prompt]:
@@ -274,6 +293,47 @@ class DashboardService:
         visibility_results.sort(key=lambda x: x.visibility_percent, reverse=True)
 
         return visibility_results
+
+    def _calculate_timeline(
+        self,
+        brand_config: dict | None,
+        competitors_config: list[dict],
+        per_report_mentions: list[tuple[datetime, int, list[list | None]]],
+    ) -> list[TimelineDataPoint]:
+        """Build chronological visibility timeline from per-report mention data.
+
+        Reuses _calculate_visibility() for each report's mentions to get
+        per-brand visibility at each point in time.
+        """
+        if not per_report_mentions:
+            return []
+
+        # Sort chronologically (oldest first) — reports were loaded desc
+        per_report_mentions.sort(key=lambda x: x[0])
+
+        timeline: list[TimelineDataPoint] = []
+        for timestamp, report_id, mentions in per_report_mentions:
+            competitors = self._calculate_visibility(
+                brand_config, competitors_config, mentions
+            )
+            brands = [
+                BrandVisibilityPoint(
+                    name=c.name,
+                    domain=c.domain,
+                    visibility_percent=c.visibility_percent,
+                    is_target_brand=c.is_target_brand,
+                )
+                for c in competitors
+            ]
+            timeline.append(
+                TimelineDataPoint(
+                    timestamp=timestamp,
+                    report_id=report_id,
+                    brands=brands,
+                )
+            )
+
+        return timeline
 
     def _build_sources(self, citation_leaderboard) -> list[SourceStat]:
         """Build sources list from citation leaderboard.

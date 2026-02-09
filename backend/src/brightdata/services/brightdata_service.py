@@ -7,7 +7,6 @@ from src.brightdata.models.domain import BrightDataTriggerRequest
 from src.brightdata.services.batch_service import BrightDataBatchService
 from src.brightdata.services.brightdata_client import BrightDataHttpClient
 from src.brightdata.strategies import AssistantStrategyFactory
-from src.config.settings import settings
 from src.database.evals_models import BrightDataBatch
 
 logger = logging.getLogger(__name__)
