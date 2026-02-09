@@ -129,7 +129,10 @@ class Settings(BaseSettings):
     brightdata_webhook_secret: str = "dev-webhook-secret"  # For webhook auth
     brightdata_default_country: str = "UA"
     backend_webhook_base_url: str = "https://prompts-backend.jollydune-754acd02.canadacentral.azurecontainerapps.io"
-    brightdata_chunk_size: int = 5  # Number of prompts to process in each chunk
+    brightdata_chunk_size: int = 5  # Number of prompts to process in each chunk (global fallback)
+    brightdata_chatgpt_chunk_size: int = 1
+    brightdata_perplexity_chunk_size: int = 5
+    brightdata_gemini_chunk_size: int = 5
 
     @property
     def brightdata_batch_eviction_timeout_hours(self) -> int:

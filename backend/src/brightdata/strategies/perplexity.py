@@ -8,6 +8,7 @@ from src.brightdata.strategies.citation_utils import (
     merge_additional_sources,
     normalize_citations,
 )
+from src.config.settings import settings
 
 
 _CONFIG = AssistantConfig(
@@ -42,6 +43,10 @@ class PerplexityStrategy(AssistantStrategy):
     def config(self) -> AssistantConfig:
         """Return Perplexity configuration."""
         return _CONFIG
+
+    def get_chunk_size(self) -> int:
+        """Return Perplexity-specific chunk size."""
+        return settings.brightdata_perplexity_chunk_size
 
     def get_output_fields(self) -> list[str]:
         """Return Perplexity-specific output fields."""

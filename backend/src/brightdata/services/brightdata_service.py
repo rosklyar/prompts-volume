@@ -237,7 +237,8 @@ class BrightDataService:
         if not prompts:
             return []
 
-        chunks = _chunk_dict(prompts, settings.brightdata_chunk_size)
+        strategy = AssistantStrategyFactory.get_strategy(assistant_id)
+        chunks = _chunk_dict(prompts, strategy.get_chunk_size())
         batch_ids: list[str] = []
 
         for chunk in chunks:

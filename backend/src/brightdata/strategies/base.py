@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
 
+from src.config.settings import settings
+
 
 @dataclass(frozen=True)
 class AssistantConfig:
@@ -95,6 +97,10 @@ class AssistantStrategy(ABC):
     def get_dataset_id(self) -> str:
         """Return BrightData dataset ID for this assistant."""
         return self.config.dataset_id
+
+    def get_chunk_size(self) -> int:
+        """Return chunk size for this assistant. Defaults to global setting."""
+        return settings.brightdata_chunk_size
 
     @abstractmethod
     def get_output_fields(self) -> list[str]:

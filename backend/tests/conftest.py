@@ -173,11 +173,18 @@ def client(test_engine):
 
     asyncio.get_event_loop().run_until_complete(seed_data())
 
+    # Override per-assistant chunk sizes to use global default for test simplicity
+    original_chatgpt_chunk_size = settings.brightdata_chatgpt_chunk_size
+    settings.brightdata_chatgpt_chunk_size = settings.brightdata_chunk_size
+
     # TestClient will use the overridden engine via get_async_session dependency
     # No need to override get_async_session - it will use the overridden engine
 
     with TestClient(app) as test_client:
         yield test_client
+
+    # Restore per-assistant chunk sizes
+    settings.brightdata_chatgpt_chunk_size = original_chatgpt_chunk_size
 
     # Restore original engine and session maker for prompts_db
     db_session._engine = original_engine
