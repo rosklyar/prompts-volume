@@ -188,18 +188,6 @@ class DashboardService:
                     )
                 )
 
-        # Calculate brand visibility statistics
-        competitors = self._calculate_visibility(
-            brand_config, competitors_config, brand_mentions_per_eval
-        )
-
-        # Find target brand visibility
-        brand_visibility = 0.0
-        for comp in competitors:
-            if comp.is_target_brand:
-                brand_visibility = comp.visibility_percent
-                break
-
         # Build citation leaderboard
         citation_leaderboard = self._enricher.build_citation_leaderboard(all_answers)
 
@@ -210,6 +198,37 @@ class DashboardService:
         timeline = self._calculate_timeline(
             brand_config, competitors_config, per_report_mentions
         )
+
+        # Use latest report's visibility for gauge and competitors
+        if timeline:
+            latest_point = timeline[-1]
+            competitors = [
+                CompetitorVisibility(
+                    name=b.name,
+                    domain=b.domain,
+                    visibility_percent=b.visibility_percent,
+                    is_target_brand=b.is_target_brand,
+                )
+                for b in latest_point.brands
+            ]
+            competitors.sort(key=lambda x: x.visibility_percent, reverse=True)
+        else:
+            competitors = []
+
+        # Find target brand visibility
+        brand_visibility = 0.0
+        for comp in competitors:
+            if comp.is_target_brand:
+                brand_visibility = comp.visibility_percent
+                break
+
+        # Compute visibility change from the last two timeline points
+        if len(timeline) >= 2:
+            prev_vis = {b.name: b.visibility_percent for b in timeline[-2].brands}
+            for comp in competitors:
+                if comp.name in prev_vis:
+                    delta = round(comp.visibility_percent - prev_vis[comp.name], 1)
+                    comp.visibility_change = delta if delta != 0.0 else None
 
         return DashboardResponse(
             group_id=group_id,

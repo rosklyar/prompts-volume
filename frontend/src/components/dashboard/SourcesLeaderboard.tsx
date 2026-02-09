@@ -9,14 +9,15 @@ import type { SourceStat } from "@/types/dashboard"
 interface SourcesLeaderboardProps {
   sources: SourceStat[]
   hasData: boolean
+  className?: string
 }
 
 const accentColor = "#C4553D"
 
-export function SourcesLeaderboard({ sources, hasData }: SourcesLeaderboardProps) {
+export function SourcesLeaderboard({ sources, hasData, className = "" }: SourcesLeaderboardProps) {
   if (!hasData || sources.length === 0) {
     return (
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full flex flex-col">
+      <div className={`bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full flex flex-col ${className}`}>
         <h3 className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-6 shrink-0">
           Sources
         </h3>
@@ -30,7 +31,7 @@ export function SourcesLeaderboard({ sources, hasData }: SourcesLeaderboardProps
   }
 
   return (
-    <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full flex flex-col">
+    <div className={`bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full flex flex-col ${className}`}>
       <h3 className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-4 shrink-0">
         Sources
       </h3>

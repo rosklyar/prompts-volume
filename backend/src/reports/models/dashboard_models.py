@@ -16,6 +16,7 @@ class CompetitorVisibility(BaseModel):
     domain: str | None
     visibility_percent: float  # 0-100
     is_target_brand: bool
+    visibility_change: float | None = None  # delta vs previous report, None if < 2 reports
 
 
 class SourceStat(BaseModel):

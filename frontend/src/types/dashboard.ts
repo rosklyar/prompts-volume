@@ -15,6 +15,7 @@ export interface CompetitorVisibility {
   domain: string | null
   visibility_percent: number
   is_target_brand: boolean
+  visibility_change: number | null
 }
 
 export interface SourceStat {
@@ -27,6 +28,19 @@ export interface SourceStat {
 export interface PromptGap {
   prompt_id: number
   prompt_text: string
+}
+
+export interface BrandVisibilityPoint {
+  name: string
+  domain: string | null
+  visibility_percent: number
+  is_target_brand: boolean
+}
+
+export interface TimelineDataPoint {
+  timestamp: string
+  report_id: number
+  brands: BrandVisibilityPoint[]
 }
 
 export interface DashboardResponse {
@@ -42,4 +56,5 @@ export interface DashboardResponse {
   sources: SourceStat[]
   prompt_gaps: PromptGap[]
   prompt_gaps_count: number
+  timeline: TimelineDataPoint[]
 }
