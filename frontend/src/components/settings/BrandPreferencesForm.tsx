@@ -1,9 +1,11 @@
 import { useState } from "react"
-import { Globe, Plus, Trash2, Check, MapPin, Briefcase } from "lucide-react"
+import { Globe, Check, MapPin, Briefcase } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useUserPreferences, useUpdatePreferences } from "@/hooks/useOnboarding"
 import { useCountries, useBusinessDomains } from "@/hooks/useTopics"
 import { normalizeDomain } from "@/lib/domain"
+import { VariationsInput } from "@/components/onboarding/VariationsInput"
+import { CompetitorEditor } from "@/components/competitors/CompetitorEditor"
 import type { BrandInfo, CompetitorInfo } from "@/types/groups"
 
 const ACCENT_COLOR = "#C4553D"
@@ -58,57 +60,16 @@ function BrandPreferencesFormInner({
   // Brand state - initialized from props
   const [brandName, setBrandName] = useState(initialBrand?.name ?? "")
   const [brandDomain, setBrandDomain] = useState(initialBrand?.domain ?? "")
-  const [brandVariations, setBrandVariations] = useState(
-    initialBrand?.variations.join(", ") ?? ""
+  const [brandVariations, setBrandVariations] = useState<string[]>(
+    initialBrand?.variations ?? []
   )
 
   // Competitors state
   const [competitors, setCompetitors] = useState<CompetitorInfo[]>(initialCompetitors)
-  const [newCompName, setNewCompName] = useState("")
-  const [newCompDomain, setNewCompDomain] = useState("")
-  const [newCompVariations, setNewCompVariations] = useState("")
-  const [newCompVariationsTouched, setNewCompVariationsTouched] = useState(false)
 
   // UI state
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
-
-  // Handle new competitor name change with prefill logic
-  const handleNewCompNameChange = (value: string) => {
-    setNewCompName(value)
-    if (!newCompVariationsTouched) {
-      setNewCompVariations(value.trim())
-    }
-  }
-
-  const handleAddCompetitor = () => {
-    if (!newCompName.trim()) return
-    if (competitors.length >= MAX_COMPETITORS) {
-      setError(`Maximum ${MAX_COMPETITORS} competitors allowed`)
-      return
-    }
-    const variations = newCompVariations
-      .split(",")
-      .map((v) => v.trim())
-      .filter(Boolean)
-    setCompetitors([
-      ...competitors,
-      {
-        name: newCompName.trim(),
-        domain: normalizeDomain(newCompDomain) || null,
-        variations,
-      },
-    ])
-    setNewCompName("")
-    setNewCompDomain("")
-    setNewCompVariations("")
-    setNewCompVariationsTouched(false)
-    setError(null)
-  }
-
-  const handleRemoveCompetitor = (index: number) => {
-    setCompetitors(competitors.filter((_, i) => i !== index))
-  }
 
   const handleSave = () => {
     if (!countryId) {
@@ -120,15 +81,10 @@ function BrandPreferencesFormInner({
       return
     }
 
-    const variations = brandVariations
-      .split(",")
-      .map((v) => v.trim())
-      .filter(Boolean)
-
     const brand: BrandInfo = {
       name: brandName.trim(),
       domain: normalizeDomain(brandDomain) || null,
-      variations,
+      variations: brandVariations,
     }
 
     setError(null)
@@ -241,12 +197,11 @@ function BrandPreferencesFormInner({
               placeholder="Website (e.g., nike.com)"
             />
           </div>
-          <textarea
-            value={brandVariations}
-            onChange={(e) => setBrandVariations(e.target.value)}
-            className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#C4553D]/30 focus:border-[#C4553D] resize-none"
-            rows={2}
-            placeholder="Name variations (comma-separated)"
+          <VariationsInput
+            variations={brandVariations}
+            onChange={setBrandVariations}
+            primaryValue={brandName.trim() || undefined}
+            placeholder="+ add variation"
           />
         </div>
       </div>
@@ -257,81 +212,12 @@ function BrandPreferencesFormInner({
           Competitors{" "}
           <span className="text-gray-300">(max {MAX_COMPETITORS})</span>
         </p>
-
-        {/* Existing competitors */}
-        {competitors.length > 0 && (
-          <div className="space-y-2 mb-4">
-            {competitors.map((comp, index) => (
-              <div
-                key={index}
-                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100"
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-gray-800 text-sm">{comp.name}</p>
-                  {comp.domain && (
-                    <p className="text-xs text-gray-500 flex items-center gap-1">
-                      <Globe className="w-3 h-3" />
-                      {comp.domain}
-                    </p>
-                  )}
-                </div>
-                <button
-                  onClick={() => handleRemoveCompetitor(index)}
-                  className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
-                  disabled={updatePreferences.isPending}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Add competitor form */}
-        {competitors.length < MAX_COMPETITORS && (
-          <div className="space-y-2 p-4 border-2 border-dashed border-gray-200 rounded-lg">
-            <input
-              type="text"
-              value={newCompName}
-              onChange={(e) => handleNewCompNameChange(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#C4553D]/30 focus:border-[#C4553D]"
-              placeholder="Competitor name"
-              onKeyDown={(e) => e.key === "Enter" && handleAddCompetitor()}
-              disabled={updatePreferences.isPending}
-            />
-            <div className="relative">
-              <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                value={newCompDomain}
-                onChange={(e) => setNewCompDomain(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#C4553D]/30 focus:border-[#C4553D]"
-                placeholder="Website (optional)"
-                disabled={updatePreferences.isPending}
-              />
-            </div>
-            <textarea
-              value={newCompVariations}
-              onChange={(e) => {
-                setNewCompVariations(e.target.value)
-                setNewCompVariationsTouched(true)
-              }}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#C4553D]/30 focus:border-[#C4553D] resize-none"
-              rows={2}
-              placeholder="Name variations (optional, comma-separated)"
-              disabled={updatePreferences.isPending}
-            />
-            <button
-              onClick={handleAddCompetitor}
-              disabled={!newCompName.trim() || updatePreferences.isPending}
-              className="w-full py-2 text-sm text-white rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 flex items-center justify-center gap-2"
-              style={{ backgroundColor: ACCENT_COLOR }}
-            >
-              <Plus className="w-4 h-4" />
-              Add competitor
-            </button>
-          </div>
-        )}
+        <CompetitorEditor
+          competitors={competitors}
+          onCompetitorsChange={setCompetitors}
+          maxCompetitors={MAX_COMPETITORS}
+          disabled={updatePreferences.isPending}
+        />
       </div>
 
       {/* Error display */}
