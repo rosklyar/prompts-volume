@@ -119,36 +119,46 @@ export function DashboardView({ groups, isLoadingGroups }: DashboardViewProps) {
       {isLoading ? (
         <DashboardSkeleton />
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 flex-1 min-h-0" style={{ height: "calc(100vh - 280px)", gridTemplateRows: "1fr 1fr" }}>
-          <BrandVisibilityCard
-            brandName={data?.brand_name ?? null}
-            visibilityPercent={data?.brand_visibility_percent ?? 0}
-            hasData={hasData}
-          />
+        <div
+          className="grid gap-6 overflow-hidden"
+          style={{
+            height: "calc(100vh - 280px)",
+            gridTemplateRows: "1fr 1fr",
+          }}
+        >
+          {/* Row 1: Brand Gauge / Trend Chart / Competitors */}
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 min-h-0 overflow-hidden">
+            <BrandVisibilityCard
+              brandName={data?.brand_name ?? null}
+              visibilityPercent={data?.brand_visibility_percent ?? 0}
+              hasData={hasData}
+            />
 
-          <VisibilityTrendChart
-            timeline={data?.timeline ?? []}
-            hasData={hasData}
-            className="lg:col-span-2"
-          />
+            <VisibilityTrendChart
+              timeline={data?.timeline ?? []}
+              hasData={hasData}
+              className="lg:col-span-2"
+            />
 
-          <CompetitorsList
-            competitors={data?.competitors ?? []}
-            hasData={hasData}
-          />
+            <CompetitorsList
+              competitors={data?.competitors ?? []}
+              hasData={hasData}
+            />
+          </div>
 
-          <SourcesLeaderboard
-            sources={data?.sources ?? []}
-            hasData={hasData}
-            className="lg:col-span-2"
-          />
+          {/* Row 2: Sources / Prompt Gaps */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 min-h-0 overflow-hidden">
+            <SourcesLeaderboard
+              sources={data?.sources ?? []}
+              hasData={hasData}
+            />
 
-          <PromptGapsList
-            promptGaps={data?.prompt_gaps ?? []}
-            totalCount={data?.prompt_gaps_count ?? 0}
-            hasData={hasData}
-            className="lg:col-span-2"
-          />
+            <PromptGapsList
+              promptGaps={data?.prompt_gaps ?? []}
+              totalCount={data?.prompt_gaps_count ?? 0}
+              hasData={hasData}
+            />
+          </div>
         </div>
       )}
 

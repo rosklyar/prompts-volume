@@ -15,7 +15,7 @@ export function CompetitorsList({ competitors, hasData }: CompetitorsListProps) 
 
   if (!hasData || filtered.length === 0) {
     return (
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full flex flex-col">
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full min-h-0 flex flex-col">
         <h3 className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-6 shrink-0">
           Competitors
         </h3>
@@ -32,7 +32,7 @@ export function CompetitorsList({ competitors, hasData }: CompetitorsListProps) 
   const maxVisibility = Math.max(...filtered.map((c) => c.visibility_percent), 1)
 
   return (
-    <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full flex flex-col">
+    <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full min-h-0 flex flex-col">
       <h3 className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-6 shrink-0">
         Competitors
       </h3>
