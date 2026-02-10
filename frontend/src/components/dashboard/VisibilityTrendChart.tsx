@@ -72,7 +72,7 @@ export function VisibilityTrendChart({ timeline, hasData, className = "" }: Visi
     return (
       <div className={`bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full flex flex-col ${className}`}>
         <h3 className="font-['Fraunces'] text-sm font-semibold text-[#1F2937] shrink-0">
-          Visibility Trend
+          VISIBILITY TREND
         </h3>
         <div className="flex-1 flex items-center justify-center">
           <p className="text-xs text-[#9CA3AF]">
@@ -84,9 +84,9 @@ export function VisibilityTrendChart({ timeline, hasData, className = "" }: Visi
   }
 
   return (
-    <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full flex flex-col">
+    <div className={`bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full flex flex-col ${className}`}>
       <h3 className="font-['Fraunces'] text-sm font-semibold text-[#1F2937] mb-4 shrink-0">
-        Visibility Trend
+        VISIBILITY TREND
       </h3>
       <div className="flex-1 min-h-0">
         <ResponsiveContainer width="100%" height="100%">

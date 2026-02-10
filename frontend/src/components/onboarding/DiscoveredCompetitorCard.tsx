@@ -3,9 +3,10 @@
  * Supports selection toggle and inline editing of name, domain, and variations
  */
 
-import { useState, useCallback, type KeyboardEvent, type ChangeEvent } from "react"
-import { Check, Pencil, X, Globe } from "lucide-react"
+import { useState, useCallback } from "react"
+import { Check, Pencil, Globe } from "lucide-react"
 import type { CompetitorInfo } from "@/types/groups"
+import { VariationsInput } from "./VariationsInput"
 
 interface DiscoveredCompetitorCardProps {
   competitor: CompetitorInfo
@@ -13,8 +14,6 @@ interface DiscoveredCompetitorCardProps {
   onToggleSelect: () => void
   onUpdate: (updated: CompetitorInfo) => void
 }
-
-const MAX_VISIBLE_VARIATIONS = 3
 
 export function DiscoveredCompetitorCard({
   competitor,
@@ -27,7 +26,6 @@ export function DiscoveredCompetitorCard({
   const [editedName, setEditedName] = useState("")
   const [editedDomain, setEditedDomain] = useState("")
   const [editedVariations, setEditedVariations] = useState<string[]>([])
-  const [newVariation, setNewVariation] = useState("")
 
   const handleEditClick = useCallback(() => {
     if (isExpanded) {
@@ -43,41 +41,14 @@ export function DiscoveredCompetitorCard({
       setEditedName(competitor.name)
       setEditedDomain(competitor.domain || "")
       setEditedVariations(competitor.variations || [])
-      setNewVariation("")
       setIsExpanded(true)
     }
   }, [isExpanded, editedName, editedDomain, editedVariations, competitor, onUpdate])
 
-  const handleRemoveVariation = useCallback((index: number) => {
-    setEditedVariations((prev) => prev.filter((_, i) => i !== index))
-  }, [])
-
-  const handleAddVariation = useCallback(() => {
-    const trimmed = newVariation.trim()
-    if (trimmed && !editedVariations.includes(trimmed)) {
-      setEditedVariations((prev) => [...prev, trimmed])
-      setNewVariation("")
-    }
-  }, [newVariation, editedVariations])
-
-  const handleVariationKeyDown = useCallback(
-    (e: KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === "Enter") {
-        e.preventDefault()
-        handleAddVariation()
-      }
-    },
-    [handleAddVariation]
-  )
-
-  const handleNewVariationChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
-    setNewVariation(e.target.value)
-  }, [])
-
-  // Use props directly for display (no stale state issues)
-  const variations = competitor.variations || []
-  const visibleVariations = variations.slice(0, MAX_VISIBLE_VARIATIONS)
-  const hiddenCount = variations.length - MAX_VISIBLE_VARIATIONS
+  // Primary value for VariationsInput: the current brand name
+  const primaryValue = isExpanded
+    ? editedName.trim() || competitor.name
+    : competitor.name
 
   return (
     <div
@@ -149,41 +120,15 @@ export function DiscoveredCompetitorCard({
               {/* Variations */}
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Name variations</label>
-                <div className="flex flex-wrap gap-1.5 p-2 bg-gray-50 rounded-lg border border-gray-200 min-h-[60px]">
-                  {editedVariations.map((v, i) => (
-                    <span
-                      key={i}
-                      className="inline-flex items-center gap-1 px-2 py-1
-                                 bg-white text-gray-700 text-xs rounded-md border border-gray-200
-                                 group hover:border-gray-300 transition-colors"
-                    >
-                      {v}
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveVariation(i)}
-                        className="text-gray-400 hover:text-red-500 transition-colors"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </span>
-                  ))}
-                  {/* Add new variation input */}
-                  <input
-                    type="text"
-                    value={newVariation}
-                    onChange={handleNewVariationChange}
-                    onKeyDown={handleVariationKeyDown}
-                    onBlur={handleAddVariation}
-                    placeholder="+ add variation"
-                    className="px-2 py-1 text-xs bg-white border border-dashed
-                               border-gray-300 rounded-md min-w-[100px] flex-1
-                               focus:border-[#C4553D] focus:outline-none"
-                  />
-                </div>
+                <VariationsInput
+                  primaryValue={primaryValue}
+                  variations={editedVariations}
+                  onChange={setEditedVariations}
+                />
               </div>
             </div>
           ) : (
-            /* Collapsed view - uses props directly */
+            /* Collapsed view */
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <p className="font-medium text-gray-800">{competitor.name}</p>
@@ -197,23 +142,23 @@ export function DiscoveredCompetitorCard({
               {competitor.domain && (
                 <p className="text-sm text-gray-500 mb-2">{competitor.domain}</p>
               )}
-              {visibleVariations.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {visibleVariations.map((v, i) => (
-                    <span
-                      key={i}
-                      className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-md"
-                    >
-                      {v}
-                    </span>
-                  ))}
-                  {hiddenCount > 0 && (
-                    <span className="px-2 py-0.5 text-gray-400 text-xs">
-                      +{hiddenCount} more
-                    </span>
-                  )}
-                </div>
-              )}
+              {/* Show brand name as non-removable primary chip */}
+              <div className="flex flex-wrap gap-1">
+                <span
+                  className="inline-flex items-center gap-1 px-2.5 py-0.5
+                             bg-[#C4553D]/10 text-[#C4553D] text-xs font-medium rounded-md border border-[#C4553D]/20"
+                >
+                  {competitor.name}
+                </span>
+                {(competitor.variations || []).map((v, i) => (
+                  <span
+                    key={i}
+                    className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-md"
+                  >
+                    {v}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
         </div>

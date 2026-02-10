@@ -6,7 +6,6 @@ from fastapi import Depends
 
 from src.config.settings import settings
 from src.onboarding.services.competitor_discovery.openai_client import (
-    OpenAIBrandVariationGenerator,
     OpenAICompetitorSearcher,
 )
 from src.onboarding.services.competitor_discovery.service import (
@@ -23,15 +22,8 @@ def get_competitor_discovery_service() -> CompetitorDiscoveryService:
         api_key=settings.openai_api_key,
         model=settings.pg_openai_model,
     )
-    variation_generator = OpenAIBrandVariationGenerator(
-        api_key=settings.openai_api_key,
-        model=settings.pg_openai_model,
-    )
 
-    return CompetitorDiscoveryService(
-        searcher=searcher,
-        variation_generator=variation_generator,
-    )
+    return CompetitorDiscoveryService(searcher=searcher)
 
 
 CompetitorDiscoveryServiceDep = Annotated[

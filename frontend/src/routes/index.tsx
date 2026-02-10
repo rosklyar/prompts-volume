@@ -17,11 +17,13 @@ import { Logo } from "@/components/Logo"
 import { Check } from "lucide-react"
 import type { BrandInfo, CompetitorInfo, TopicInput } from "@/types/groups"
 import { TabSidebar } from "@/components/navigation/TabSidebar"
+import type { TabKey } from "@/components/navigation/TabSidebar"
 import { CitationsView } from "@/components/citations/CitationsView"
 import { DashboardView } from "@/components/dashboard/DashboardView"
+import { CompetitorsView } from "@/components/competitors/CompetitorsView"
 
 const indexSearchSchema = z.object({
-  tab: z.enum(["dashboard", "prompts", "sources"]).optional(),
+  tab: z.enum(["dashboard", "prompts", "sources", "competitors"]).optional(),
 })
 
 export const Route = createFileRoute("/")({
@@ -57,8 +59,8 @@ function PromptDiscovery() {
   const [anchorIndex, setAnchorIndex] = useState<number | null>(null)
 
   // Tab navigation state - use URL param if provided, otherwise default to "dashboard"
-  const activeTab = search.tab ?? "dashboard"
-  const setActiveTab = (tab: "dashboard" | "prompts" | "sources") => {
+  const activeTab: TabKey = search.tab ?? "dashboard"
+  const setActiveTab = (tab: TabKey) => {
     navigate({ to: "/", search: { tab } })
   }
 
@@ -784,6 +786,8 @@ function PromptDiscovery() {
               </>
             ) : activeTab === "sources" ? (
               <CitationsView groups={groups} isLoadingGroups={isLoadingGroups} />
+            ) : activeTab === "competitors" ? (
+              <CompetitorsView />
             ) : null}
           </div>
         </main>

@@ -209,7 +209,7 @@ async def discover_competitors(
     in the specified country. Returns competitors with name variations
     for brand matching.
     """
-    # Get country and languages for localized search
+    # Get country for localized search
     country_service = get_country_service(prompts_session)
     country = await country_service.get_by_id(request.country_id)
     if not country:
@@ -218,15 +218,11 @@ async def discover_competitors(
             detail="Country not found",
         )
 
-    # Extract language names
-    languages = [lang.name for lang in country.languages] if country.languages else ["English"]
-
     # Discover competitors
     discovered = await competitor_service.discover_competitors(
         brand_name=request.brand.name,
         brand_domain=request.brand.domain or "",
         country_name=country.name,
-        languages=languages,
         num_competitors=5,
     )
 

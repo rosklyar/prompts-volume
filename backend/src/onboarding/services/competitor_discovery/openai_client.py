@@ -2,13 +2,12 @@
 
 import json
 import logging
-from typing import Dict, List
+from typing import List
 
 from openai import AsyncOpenAI
 
 from src.onboarding.services.competitor_discovery.models import RawCompetitor
 from src.onboarding.services.competitor_discovery.prompts import (
-    BATCH_VARIATION_GENERATION_PROMPT,
     COMPETITOR_SEARCH_PROMPT,
 )
 
@@ -72,127 +71,6 @@ class OpenAICompetitorSearcher:
         except Exception as e:
             logger.error(f"Competitor search failed: {e}")
             return []
-
-    def _extract_json(self, content: str) -> str:
-        """Extract JSON from response, handling markdown code blocks."""
-        content = content.strip()
-        if content.startswith("```json"):
-            content = content[7:]
-        elif content.startswith("```"):
-            content = content[3:]
-        if content.endswith("```"):
-            content = content[:-3]
-        return content.strip()
-
-
-class OpenAIBrandVariationGenerator:
-    """OpenAI-based brand variation generator with batch support."""
-
-    def __init__(self, *, api_key: str, model: str):
-        if not api_key:
-            raise ValueError("API key is required")
-        self._client = AsyncOpenAI(api_key=api_key)
-        self._model = model
-
-    async def generate_batch(
-        self,
-        *,
-        brand_names: List[str],
-        languages: List[str],
-    ) -> Dict[str, List[str]]:
-        """Generate brand name variations for multiple brands in a single call."""
-        if not brand_names:
-            return {}
-
-        languages_str = ", ".join(languages)
-        brands_list = "\n".join(f"- {name}" for name in brand_names)
-
-        prompt = BATCH_VARIATION_GENERATION_PROMPT.format(
-            brands_list=brands_list,
-            languages=languages_str,
-        )
-
-        try:
-            response = await self._client.responses.create(
-                model=self._model,
-                input=prompt,
-            )
-
-            content = response.output_text
-            if not content:
-                logger.warning("Empty response for batch variation generation")
-                return {name: [] for name in brand_names}
-
-            json_content = self._extract_json(content)
-            variations_map = json.loads(json_content)
-
-            if not isinstance(variations_map, dict):
-                logger.warning(f"Expected dict, got {type(variations_map)}")
-                return {name: [] for name in brand_names}
-
-            # Build case-insensitive lookup for LLM response keys
-            lowercase_map: Dict[str, List[str]] = {
-                k.lower(): v for k, v in variations_map.items()
-            }
-
-            # Normalize variations for each brand
-            result: Dict[str, List[str]] = {}
-            for brand_name in brand_names:
-                # Try exact match first, then case-insensitive
-                raw_variations = variations_map.get(brand_name)
-                if raw_variations is None:
-                    raw_variations = lowercase_map.get(brand_name.lower(), [])
-                if not isinstance(raw_variations, list):
-                    raw_variations = []
-                filtered = [v for v in raw_variations if isinstance(v, str) and v.strip()]
-                result[brand_name] = self._normalize_variations(filtered, brand_name)
-
-            return result
-
-        except Exception as e:
-            logger.error(f"Batch variation generation failed: {e}")
-            return {name: [] for name in brand_names}
-
-    def _normalize_variations(
-        self, variations: List[str], brand_name: str, *, max_count: int = 3
-    ) -> List[str]:
-        """Normalize variations: lowercase, dedupe, remove redundant suffixes."""
-        brand_lower = brand_name.lower()
-        seen_lower: set[str] = set()
-        result: List[str] = []
-
-        for v in variations:
-            normalized = v.lower().strip()
-
-            # Skip empty or original brand name
-            if not normalized or normalized == brand_lower:
-                continue
-
-            # Skip if we've seen this (case-insensitive dedup)
-            if normalized in seen_lower:
-                continue
-
-            # Skip if this is just another variation + suffix
-            is_redundant = False
-            for existing in result:
-                if normalized.startswith(existing) and len(normalized) > len(existing):
-                    is_redundant = True
-                    break
-                if existing.startswith(normalized) and len(existing) > len(normalized):
-                    result.remove(existing)
-                    seen_lower.discard(existing)
-                    break
-
-            if is_redundant:
-                continue
-
-            seen_lower.add(normalized)
-            result.append(normalized)
-
-            if len(result) >= max_count:
-                break
-
-        return result
 
     def _extract_json(self, content: str) -> str:
         """Extract JSON from response, handling markdown code blocks."""
