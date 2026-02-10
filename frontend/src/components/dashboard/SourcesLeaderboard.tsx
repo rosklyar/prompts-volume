@@ -17,7 +17,7 @@ const accentColor = "#C4553D"
 export function SourcesLeaderboard({ sources, hasData, className = "" }: SourcesLeaderboardProps) {
   if (!hasData || sources.length === 0) {
     return (
-      <div className={`bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full flex flex-col ${className}`}>
+      <div className={`bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full min-h-0 flex flex-col ${className}`}>
         <h3 className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-6 shrink-0">
           Sources
         </h3>
@@ -31,7 +31,7 @@ export function SourcesLeaderboard({ sources, hasData, className = "" }: Sources
   }
 
   return (
-    <div className={`bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full flex flex-col ${className}`}>
+    <div className={`bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full min-h-0 flex flex-col ${className}`}>
       <h3 className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-4 shrink-0">
         Sources
       </h3>
