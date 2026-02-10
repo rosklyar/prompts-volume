@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
 
+from src.config.settings import settings
+
 
 @dataclass(frozen=True)
 class AssistantConfig:
@@ -96,6 +98,10 @@ class AssistantStrategy(ABC):
         """Return BrightData dataset ID for this assistant."""
         return self.config.dataset_id
 
+    def get_chunk_size(self) -> int:
+        """Return chunk size for this assistant. Defaults to global setting."""
+        return settings.brightdata_chunk_size
+
     @abstractmethod
     def get_output_fields(self) -> list[str]:
         """Return custom output fields to request from BrightData API."""
@@ -131,7 +137,3 @@ class AssistantStrategy(ABC):
             ParsedWebhookItem with normalized fields
         """
         ...
-
-
-# Backwards compatibility alias
-AssistantUrlStrategy = AssistantStrategy

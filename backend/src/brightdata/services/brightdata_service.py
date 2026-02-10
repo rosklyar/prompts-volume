@@ -7,7 +7,7 @@ from src.brightdata.models.domain import BrightDataTriggerRequest
 from src.brightdata.services.batch_service import BrightDataBatchService
 from src.brightdata.services.brightdata_client import BrightDataHttpClient
 from src.brightdata.strategies import AssistantStrategyFactory
-from src.config.settings import settings
+from src.database.evals_models import BrightDataBatch
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +129,7 @@ class BrightDataService:
 
     async def re_trigger_batch(
         self,
-        batch: "BrightDataBatch",
+        batch: BrightDataBatch,
         prompts: dict[int, str],
         country_iso_code: str,
     ) -> None:
@@ -143,9 +143,6 @@ class BrightDataService:
             prompts: Dict mapping prompt_id to prompt_text
             country_iso_code: ISO country code for BrightData API (e.g., "UA")
         """
-        # Import here to avoid circular import
-        from src.database.evals_models import BrightDataBatch
-
         if not self._client:
             logger.debug("Bright Data client not configured, skipping HTTP re-trigger")
             return
@@ -237,7 +234,8 @@ class BrightDataService:
         if not prompts:
             return []
 
-        chunks = _chunk_dict(prompts, settings.brightdata_chunk_size)
+        strategy = AssistantStrategyFactory.get_strategy(assistant_id)
+        chunks = _chunk_dict(prompts, strategy.get_chunk_size())
         batch_ids: list[str] = []
 
         for chunk in chunks:

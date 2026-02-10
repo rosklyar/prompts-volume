@@ -16,6 +16,7 @@ class CompetitorVisibility(BaseModel):
     domain: str | None
     visibility_percent: float  # 0-100
     is_target_brand: bool
+    visibility_change: float | None = None  # delta vs previous report, None if < 2 reports
 
 
 class SourceStat(BaseModel):
@@ -32,6 +33,23 @@ class PromptGap(BaseModel):
 
     prompt_id: int
     prompt_text: str
+
+
+class BrandVisibilityPoint(BaseModel):
+    """Visibility data for a single brand at a specific point in time."""
+
+    name: str
+    domain: str | None
+    visibility_percent: float
+    is_target_brand: bool
+
+
+class TimelineDataPoint(BaseModel):
+    """A single point on the visibility timeline (one report)."""
+
+    timestamp: datetime
+    report_id: int
+    brands: list[BrandVisibilityPoint]
 
 
 class DashboardResponse(BaseModel):
@@ -57,3 +75,6 @@ class DashboardResponse(BaseModel):
     # Prompts where target brand is NOT mentioned
     prompt_gaps: list[PromptGap]
     prompt_gaps_count: int
+
+    # Visibility over time (one entry per report, chronological)
+    timeline: list[TimelineDataPoint] = []

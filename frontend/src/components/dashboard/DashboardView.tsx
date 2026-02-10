@@ -12,6 +12,7 @@ import { GroupChipsSelector } from "@/components/citations/GroupChipsSelector"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
 import { DashboardSkeleton } from "./DashboardSkeleton"
 import { BrandVisibilityCard } from "./BrandVisibilityCard"
+import { VisibilityTrendChart } from "./VisibilityTrendChart"
 import { CompetitorsList } from "./CompetitorsList"
 import { SourcesLeaderboard } from "./SourcesLeaderboard"
 import { PromptGapsList } from "./PromptGapsList"
@@ -118,11 +119,17 @@ export function DashboardView({ groups, isLoadingGroups }: DashboardViewProps) {
       {isLoading ? (
         <DashboardSkeleton />
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 lg:grid-rows-2 gap-6 flex-1 min-h-0" style={{ height: "calc(100vh - 280px)" }}>
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 flex-1 min-h-0" style={{ height: "calc(100vh - 280px)", gridTemplateRows: "1fr 1fr" }}>
           <BrandVisibilityCard
             brandName={data?.brand_name ?? null}
             visibilityPercent={data?.brand_visibility_percent ?? 0}
             hasData={hasData}
+          />
+
+          <VisibilityTrendChart
+            timeline={data?.timeline ?? []}
+            hasData={hasData}
+            className="lg:col-span-2"
           />
 
           <CompetitorsList
@@ -133,12 +140,14 @@ export function DashboardView({ groups, isLoadingGroups }: DashboardViewProps) {
           <SourcesLeaderboard
             sources={data?.sources ?? []}
             hasData={hasData}
+            className="lg:col-span-2"
           />
 
           <PromptGapsList
             promptGaps={data?.prompt_gaps ?? []}
             totalCount={data?.prompt_gaps_count ?? 0}
             hasData={hasData}
+            className="lg:col-span-2"
           />
         </div>
       )}
