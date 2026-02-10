@@ -84,7 +84,7 @@ export function VisibilityTrendChart({ timeline, hasData, className = "" }: Visi
   }
 
   return (
-    <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full flex flex-col">
+    <div className={`bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full flex flex-col ${className}`}>
       <h3 className="font-['Fraunces'] text-sm font-semibold text-[#1F2937] mb-4 shrink-0">
         Visibility Trend
       </h3>
