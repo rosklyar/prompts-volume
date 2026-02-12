@@ -3,6 +3,7 @@
  * Target brand is highlighted with accent styling
  */
 
+import { useNavigate } from "@tanstack/react-router"
 import type { CompetitorVisibility } from "@/types/dashboard"
 
 interface CompetitorsListProps {
@@ -11,10 +12,15 @@ interface CompetitorsListProps {
 }
 
 export function CompetitorsList({ competitors, hasData }: CompetitorsListProps) {
+  const navigate = useNavigate()
+
   if (!hasData || competitors.length === 0) {
     return (
       <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full min-h-0 flex flex-col">
-        <h3 className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-6 shrink-0">
+        <h3
+          className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-6 shrink-0 cursor-pointer hover:text-[#1F2937] transition-colors"
+          onClick={() => navigate({ to: "/", search: { tab: "competitors" } })}
+        >
           Competitors
         </h3>
         <div className="flex-1 flex items-center justify-center">
@@ -34,7 +40,10 @@ export function CompetitorsList({ competitors, hasData }: CompetitorsListProps) 
 
   return (
     <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full min-h-0 flex flex-col">
-      <h3 className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide shrink-0">
+      <h3
+        className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide shrink-0 cursor-pointer hover:text-[#1F2937] transition-colors"
+        onClick={() => navigate({ to: "/", search: { tab: "competitors" } })}
+      >
         Competitors
       </h3>
       {brandRank > 0 && (
