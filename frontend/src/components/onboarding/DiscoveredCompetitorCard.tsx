@@ -7,6 +7,7 @@ import { useState, useCallback } from "react"
 import { Check, Pencil, Globe } from "lucide-react"
 import type { CompetitorInfo } from "@/types/groups"
 import { VariationsInput } from "./VariationsInput"
+import { BrandLogo } from "./BrandLogo"
 
 interface DiscoveredCompetitorCardProps {
   competitor: CompetitorInfo
@@ -131,6 +132,7 @@ export function DiscoveredCompetitorCard({
             /* Collapsed view */
             <div>
               <div className="flex items-center gap-2 mb-1">
+                <BrandLogo domain={competitor.domain} name={competitor.name} size={24} />
                 <p className="font-medium text-gray-800">{competitor.name}</p>
                 <span
                   className="flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full

@@ -8,6 +8,7 @@ import { Users, Search, Plus, X, Globe } from "lucide-react"
 import { onboardingApi } from "@/client/api"
 import { CompetitorDiscoveryLoader } from "./CompetitorDiscoveryLoader"
 import { DiscoveredCompetitorCard } from "./DiscoveredCompetitorCard"
+import { BrandLogo } from "./BrandLogo"
 import { normalizeDomain } from "@/lib/domain"
 import type { BrandInfo, CompetitorInfo } from "@/types/groups"
 import type { DiscoveredCompetitor, DiscoverCompetitorsRequest } from "@/types/onboarding"
@@ -339,6 +340,7 @@ export function CompetitorDiscoveryStep({
               key={index}
               className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl"
             >
+              <BrandLogo domain={comp.domain} name={comp.name} size={20} />
               <span className="text-sm font-medium text-gray-700">{comp.name}</span>
               {comp.domain && (
                 <span className="text-xs text-gray-400">{comp.domain}</span>
