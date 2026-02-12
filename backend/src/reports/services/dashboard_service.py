@@ -199,36 +199,31 @@ class DashboardService:
             brand_config, competitors_config, per_report_mentions
         )
 
-        # Use latest report's visibility for gauge and competitors
-        if timeline:
-            latest_point = timeline[-1]
-            competitors = [
-                CompetitorVisibility(
-                    name=b.name,
-                    domain=b.domain,
-                    visibility_percent=b.visibility_percent,
-                    is_target_brand=b.is_target_brand,
-                )
-                for b in latest_point.brands
-            ]
-            competitors.sort(key=lambda x: x.visibility_percent, reverse=True)
-        else:
-            competitors = []
+        # Calculate aggregated visibility across ALL evaluations in period
+        competitors = self._calculate_visibility(
+            brand_config, competitors_config, brand_mentions_per_eval
+        )
 
-        # Find target brand visibility
         brand_visibility = 0.0
         for comp in competitors:
             if comp.is_target_brand:
                 brand_visibility = comp.visibility_percent
                 break
 
-        # Compute visibility change from the last two timeline points
-        if len(timeline) >= 2:
-            prev_vis = {b.name: b.visibility_percent for b in timeline[-2].brands}
-            for comp in competitors:
-                if comp.name in prev_vis:
-                    delta = round(comp.visibility_percent - prev_vis[comp.name], 1)
-                    comp.visibility_change = delta if delta != 0.0 else None
+        # Period-over-period trend
+        prev_result = await self._get_previous_period_visibility(
+            group_id, user_id, assistant_id, from_date, to_date,
+            brand_config, competitors_config, brands,
+        )
+        if prev_result is not None:
+            prev_report_count, prev_competitors = prev_result
+            current_report_count = len(reports)
+            if prev_report_count >= current_report_count - 1:
+                prev_vis = {c.name: c.visibility_percent for c in prev_competitors}
+                for comp in competitors:
+                    if comp.name in prev_vis:
+                        delta = round(comp.visibility_percent - prev_vis[comp.name], 1)
+                        comp.visibility_change = delta if delta != 0.0 else None
 
         return DashboardResponse(
             group_id=group_id,
@@ -245,6 +240,72 @@ class DashboardService:
             prompt_gaps_count=len(prompt_gaps),
             timeline=timeline,
         )
+
+    async def _get_previous_period_visibility(
+        self,
+        group_id: int,
+        user_id: str,
+        assistant_id: int,
+        from_date: datetime,
+        to_date: datetime,
+        brand_config: dict | None,
+        competitors_config: list[dict],
+        brands: list,
+    ) -> tuple[int, list[CompetitorVisibility]] | None:
+        """Get visibility data for the previous period of same length.
+
+        Returns (report_count, competitors) or None if no reports found.
+        """
+        duration = to_date - from_date
+        prev_from = from_date - duration
+        prev_to = from_date
+
+        report_query = (
+            select(GroupReport)
+            .where(
+                GroupReport.group_id == group_id,
+                GroupReport.user_id == user_id,
+                GroupReport.assistant_id == assistant_id,
+                GroupReport.created_at >= prev_from,
+                GroupReport.created_at < prev_to,
+            )
+            .options(
+                selectinload(GroupReport.items).selectinload(GroupReportItem.evaluation)
+            )
+        )
+        result = await self._evals_session.execute(report_query)
+        prev_reports = list(result.scalars().unique().all())
+
+        if not prev_reports:
+            return None
+
+        seen_eval_ids: set[int] = set()
+        brand_mentions: list[list | None] = []
+
+        for report in prev_reports:
+            for item in report.items:
+                if item.status != ReportItemStatus.INCLUDED:
+                    continue
+                if item.evaluation_id is None or item.evaluation is None:
+                    continue
+                if item.evaluation_id in seen_eval_ids:
+                    continue
+                seen_eval_ids.add(item.evaluation_id)
+
+                answer = item.evaluation.answer
+                response_text = answer.get("response") if answer else None
+
+                mention_result = None
+                if brands and response_text:
+                    mention_result = self._enricher.detect_brand_mentions(
+                        response_text, brands
+                    )
+                brand_mentions.append(mention_result)
+
+        prev_competitors = self._calculate_visibility(
+            brand_config, competitors_config, brand_mentions
+        )
+        return len(prev_reports), prev_competitors
 
     async def _get_prompts_by_ids(self, prompt_ids: list[int]) -> dict[int, Prompt]:
         """Fetch prompts from prompts_db, returns dict keyed by prompt_id."""

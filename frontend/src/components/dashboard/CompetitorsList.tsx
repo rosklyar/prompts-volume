@@ -1,6 +1,6 @@
 /**
- * CompetitorsList - Ranked list of competitors by visibility
- * Target brand is excluded (shown on the gauge card instead)
+ * CompetitorsList - Ranked list of all brands by visibility
+ * Target brand is highlighted with accent styling
  */
 
 import type { CompetitorVisibility } from "@/types/dashboard"
@@ -11,9 +11,7 @@ interface CompetitorsListProps {
 }
 
 export function CompetitorsList({ competitors, hasData }: CompetitorsListProps) {
-  const filtered = competitors.filter((c) => !c.is_target_brand)
-
-  if (!hasData || filtered.length === 0) {
+  if (!hasData || competitors.length === 0) {
     return (
       <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full min-h-0 flex flex-col">
         <h3 className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-6 shrink-0">
@@ -28,38 +26,66 @@ export function CompetitorsList({ competitors, hasData }: CompetitorsListProps) 
     )
   }
 
+  // Find target brand rank (1-based)
+  const brandRank = competitors.findIndex((c) => c.is_target_brand) + 1
+
   // Find max visibility for bar scaling
-  const maxVisibility = Math.max(...filtered.map((c) => c.visibility_percent), 1)
+  const maxVisibility = Math.max(...competitors.map((c) => c.visibility_percent), 1)
 
   return (
     <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full min-h-0 flex flex-col">
-      <h3 className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-6 shrink-0">
+      <h3 className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide shrink-0">
         Competitors
       </h3>
+      {brandRank > 0 && (
+        <p className="text-xs text-[#9CA3AF] mt-1 mb-4 shrink-0">
+          Your brand is ranked <span className="font-semibold text-indigo-600">#{brandRank}</span> of {competitors.length}
+        </p>
+      )}
+      {brandRank === 0 && <div className="mb-6" />}
 
       <div className="space-y-2 flex-1 overflow-y-auto min-h-0">
-        {filtered.map((competitor, index) => {
+        {competitors.map((competitor, index) => {
           const barWidth = (competitor.visibility_percent / maxVisibility) * 100
+          const isTarget = competitor.is_target_brand
 
           return (
             <div
               key={competitor.name}
-              className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 transition-colors"
+              className={`flex items-center gap-3 p-2 rounded-lg transition-colors ${
+                isTarget
+                  ? "bg-indigo-50 hover:bg-indigo-100"
+                  : "hover:bg-gray-50"
+              }`}
             >
               {/* Rank badge */}
-              <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium shrink-0 bg-gray-100 text-[#6B7280]">
+              <span
+                className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium shrink-0 ${
+                  isTarget
+                    ? "bg-indigo-600 text-white"
+                    : "bg-gray-100 text-[#6B7280]"
+                }`}
+              >
                 {index + 1}
               </span>
 
               {/* Name and bar */}
               <div className="flex-1 min-w-0">
-                <span className="text-sm font-medium truncate text-[#1F2937]">
+                <span
+                  className={`text-sm truncate ${
+                    isTarget
+                      ? "font-semibold text-indigo-900"
+                      : "font-medium text-[#1F2937]"
+                  }`}
+                >
                   {competitor.name}
                 </span>
                 {/* Mini progress bar */}
                 <div className="mt-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                   <div
-                    className="h-full rounded-full transition-all duration-500 bg-[#9CA3AF]"
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      isTarget ? "bg-indigo-500" : "bg-[#9CA3AF]"
+                    }`}
                     style={{ width: `${barWidth}%` }}
                   />
                 </div>
@@ -67,7 +93,11 @@ export function CompetitorsList({ competitors, hasData }: CompetitorsListProps) 
 
               {/* Percentage + delta */}
               <div className="flex items-center gap-2 shrink-0">
-                <span className="text-sm font-medium tabular-nums text-[#6B7280]">
+                <span
+                  className={`text-sm font-medium tabular-nums ${
+                    isTarget ? "text-indigo-700" : "text-[#6B7280]"
+                  }`}
+                >
                   {competitor.visibility_percent.toFixed(1)}%
                 </span>
                 {competitor.visibility_change != null && (
