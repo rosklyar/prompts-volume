@@ -5,11 +5,9 @@ import { useUserPreferences, useUpdatePreferences } from "@/hooks/useOnboarding"
 import { useCountries, useBusinessDomains } from "@/hooks/useTopics"
 import { normalizeDomain } from "@/lib/domain"
 import { VariationsInput } from "@/components/onboarding/VariationsInput"
-import { CompetitorEditor } from "@/components/competitors/CompetitorEditor"
-import type { BrandInfo, CompetitorInfo } from "@/types/groups"
+import type { BrandInfo } from "@/types/groups"
 
 const ACCENT_COLOR = "#C4553D"
-const MAX_COMPETITORS = 10
 
 export function BrandPreferencesForm() {
   const { data: preferences, isLoading } = useUserPreferences()
@@ -29,7 +27,6 @@ export function BrandPreferencesForm() {
       initialCountryId={preferences?.default_country_id ?? undefined}
       initialBusinessDomainId={preferences?.default_business_domain_id ?? undefined}
       initialBrand={preferences?.default_brand ?? null}
-      initialCompetitors={preferences?.default_competitors ?? []}
     />
   )
 }
@@ -38,14 +35,12 @@ interface BrandPreferencesFormInnerProps {
   initialCountryId: number | undefined
   initialBusinessDomainId: number | undefined
   initialBrand: BrandInfo | null
-  initialCompetitors: CompetitorInfo[]
 }
 
 function BrandPreferencesFormInner({
   initialCountryId,
   initialBusinessDomainId,
   initialBrand,
-  initialCompetitors,
 }: BrandPreferencesFormInnerProps) {
   const updatePreferences = useUpdatePreferences()
   const { data: countriesData, isLoading: isLoadingCountries } = useCountries()
@@ -63,9 +58,6 @@ function BrandPreferencesFormInner({
   const [brandVariations, setBrandVariations] = useState<string[]>(
     initialBrand?.variations ?? []
   )
-
-  // Competitors state
-  const [competitors, setCompetitors] = useState<CompetitorInfo[]>(initialCompetitors)
 
   // UI state
   const [error, setError] = useState<string | null>(null)
@@ -95,7 +87,6 @@ function BrandPreferencesFormInner({
         default_country_id: countryId,
         default_business_domain_id: businessDomainId,
         default_brand: brand,
-        default_competitors: competitors.length > 0 ? competitors : undefined,
       },
       {
         onSuccess: () => {
@@ -204,20 +195,6 @@ function BrandPreferencesFormInner({
             placeholder="+ add variation"
           />
         </div>
-      </div>
-
-      {/* Competitors Section */}
-      <div>
-        <p className="text-xs uppercase tracking-widest text-gray-400 font-sans mb-3">
-          Competitors{" "}
-          <span className="text-gray-300">(max {MAX_COMPETITORS})</span>
-        </p>
-        <CompetitorEditor
-          competitors={competitors}
-          onCompetitorsChange={setCompetitors}
-          maxCompetitors={MAX_COMPETITORS}
-          disabled={updatePreferences.isPending}
-        />
       </div>
 
       {/* Error display */}
