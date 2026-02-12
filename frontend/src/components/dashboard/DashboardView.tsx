@@ -130,6 +130,7 @@ export function DashboardView({ groups, isLoadingGroups }: DashboardViewProps) {
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 min-h-0 overflow-hidden">
             <BrandVisibilityCard
               brandName={data?.brand_name ?? null}
+              brandDomain={data?.brand_domain ?? null}
               visibilityPercent={data?.brand_visibility_percent ?? 0}
               hasData={hasData}
             />

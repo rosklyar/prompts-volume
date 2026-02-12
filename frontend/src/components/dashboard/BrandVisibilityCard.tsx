@@ -4,15 +4,18 @@
  */
 
 import { useEffect, useState, useRef } from "react"
+import { BrandLogo } from "@/components/BrandLogo"
 
 interface BrandVisibilityCardProps {
   brandName: string | null
+  brandDomain?: string | null
   visibilityPercent: number
   hasData: boolean
 }
 
 export function BrandVisibilityCard({
   brandName,
+  brandDomain,
   visibilityPercent,
   hasData,
 }: BrandVisibilityCardProps) {
@@ -119,9 +122,12 @@ export function BrandVisibilityCard({
       </div>
 
       {/* Brand name */}
-      <p className="text-center mt-4 text-sm text-[#6B7280] font-['DM_Sans'] shrink-0">
-        {brandName || "No brand configured"}
-      </p>
+      <div className="flex items-center justify-center gap-2 mt-4 shrink-0">
+        {brandName && <BrandLogo domain={brandDomain} name={brandName} size={24} />}
+        <p className="text-sm text-[#6B7280] font-['DM_Sans']">
+          {brandName || "No brand configured"}
+        </p>
+      </div>
     </div>
   )
 }

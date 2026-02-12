@@ -7,7 +7,7 @@ import { useState, useCallback } from "react"
 import { Check, Pencil, Globe } from "lucide-react"
 import type { CompetitorInfo } from "@/types/groups"
 import { VariationsInput } from "./VariationsInput"
-import { BrandLogo } from "./BrandLogo"
+import { BrandLogo } from "@/components/BrandLogo"
 
 interface DiscoveredCompetitorCardProps {
   competitor: CompetitorInfo

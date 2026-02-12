@@ -5,6 +5,7 @@
 
 import { useNavigate } from "@tanstack/react-router"
 import type { CompetitorVisibility } from "@/types/dashboard"
+import { BrandLogo } from "@/components/BrandLogo"
 
 interface CompetitorsListProps {
   competitors: CompetitorVisibility[]
@@ -77,6 +78,9 @@ export function CompetitorsList({ competitors, hasData }: CompetitorsListProps) 
               >
                 {index + 1}
               </span>
+
+              {/* Brand logo */}
+              <BrandLogo domain={competitor.domain} name={competitor.name} size={24} />
 
               {/* Name and bar */}
               <div className="flex-1 min-w-0">

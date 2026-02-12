@@ -51,6 +51,7 @@ export interface DashboardResponse {
   reports_included: number
   assistant_name: string
   brand_name: string | null
+  brand_domain: string | null
   brand_visibility_percent: number
   competitors: CompetitorVisibility[]
   sources: SourceStat[]

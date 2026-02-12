@@ -2,6 +2,7 @@ import { useState } from "react"
 import { Globe, Plus, Trash2 } from "lucide-react"
 import { normalizeDomain } from "@/lib/domain"
 import { VariationsInput } from "@/components/onboarding/VariationsInput"
+import { BrandLogo } from "@/components/BrandLogo"
 import type { CompetitorInfo } from "@/types/groups"
 
 const ACCENT_COLOR = "#C4553D"
@@ -59,7 +60,9 @@ export function CompetitorEditor({
               key={index}
               className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100"
             >
-              <div className="flex-1 min-w-0">
+              <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                <BrandLogo domain={comp.domain} name={comp.name} size={24} />
+                <div className="flex-1 min-w-0">
                 <p className="font-medium text-gray-800 text-sm">{comp.name}</p>
                 {comp.domain && (
                   <p className="text-xs text-gray-500 flex items-center gap-1">
@@ -79,6 +82,7 @@ export function CompetitorEditor({
                     ))}
                   </div>
                 )}
+                </div>
               </div>
               <button
                 onClick={() => handleRemoveCompetitor(index)}

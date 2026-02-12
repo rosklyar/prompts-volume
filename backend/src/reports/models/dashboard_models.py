@@ -64,6 +64,7 @@ class DashboardResponse(BaseModel):
 
     # Brand visibility (target brand)
     brand_name: str | None
+    brand_domain: str | None = None
     brand_visibility_percent: float  # 0-100
 
     # All brands/competitors ranked by visibility

@@ -115,6 +115,7 @@ class DashboardService:
         competitors_config = latest_report.competitors_snapshot or []
 
         brand_name = brand_config.get("name") if brand_config else None
+        brand_domain = brand_config.get("domain") if brand_config else None
         target_brand_name = brand_name
 
         # Extract brands and domains for detection
@@ -233,6 +234,7 @@ class DashboardService:
             reports_included=len(reports),
             assistant_name=assistant_name,
             brand_name=brand_name,
+            brand_domain=brand_domain,
             brand_visibility_percent=brand_visibility,
             competitors=competitors,
             sources=sources,
