@@ -16,9 +16,9 @@ interface GSCConnectionContentProps {
  */
 export function GSCConnectionContent({ searchParams }: GSCConnectionContentProps) {
   const { data: status, isLoading, refetch } = useGSCStatus()
-  const connectMutation = useGSCConnect("/settings?tab=gsc")
+  const connectMutation = useGSCConnect("/profile?tab=gsc")
   const disconnectMutation = useGSCDisconnect()
-  const routeSearchParams = useSearch({ from: "/settings" })
+  const routeSearchParams = useSearch({ from: "/profile" })
 
   // Use passed searchParams or fall back to route search params
   const params = searchParams ?? routeSearchParams
@@ -54,7 +54,7 @@ export function GSCConnectionContent({ searchParams }: GSCConnectionContentProps
         refetch()
       }
       // Clear the query param
-      window.history.replaceState({}, "", "/settings?tab=gsc")
+      window.history.replaceState({}, "", "/profile?tab=gsc")
     }
     // Only run once on mount - params is read synchronously
     // eslint-disable-next-line react-hooks/exhaustive-deps

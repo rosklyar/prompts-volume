@@ -10,7 +10,6 @@ import {
   useCreateGroup,
 } from "@/hooks/useGroups"
 import { batchApi } from "@/client/api"
-import { Button } from "@/components/ui/button"
 import { GroupsGrid, GroupSelector } from "@/components/groups"
 import { BalanceIndicator } from "@/components/billing"
 import { Logo } from "@/components/Logo"
@@ -18,6 +17,7 @@ import { Check } from "lucide-react"
 import type { BrandInfo, CompetitorInfo, TopicInput } from "@/types/groups"
 import { TabSidebar } from "@/components/navigation/TabSidebar"
 import type { TabKey } from "@/components/navigation/TabSidebar"
+import { ProfileBlock } from "@/components/navigation/ProfileBlock"
 import { CitationsView } from "@/components/citations/CitationsView"
 import { DashboardView } from "@/components/dashboard/DashboardView"
 import { CompetitorsView } from "@/components/competitors/CompetitorsView"
@@ -43,7 +43,7 @@ interface PendingPrompts {
 }
 
 function PromptDiscovery() {
-  const { logout, isUserLoading, user } = useAuth()
+  const { isUserLoading, user } = useAuth()
   const search = useSearch({ from: "/" })
   const navigate = useNavigate()
   const [searchQuery, setSearchQuery] = useState("")
@@ -458,9 +458,10 @@ function PromptDiscovery() {
       {/* Left sidebar with branding and navigation */}
       <aside className="w-[200px] flex-shrink-0 bg-[#FDFBF7] p-6 hidden md:flex flex-col">
         <Logo variant="compact" />
-        <div className="mt-8">
+        <div className="mt-8 flex-1">
           <TabSidebar activeTab={activeTab} onTabChange={setActiveTab} />
         </div>
+        <ProfileBlock />
       </aside>
 
       {/* Main area */}
@@ -492,21 +493,6 @@ function PromptDiscovery() {
                 Admin
               </Link>
             )}
-            <Link to="/settings">
-              <Button
-                variant="ghost"
-                className="text-[#9CA3AF] hover:text-[#1F2937] hover:bg-transparent transition-colors text-sm"
-              >
-                Settings
-              </Button>
-            </Link>
-            <Button
-              variant="ghost"
-              onClick={logout}
-              className="text-[#9CA3AF] hover:text-[#1F2937] hover:bg-transparent transition-colors text-sm"
-            >
-              Sign out
-            </Button>
           </div>
         </header>
 
