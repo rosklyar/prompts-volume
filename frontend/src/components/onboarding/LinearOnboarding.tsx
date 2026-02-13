@@ -24,6 +24,7 @@ import { PromptSelectionStep } from "./PromptSelectionStep"
 import { GSCOnboardingStep } from "./GSCOnboardingStep"
 import { CompetitorDiscoveryStep } from "./CompetitorDiscoveryStep"
 import { VariationsInput } from "./VariationsInput"
+import { BrandLogo } from "@/components/BrandLogo"
 import type { CompetitorInfo } from "@/types/groups"
 import type { Topic } from "@/types/admin"
 import type { DiscoveredCompetitor } from "@/types/onboarding"
@@ -666,6 +667,19 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
                       Different ways people might refer to your brand
                     </p>
                   </div>
+
+                  {/* Brand preview */}
+                  {brand.domain.trim() && (
+                    <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                      <BrandLogo domain={brand.domain} name={brand.name || brand.domain} size={36} />
+                      <div className="min-w-0">
+                        {brand.name.trim() && (
+                          <p className="text-sm font-medium text-gray-800 truncate">{brand.name}</p>
+                        )}
+                        <p className="text-xs text-gray-500 truncate">{brand.domain}</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

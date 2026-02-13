@@ -150,7 +150,7 @@ export function GSCPromptsStep({
 
   const handleSwitchAccount = useCallback(() => {
     // Redirect to settings GSC tab - user will start fresh after connecting different account
-    navigate({ to: "/settings", search: { tab: "gsc" } })
+    navigate({ to: "/profile", search: { tab: "gsc" } })
   }, [navigate])
 
   const handleSelectSite = useCallback((siteUrl: string) => {

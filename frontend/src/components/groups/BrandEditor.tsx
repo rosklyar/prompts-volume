@@ -6,6 +6,7 @@
 import { useState } from "react"
 import { Globe, X, Plus, Pencil, Trash2, ChevronDown, ChevronRight } from "lucide-react"
 import type { BrandInfo, CompetitorInfo } from "@/types/groups"
+import { BrandLogo } from "@/components/BrandLogo"
 
 interface BrandEditorProps {
   brand: BrandInfo
@@ -232,7 +233,9 @@ export function BrandEditor({
             ) : (
               <div className="group rounded-lg border border-gray-100 bg-gray-50/50 p-4 transition-all hover:border-gray-200">
                 <div className="flex items-start justify-between">
-                  <div className="flex-1 min-w-0">
+                  <div className="flex items-start gap-3 flex-1 min-w-0">
+                    <BrandLogo domain={brand.domain} name={brand.name} size={32} />
+                    <div className="flex-1 min-w-0">
                     <p className="font-medium text-gray-800">{brand.name}</p>
                     {brand.domain && (
                       <p className="text-sm text-gray-500 mt-0.5 flex items-center gap-1.5">
@@ -245,6 +248,7 @@ export function BrandEditor({
                         {brand.variations.join(", ")}
                       </p>
                     )}
+                    </div>
                   </div>
                   <button
                     onClick={() => setEditingBrand(true)}
@@ -331,7 +335,9 @@ export function BrandEditor({
                           </div>
                         ) : (
                           <div className="flex items-start justify-between">
-                            <div className="flex-1 min-w-0">
+                            <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                              <BrandLogo domain={comp.domain} name={comp.name} size={24} />
+                              <div className="flex-1 min-w-0">
                               <p className="font-medium text-gray-800 text-sm">{comp.name}</p>
                               {comp.domain && (
                                 <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
@@ -344,6 +350,7 @@ export function BrandEditor({
                                   {comp.variations.join(", ")}
                                 </p>
                               )}
+                              </div>
                             </div>
                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                               <button

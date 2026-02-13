@@ -59,6 +59,30 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/onboarding/api/v1", tags=["onboarding"])
 
 
+@router.get("/favicon")
+async def get_favicon(domain: str):
+    """Return a Google Favicon URL for the given domain.
+
+    Normalizes the domain (strips protocol, lowercases, trims slashes)
+    and constructs a favicon URL via Google's public favicon service.
+    No auth required — favicon URLs are public info.
+    """
+    # Normalize: strip protocol, lowercase, trim slashes
+    normalized = domain.strip().lower()
+    for prefix in ("https://", "http://", "//"):
+        if normalized.startswith(prefix):
+            normalized = normalized[len(prefix):]
+    normalized = normalized.strip("/")
+
+    if not normalized:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="domain is required",
+        )
+
+    return {"url": f"https://www.google.com/s2/favicons?domain={normalized}&sz=64"}
+
+
 @router.get("/status", response_model=OnboardingStatusResponse)
 async def get_onboarding_status(
     current_user: CurrentUser,

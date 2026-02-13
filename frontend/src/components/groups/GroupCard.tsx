@@ -25,6 +25,7 @@ import { ReportHistoryPanel } from "./ReportHistoryPanel"
 import { BrandEditor } from "./BrandEditor"
 import { ReportModal } from "@/components/billing"
 import type { PromptSelection, PromptSelectionInfo } from "@/types/billing"
+import { BrandLogo } from "@/components/BrandLogo"
 import { getGroupColor } from "./constants"
 import { BatchUploadModal } from "./BatchUploadModal"
 import { AddFromTopicModal } from "./AddFromTopicModal"
@@ -254,10 +255,11 @@ export function GroupCard({
                         setBrandEditorFocus("brand")
                         setShowBrandEditor(true)
                       }}
-                      className="text-[10px] font-semibold px-2.5 py-1 rounded-full uppercase tracking-wider transition-all hover:scale-105"
+                      className="text-[10px] font-semibold px-2.5 py-1 rounded-full uppercase tracking-wider transition-all hover:scale-105 flex items-center gap-1"
                       style={{ backgroundColor: `${colors.accent}15`, color: colors.accent }}
                       title="Edit brand"
                     >
+                      <BrandLogo domain={brand.domain} name={brand.name} size={16} />
                       {brand.name}
                     </button>
                   )}

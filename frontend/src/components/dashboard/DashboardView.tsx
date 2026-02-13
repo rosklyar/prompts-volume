@@ -120,7 +120,7 @@ export function DashboardView({ groups, isLoadingGroups }: DashboardViewProps) {
         <DashboardSkeleton />
       ) : (
         <div
-          className="grid gap-6 overflow-hidden"
+          className="relative grid gap-6 overflow-hidden"
           style={{
             height: "calc(100vh - 280px)",
             gridTemplateRows: "1fr 1fr",
@@ -130,6 +130,7 @@ export function DashboardView({ groups, isLoadingGroups }: DashboardViewProps) {
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 min-h-0 overflow-hidden">
             <BrandVisibilityCard
               brandName={data?.brand_name ?? null}
+              brandDomain={data?.brand_domain ?? null}
               visibilityPercent={data?.brand_visibility_percent ?? 0}
               hasData={hasData}
             />
@@ -159,33 +160,35 @@ export function DashboardView({ groups, isLoadingGroups }: DashboardViewProps) {
               hasData={hasData}
             />
           </div>
-        </div>
-      )}
 
-      {/* Empty state when no groups */}
-      {!isLoadingGroups && groups.length === 0 && (
-        <div className="text-center py-16">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
-            <svg
-              className="w-8 h-8 text-gray-400"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-              />
-            </svg>
-          </div>
-          <h3 className="font-['Fraunces'] text-xl text-[#1F2937] mb-2">
-            No groups yet
-          </h3>
-          <p className="text-sm text-[#6B7280] max-w-sm mx-auto">
-            Create a prompt group and generate a report to see your brand visibility analytics.
-          </p>
+          {/* Empty state overlay when no groups */}
+          {!isLoadingGroups && groups.length === 0 && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-[2px] rounded-lg">
+              <div className="text-center">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
+                  <svg
+                    className="w-8 h-8 text-gray-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.5}
+                      d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                    />
+                  </svg>
+                </div>
+                <h3 className="font-['Fraunces'] text-xl text-[#1F2937] mb-2">
+                  No groups yet
+                </h3>
+                <p className="text-sm text-[#6B7280] max-w-sm mx-auto">
+                  Create a prompt group and generate a report to see your brand visibility analytics.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
