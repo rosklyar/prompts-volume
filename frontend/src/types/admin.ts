@@ -113,6 +113,36 @@ export interface BatchApprovalResponse {
   failed_ids: number[]
 }
 
+// ===== Onboarding Notifications Types =====
+
+export interface OnboardingUserInfo {
+  user_id: string
+  email: string
+  full_name: string | null
+  onboarding_completed_at: string
+  default_brand: {
+    name: string
+    domain?: string | null
+    variations: string[]
+  } | null
+  default_competitors: {
+    name: string
+    domain?: string | null
+    variations: string[]
+  }[] | null
+  country_name: string | null
+  business_domain_name: string | null
+}
+
+export interface OnboardingNotificationsResponse {
+  users: OnboardingUserInfo[]
+  total: number
+}
+
+export interface OnboardingNotificationsCountResponse {
+  count: number
+}
+
 // ===== User Deletion Types =====
 
 export interface DatabaseCleanupDetail {

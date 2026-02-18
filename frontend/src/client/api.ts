@@ -42,6 +42,8 @@ import type {
   ApprovalResultResponse,
   BatchApprovalResponse,
   UserDeletionResponse,
+  OnboardingNotificationsResponse,
+  OnboardingNotificationsCountResponse,
 } from "@/types/admin"
 import type {
   ReportDataResponse,
@@ -158,6 +160,21 @@ async function fetchWithAuth(
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}))
+
+    // Auto-clear stale token on auth failures (invalid/expired token or deleted user)
+    // 401 = user not found for token subject
+    // 403 "Could not validate credentials" = invalid/expired JWT
+    // Do NOT logout on 403 for permission errors (e.g. non-superuser hitting admin routes)
+    const isInvalidSession =
+      response.status === 401 ||
+      (response.status === 403 &&
+        errorData.detail === "Could not validate credentials")
+    if (isInvalidSession) {
+      localStorage.removeItem("access_token")
+      localStorage.removeItem("admin_token")
+      window.location.href = "/login"
+    }
+
     throw new ApiError(response.status, errorData.detail || "Request failed")
   }
 
@@ -839,6 +856,55 @@ export const adminApi = {
     const response = await fetchWithAuth(
       `/admin/api/v1/users/${userId}/hard-delete`,
       { method: "DELETE" }
+    )
+    return response.json()
+  },
+
+  /**
+   * Impersonate a user (admin only) — returns a 1-hour JWT
+   */
+  async impersonateUser(userId: string): Promise<Token> {
+    const response = await fetchWithAuth(
+      `/admin/api/v1/impersonate/${userId}`,
+      { method: "POST" }
+    )
+    return response.json()
+  },
+
+  /**
+   * Get users who completed onboarding but haven't been set up (admin only)
+   */
+  async getOnboardingNotifications(
+    limit: number = 20,
+    offset: number = 0
+  ): Promise<OnboardingNotificationsResponse> {
+    const params = new URLSearchParams({
+      limit: limit.toString(),
+      offset: offset.toString(),
+    })
+    const response = await fetchWithAuth(
+      `/admin/api/v1/onboarding-notifications?${params}`
+    )
+    return response.json()
+  },
+
+  /**
+   * Get count of pending onboarding notifications (admin only)
+   */
+  async getOnboardingNotificationsCount(): Promise<OnboardingNotificationsCountResponse> {
+    const response = await fetchWithAuth(
+      "/admin/api/v1/onboarding-notifications/count"
+    )
+    return response.json()
+  },
+
+  /**
+   * Mark a user's admin setup as complete (admin only)
+   */
+  async markUserSetupComplete(userId: string): Promise<{ message: string }> {
+    const response = await fetchWithAuth(
+      `/admin/api/v1/users/${userId}/mark-setup`,
+      { method: "POST" }
     )
     return response.json()
   },

@@ -5,6 +5,8 @@ Admin-only endpoints for:
 - Uploading prompts to topics
 - Approving/rejecting user-submitted prompts
 - Hard-deleting users
+- Impersonating users
+- Onboarding notifications
 
 Note: GET endpoints for topics, countries, and business domains have been
 moved to the shared reference router (/api/v1/reference/*) for all authenticated users.
@@ -12,16 +14,22 @@ Note: Prompt analysis endpoint has been moved to the shared batch router
 (/prompts/api/v1/batch/analyze) for all authenticated users.
 """
 
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.admin.models.api_models import (
     AdminUploadRequest,
     AdminUploadResponse,
     CreateTopicRequest,
+)
+from src.admin.models.onboarding_models import (
+    OnboardingNotificationsCountResponse,
+    OnboardingNotificationsResponse,
+    OnboardingUserInfo,
 )
 from src.admin.user_deletion import (
     CannotDeleteSelfError,
@@ -41,8 +49,12 @@ from src.approval.models import (
 )
 from src.approval.service import PromptApprovalService, get_prompt_approval_service
 from src.auth.deps import CurrentUser, get_current_active_superuser
+from src.auth.models import Token
+from src.auth.security import create_impersonation_token
 from src.database import get_async_session
-from src.database.models import Topic
+from src.database.models import BusinessDomain, Country, Topic
+from src.database.users_models import User, UserPreferences
+from src.database.users_session import get_users_session
 from src.prompts.batch.service import BatchPromptsService, get_batch_prompts_service
 from src.reference.models import TopicResponse
 from src.topics.exceptions import BusinessDomainNotFoundError, CountryNotFoundError
@@ -55,6 +67,7 @@ router = APIRouter(
 )
 
 SessionDep = Annotated[AsyncSession, Depends(get_async_session)]
+UsersSessionDep = Annotated[AsyncSession, Depends(get_users_session)]
 BatchPromptsServiceDep = Annotated[BatchPromptsService, Depends(get_batch_prompts_service)]
 ApprovalServiceDep = Annotated[PromptApprovalService, Depends(get_prompt_approval_service)]
 
@@ -317,3 +330,177 @@ async def hard_delete_user(
         raise HTTPException(status_code=403, detail="Cannot delete superuser accounts")
     except CannotDeleteSelfError:
         raise HTTPException(status_code=403, detail="Cannot delete your own account")
+
+
+# --- Impersonation Endpoints ---
+
+
+@router.post("/impersonate/{user_id}", response_model=Token)
+async def impersonate_user(
+    user_id: str,
+    current_user: CurrentUser,
+    users_session: UsersSessionDep,
+):
+    """Create an impersonation token for a target user.
+
+    Returns a 1-hour JWT that authenticates as the target user,
+    with an `impersonated_by` audit claim.
+    """
+    if user_id == current_user.id:
+        raise HTTPException(status_code=400, detail="Cannot impersonate yourself")
+
+    target = await users_session.get(User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.is_superuser:
+        raise HTTPException(status_code=403, detail="Cannot impersonate superuser accounts")
+
+    token = create_impersonation_token(
+        target_user_id=target.id,
+        admin_user_id=current_user.id,
+        expires_delta=timedelta(hours=1),
+    )
+    return Token(access_token=token)
+
+
+# --- Onboarding Notifications Endpoints ---
+
+
+async def _get_onboarding_users(
+    users_session: AsyncSession,
+    prompts_session: AsyncSession,
+    *,
+    limit: int,
+    offset: int,
+) -> tuple[list[OnboardingUserInfo], int]:
+    """Query users who completed onboarding but haven't been set up by admin."""
+    # Count total
+    count_stmt = (
+        select(func.count())
+        .select_from(UserPreferences)
+        .where(
+            UserPreferences.onboarding_completed_at.is_not(None),
+            UserPreferences.admin_setup_completed_at.is_(None),
+        )
+    )
+    total = (await users_session.execute(count_stmt)).scalar_one()
+
+    if total == 0:
+        return [], 0
+
+    # Fetch preferences + user info
+    stmt = (
+        select(UserPreferences, User)
+        .join(User, UserPreferences.user_id == User.id)
+        .where(
+            UserPreferences.onboarding_completed_at.is_not(None),
+            UserPreferences.admin_setup_completed_at.is_(None),
+            User.deleted_at.is_(None),
+        )
+        .order_by(UserPreferences.onboarding_completed_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    rows = (await users_session.execute(stmt)).all()
+
+    # Collect country/domain IDs for name resolution from prompts_db
+    country_ids = {p.default_country_id for p, _ in rows if p.default_country_id}
+    domain_ids = {p.default_business_domain_id for p, _ in rows if p.default_business_domain_id}
+
+    country_names: dict[int, str] = {}
+    domain_names: dict[int, str] = {}
+
+    if country_ids:
+        result = await prompts_session.execute(
+            select(Country.id, Country.name).where(Country.id.in_(country_ids))
+        )
+        country_names = dict(result.all())
+
+    if domain_ids:
+        result = await prompts_session.execute(
+            select(BusinessDomain.id, BusinessDomain.name).where(
+                BusinessDomain.id.in_(domain_ids)
+            )
+        )
+        domain_names = dict(result.all())
+
+    users = [
+        OnboardingUserInfo(
+            user_id=user.id,
+            email=user.email,
+            full_name=user.full_name,
+            onboarding_completed_at=prefs.onboarding_completed_at,
+            default_brand=prefs.default_brand,
+            default_competitors=prefs.default_competitors,
+            country_name=country_names.get(prefs.default_country_id)
+            if prefs.default_country_id
+            else None,
+            business_domain_name=domain_names.get(prefs.default_business_domain_id)
+            if prefs.default_business_domain_id
+            else None,
+        )
+        for prefs, user in rows
+    ]
+
+    return users, total
+
+
+@router.get(
+    "/onboarding-notifications",
+    response_model=OnboardingNotificationsResponse,
+)
+async def get_onboarding_notifications(
+    users_session: UsersSessionDep,
+    prompts_session: SessionDep,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+):
+    """Get users who completed onboarding but haven't been set up by admin."""
+    users, total = await _get_onboarding_users(
+        users_session, prompts_session, limit=limit, offset=offset
+    )
+    return OnboardingNotificationsResponse(users=users, total=total)
+
+
+@router.get(
+    "/onboarding-notifications/count",
+    response_model=OnboardingNotificationsCountResponse,
+)
+async def get_onboarding_notifications_count(
+    users_session: UsersSessionDep,
+):
+    """Lightweight count of pending onboarding users (for badge)."""
+    stmt = (
+        select(func.count())
+        .select_from(UserPreferences)
+        .join(User, UserPreferences.user_id == User.id)
+        .where(
+            UserPreferences.onboarding_completed_at.is_not(None),
+            UserPreferences.admin_setup_completed_at.is_(None),
+            User.deleted_at.is_(None),
+        )
+    )
+    count = (await users_session.execute(stmt)).scalar_one()
+    return OnboardingNotificationsCountResponse(count=count)
+
+
+@router.post("/users/{user_id}/mark-setup")
+async def mark_user_setup_complete(
+    user_id: str,
+    current_user: CurrentUser,
+    users_session: UsersSessionDep,
+):
+    """Mark a user's admin setup as complete."""
+    stmt = select(UserPreferences).where(UserPreferences.user_id == user_id)
+    prefs = (await users_session.execute(stmt)).scalar_one_or_none()
+
+    if not prefs:
+        raise HTTPException(status_code=404, detail="User preferences not found")
+    if prefs.onboarding_completed_at is None:
+        raise HTTPException(status_code=400, detail="User has not completed onboarding")
+    if prefs.admin_setup_completed_at is not None:
+        raise HTTPException(status_code=400, detail="User setup already completed")
+
+    prefs.admin_setup_completed_at = datetime.now(timezone.utc)
+    prefs.admin_setup_by = current_user.id
+    return {"message": "User setup marked as complete"}
