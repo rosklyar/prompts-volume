@@ -18,21 +18,19 @@ import type { TimelineDataPoint } from "@/types/dashboard"
 interface VisibilityTrendChartProps {
   timeline: TimelineDataPoint[]
   hasData: boolean
+  colorMap: Map<string, string>
   className?: string
 }
-
-const ACCENT_COLOR = "#C4553D"
-const COMPETITOR_COLORS = ["#6B7280", "#9CA3AF", "#B0B8C4", "#D1D5DB"]
 
 function formatDate(iso: string): string {
   const d = new Date(iso)
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
 }
 
-export function VisibilityTrendChart({ timeline, hasData, className = "" }: VisibilityTrendChartProps) {
+export function VisibilityTrendChart({ timeline, hasData, colorMap, className = "" }: VisibilityTrendChartProps) {
   // Transform timeline into flat rows for Recharts: { date, brandA: 45, brandB: 20, ... }
-  const { chartData, brandKeys } = useMemo(() => {
-    if (timeline.length < 2) return { chartData: [], brandKeys: [] }
+  const { chartData, brandKeys, yAxisMax } = useMemo(() => {
+    if (timeline.length < 2) return { chartData: [], brandKeys: [], yAxisMax: 10 }
 
     const keys = new Map<string, { isTarget: boolean; index: number }>()
 
@@ -59,12 +57,22 @@ export function VisibilityTrendChart({ timeline, hasData, className = "" }: Visi
       return a[1].index - b[1].index
     })
 
+    const maxValue = Math.max(
+      0,
+      ...rows.flatMap(row =>
+        [...keys.keys()].map(name => (row[name] as number) || 0)
+      )
+    )
+    const computedMax = maxValue <= 0 ? 10
+      : Math.min(100, Math.ceil((maxValue * 1.05) / 5) * 5)
+
     return {
       chartData: rows,
       brandKeys: sorted.map(([name, meta]) => ({
         name,
         isTarget: meta.isTarget,
       })),
+      yAxisMax: computedMax,
     }
   }, [timeline])
 
@@ -98,7 +106,7 @@ export function VisibilityTrendChart({ timeline, hasData, className = "" }: Visi
               tickLine={false}
             />
             <YAxis
-              domain={[0, 100]}
+              domain={[0, yAxisMax]}
               tick={{ fontSize: 10, fill: "#9CA3AF" }}
               axisLine={false}
               tickLine={false}
@@ -119,11 +127,9 @@ export function VisibilityTrendChart({ timeline, hasData, className = "" }: Visi
               iconSize={8}
               wrapperStyle={{ fontSize: 10, paddingBottom: 8 }}
             />
-            {brandKeys.map((brand, i) => {
+            {brandKeys.map((brand) => {
               const isTarget = brand.isTarget
-              const color = isTarget
-                ? ACCENT_COLOR
-                : COMPETITOR_COLORS[i % COMPETITOR_COLORS.length]
+              const color = colorMap.get(brand.name) ?? "#6B7280"
               return (
                 <Line
                   key={brand.name}

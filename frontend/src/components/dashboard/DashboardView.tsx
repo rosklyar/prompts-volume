@@ -16,6 +16,7 @@ import { VisibilityTrendChart } from "./VisibilityTrendChart"
 import { CompetitorsList } from "./CompetitorsList"
 import { SourcesLeaderboard } from "./SourcesLeaderboard"
 import { PromptGapsList } from "./PromptGapsList"
+import { buildBrandColorMap } from "@/lib/brandColors"
 
 interface DashboardViewProps {
   groups: GroupSummary[]
@@ -71,6 +72,11 @@ export function DashboardView({ groups, isLoadingGroups }: DashboardViewProps) {
   const { data, isLoading } = useDashboardData(selectedGroupId, assistantId, dateRangeOption)
 
   const hasData = (data?.reports_included ?? 0) > 0
+
+  const colorMap = useMemo(
+    () => buildBrandColorMap(data?.competitors ?? []),
+    [data?.competitors]
+  )
 
   return (
     <div className="space-y-6">
@@ -138,12 +144,14 @@ export function DashboardView({ groups, isLoadingGroups }: DashboardViewProps) {
             <VisibilityTrendChart
               timeline={data?.timeline ?? []}
               hasData={hasData}
+              colorMap={colorMap}
               className="lg:col-span-2"
             />
 
             <CompetitorsList
               competitors={data?.competitors ?? []}
               hasData={hasData}
+              colorMap={colorMap}
             />
           </div>
 
