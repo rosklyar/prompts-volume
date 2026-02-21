@@ -127,6 +127,7 @@ async def receive_brightdata_webhook(
             answer={
                 "response": parsed.answer_text,
                 "citations": parsed.citations,
+                "web_search_queries": parsed.web_search_queries,
                 "timestamp": now.isoformat(),
             },
         )

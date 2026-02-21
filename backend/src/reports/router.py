@@ -395,6 +395,7 @@ async def generate_report(
                 export_answer = ExportAnswer(
                     response=answer.get("response", ""),
                     citations=citations,
+                    web_search_queries=answer.get("web_search_queries", []),
                 )
             export_items.append(
                 ExportPromptItem(
