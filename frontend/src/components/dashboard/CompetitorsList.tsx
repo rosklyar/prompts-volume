@@ -20,7 +20,7 @@ export function CompetitorsList({ competitors, hasData, colorMap }: CompetitorsL
     return (
       <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full min-h-0 flex flex-col">
         <h3
-          className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-6 shrink-0 cursor-pointer hover:text-[#1F2937] transition-colors"
+          className="font-['Fraunces'] text-sm font-medium text-[#1E1E1E] uppercase tracking-wide mb-6 shrink-0 cursor-pointer hover:text-[#1F2937] transition-colors"
           onClick={() => navigate({ to: "/", search: { tab: "competitors" } })}
         >
           Competitors
@@ -43,7 +43,7 @@ export function CompetitorsList({ competitors, hasData, colorMap }: CompetitorsL
   return (
     <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full min-h-0 flex flex-col">
       <h3
-        className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide shrink-0 cursor-pointer hover:text-[#1F2937] transition-colors"
+        className="font-['Fraunces'] text-sm font-medium text-[#1E1E1E] uppercase tracking-wide shrink-0 cursor-pointer hover:text-[#1F2937] transition-colors"
         onClick={() => navigate({ to: "/", search: { tab: "competitors" } })}
       >
         Competitors

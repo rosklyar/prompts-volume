@@ -79,7 +79,7 @@ export function VisibilityTrendChart({ timeline, hasData, colorMap, className = 
   if (!hasData || timeline.length < 2) {
     return (
       <div className={`bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full flex flex-col ${className}`}>
-        <h3 className="font-['Fraunces'] text-sm font-semibold text-[#1F2937] shrink-0">
+        <h3 className="font-['Fraunces'] text-sm font-semibold text-[#1E1E1E] shrink-0">
           VISIBILITY TREND
         </h3>
         <div className="flex-1 flex items-center justify-center">
@@ -93,7 +93,7 @@ export function VisibilityTrendChart({ timeline, hasData, colorMap, className = 
 
   return (
     <div className={`bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full flex flex-col ${className}`}>
-      <h3 className="font-['Fraunces'] text-sm font-semibold text-[#1F2937] mb-4 shrink-0">
+      <h3 className="font-['Fraunces'] text-sm font-semibold text-[#1E1E1E] mb-4 shrink-0">
         VISIBILITY TREND
       </h3>
       <div className="flex-1 min-h-0">

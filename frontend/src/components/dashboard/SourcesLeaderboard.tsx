@@ -22,7 +22,7 @@ export function SourcesLeaderboard({ sources, hasData, className = "" }: Sources
     return (
       <div className={`bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full min-h-0 flex flex-col ${className}`}>
         <h3
-          className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-6 shrink-0 cursor-pointer hover:text-[#1F2937] transition-colors"
+          className="font-['Fraunces'] text-sm font-medium text-[#1E1E1E] uppercase tracking-wide mb-6 shrink-0 cursor-pointer hover:text-[#1F2937] transition-colors"
           onClick={() => navigate({ to: "/", search: { tab: "sources" } })}
         >
           Sources
@@ -39,7 +39,7 @@ export function SourcesLeaderboard({ sources, hasData, className = "" }: Sources
   return (
     <div className={`bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full min-h-0 flex flex-col ${className}`}>
       <h3
-        className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-4 shrink-0 cursor-pointer hover:text-[#1F2937] transition-colors"
+        className="font-['Fraunces'] text-sm font-medium text-[#1E1E1E] uppercase tracking-wide mb-4 shrink-0 cursor-pointer hover:text-[#1F2937] transition-colors"
         onClick={() => navigate({ to: "/", search: { tab: "sources" } })}
       >
         Sources
@@ -83,12 +83,10 @@ export function SourcesLeaderboard({ sources, hasData, className = "" }: Sources
                 href={`https://${source.domain}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex-1 text-sm font-medium truncate transition-colors"
-                style={{ color: accentColor }}
+                className="flex-1 text-sm font-medium truncate transition-colors text-[#1E1E1E]"
               >
                 <span
-                  className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 -translate-y-px"
-                  style={{ backgroundColor: accentColor }}
+                  className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 -translate-y-px bg-[#1E1E1E]"
                 />
                 {source.domain}
               </a>
