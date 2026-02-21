@@ -203,6 +203,17 @@ class UserPreferences(UsersBase):
         nullable=True,
     )
 
+    # Admin setup tracking (admin marks user as "handled" after setting up groups)
+    admin_setup_completed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        index=True,
+    )
+    admin_setup_by: Mapped[Optional[str]] = mapped_column(
+        String(36),
+        nullable=True,
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

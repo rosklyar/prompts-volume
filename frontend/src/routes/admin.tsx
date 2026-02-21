@@ -4,6 +4,7 @@
 
 import { useState } from "react"
 import { createFileRoute, redirect, Link } from "@tanstack/react-router"
+import { toast } from "sonner"
 import { isLoggedIn } from "@/hooks/useAuth"
 import useAuth from "@/hooks/useAuth"
 import {
@@ -14,8 +15,11 @@ import {
   AdminTabs,
   AdminPromptsTab,
   AdminApprovalsTab,
+  AdminOnboardingTab,
 } from "@/components/admin"
 import { usePendingPrompts } from "@/hooks/useAdminApprovals"
+import { useOnboardingBadgeCount } from "@/hooks/useOnboardingNotifications"
+import { useImpersonation } from "@/hooks/useImpersonation"
 import type { UserWithBalance } from "@/types/admin"
 import type { AdminTab } from "@/components/admin"
 
@@ -35,9 +39,11 @@ function AdminDashboard() {
   const [selectedUser, setSelectedUser] = useState<UserWithBalance | null>(null)
   const [modalType, setModalType] = useState<ModalType>(null)
   const [activeTab, setActiveTab] = useState<AdminTab>("users")
+  const { startImpersonation } = useImpersonation()
 
   // Get pending prompts count for badge
   const { data: pendingData } = usePendingPrompts(1, 0)
+  const { data: onboardingCountData } = useOnboardingBadgeCount()
 
   const handleSelectUser = (user: UserWithBalance) => {
     setSelectedUser(user)
@@ -55,6 +61,15 @@ function AdminDashboard() {
 
   const handleDelete = () => {
     setModalType("delete")
+  }
+
+  const handleImpersonate = async () => {
+    if (!selectedUser) return
+    try {
+      await startImpersonation(selectedUser.id, selectedUser.email)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Impersonation failed")
+    }
   }
 
   const handleActionSuccess = () => {
@@ -182,7 +197,9 @@ function AdminDashboard() {
               ? "Search and top up user balances"
               : activeTab === "prompts"
                 ? "Upload prompts and manage topics"
-                : "Review and approve pending prompts"}
+                : activeTab === "approvals"
+                  ? "Review and approve pending prompts"
+                  : "Set up new users after onboarding"}
           </p>
         </div>
 
@@ -191,6 +208,7 @@ function AdminDashboard() {
           activeTab={activeTab}
           onTabChange={setActiveTab}
           pendingCount={pendingData?.total}
+          onboardingCount={onboardingCountData?.count}
         />
 
         {/* Tab content */}
@@ -199,6 +217,7 @@ function AdminDashboard() {
         )}
         {activeTab === "prompts" && <AdminPromptsTab />}
         {activeTab === "approvals" && <AdminApprovalsTab />}
+        {activeTab === "onboarding" && <AdminOnboardingTab />}
 
         {/* User actions modal */}
         {modalType === "actions" && selectedUser && (
@@ -207,6 +226,7 @@ function AdminDashboard() {
             onClose={handleCloseModal}
             onTopUp={handleTopUp}
             onDelete={handleDelete}
+            onImpersonate={handleImpersonate}
           />
         )}
 

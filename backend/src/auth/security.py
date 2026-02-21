@@ -17,6 +17,22 @@ def create_access_token(subject: str, expires_delta: timedelta) -> str:
     return jwt.encode(to_encode, settings.secret_key, algorithm=ALGORITHM)
 
 
+def create_impersonation_token(
+    *,
+    target_user_id: str,
+    admin_user_id: str,
+    expires_delta: timedelta,
+) -> str:
+    """Create a JWT token for admin impersonation with audit claim."""
+    expire = datetime.now(timezone.utc) + expires_delta
+    to_encode = {
+        "exp": expire,
+        "sub": str(target_user_id),
+        "impersonated_by": str(admin_user_id),
+    }
+    return jwt.encode(to_encode, settings.secret_key, algorithm=ALGORITHM)
+
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash."""
     return bcrypt.checkpw(

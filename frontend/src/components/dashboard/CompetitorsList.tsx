@@ -10,16 +10,17 @@ import { BrandLogo } from "@/components/BrandLogo"
 interface CompetitorsListProps {
   competitors: CompetitorVisibility[]
   hasData: boolean
+  colorMap: Map<string, string>
 }
 
-export function CompetitorsList({ competitors, hasData }: CompetitorsListProps) {
+export function CompetitorsList({ competitors, hasData, colorMap }: CompetitorsListProps) {
   const navigate = useNavigate()
 
   if (!hasData || competitors.length === 0) {
     return (
       <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full min-h-0 flex flex-col">
         <h3
-          className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-6 shrink-0 cursor-pointer hover:text-[#1F2937] transition-colors"
+          className="font-['Fraunces'] text-sm font-medium text-[#1E1E1E] uppercase tracking-wide mb-6 shrink-0 cursor-pointer hover:text-[#1F2937] transition-colors"
           onClick={() => navigate({ to: "/", search: { tab: "competitors" } })}
         >
           Competitors
@@ -42,7 +43,7 @@ export function CompetitorsList({ competitors, hasData }: CompetitorsListProps) 
   return (
     <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full min-h-0 flex flex-col">
       <h3
-        className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide shrink-0 cursor-pointer hover:text-[#1F2937] transition-colors"
+        className="font-['Fraunces'] text-sm font-medium text-[#1E1E1E] uppercase tracking-wide shrink-0 cursor-pointer hover:text-[#1F2937] transition-colors"
         onClick={() => navigate({ to: "/", search: { tab: "competitors" } })}
       >
         Competitors
@@ -58,6 +59,7 @@ export function CompetitorsList({ competitors, hasData }: CompetitorsListProps) 
         {competitors.map((competitor, index) => {
           const barWidth = (competitor.visibility_percent / maxVisibility) * 100
           const isTarget = competitor.is_target_brand
+          const color = colorMap.get(competitor.name)
 
           return (
             <div
@@ -71,10 +73,9 @@ export function CompetitorsList({ competitors, hasData }: CompetitorsListProps) 
               {/* Rank badge */}
               <span
                 className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium shrink-0 ${
-                  isTarget
-                    ? "bg-indigo-600 text-white"
-                    : "bg-gray-100 text-[#6B7280]"
+                  isTarget ? "bg-indigo-600 text-white" : "text-white"
                 }`}
+                style={!isTarget && color ? { backgroundColor: color } : undefined}
               >
                 {index + 1}
               </span>
@@ -96,10 +97,8 @@ export function CompetitorsList({ competitors, hasData }: CompetitorsListProps) 
                 {/* Mini progress bar */}
                 <div className="mt-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                   <div
-                    className={`h-full rounded-full transition-all duration-500 ${
-                      isTarget ? "bg-indigo-500" : "bg-[#9CA3AF]"
-                    }`}
-                    style={{ width: `${barWidth}%` }}
+                    className={`h-full rounded-full transition-all duration-500 ${isTarget ? "bg-indigo-500" : ""}`}
+                    style={!isTarget && color ? { width: `${barWidth}%`, backgroundColor: color } : { width: `${barWidth}%` }}
                   />
                 </div>
               </div>

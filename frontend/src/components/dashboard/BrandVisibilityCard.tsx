@@ -66,7 +66,7 @@ export function BrandVisibilityCard({
 
   return (
     <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full flex flex-col">
-      <h3 className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-6 shrink-0">
+      <h3 className="font-['Fraunces'] text-sm font-medium text-[#1E1E1E] uppercase tracking-wide mb-6 shrink-0">
         Brand Visibility
       </h3>
 

@@ -79,6 +79,7 @@ class TokenPayload(BaseModel):
     """JWT token payload model."""
 
     sub: str | None = None
+    impersonated_by: str | None = None
 
 
 class Message(BaseModel):

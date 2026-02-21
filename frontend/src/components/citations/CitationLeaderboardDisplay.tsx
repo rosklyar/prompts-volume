@@ -95,13 +95,12 @@ function RankedList({
                 <div className="flex-1 min-w-0">
                   <p
                     className={`text-sm truncate font-sans ${isDomain ? "font-medium" : ""}`}
-                    style={{ color: isDomain ? accentColor : "#4B5563" }}
+                    style={{ color: "#1E1E1E" }}
                     title={item.path}
                   >
                     {isDomain && (
                       <span
-                        className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 -translate-y-px"
-                        style={{ backgroundColor: accentColor }}
+                        className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 -translate-y-px bg-[#1E1E1E]"
                       />
                     )}
                     {item.path}

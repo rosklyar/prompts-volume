@@ -22,7 +22,7 @@ export function PromptGapsList({
   if (!hasData) {
     return (
       <div className={`bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full min-h-0 flex flex-col ${className}`}>
-        <h3 className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-6 shrink-0">
+        <h3 className="font-['Fraunces'] text-sm font-medium text-[#1E1E1E] uppercase tracking-wide mb-6 shrink-0">
           Prompt Gaps
         </h3>
         <div className="flex-1 flex items-center justify-center">
@@ -37,7 +37,7 @@ export function PromptGapsList({
   if (promptGaps.length === 0) {
     return (
       <div className={`bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full min-h-0 flex flex-col ${className}`}>
-        <h3 className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide mb-6 shrink-0">
+        <h3 className="font-['Fraunces'] text-sm font-medium text-[#1E1E1E] uppercase tracking-wide mb-6 shrink-0">
           Prompt Gaps
         </h3>
         <div className="flex-1 flex flex-col items-center justify-center">
@@ -67,7 +67,7 @@ export function PromptGapsList({
   return (
     <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full min-h-0 flex flex-col">
       <div className="flex items-center justify-between mb-6 shrink-0">
-        <h3 className="font-['Fraunces'] text-sm font-medium text-[#6B7280] uppercase tracking-wide">
+        <h3 className="font-['Fraunces'] text-sm font-medium text-[#1E1E1E] uppercase tracking-wide">
           Prompt Gaps
         </h3>
         <span className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-700 font-medium">
