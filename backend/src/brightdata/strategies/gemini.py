@@ -74,5 +74,6 @@ class GeminiStrategy(AssistantStrategy):
             prompt_text=raw_item.get("prompt", ""),
             answer_text=raw_item.get("answer_text", ""),
             citations=citations,
+            web_search_queries=[],
             raw_data=raw_item,
         )

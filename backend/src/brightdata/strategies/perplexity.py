@@ -75,5 +75,6 @@ class PerplexityStrategy(AssistantStrategy):
             prompt_text=raw_item.get("prompt", ""),
             answer_text=raw_item.get("answer_text", ""),
             citations=citations,
+            web_search_queries=raw_item.get("web_search_query", []),
             raw_data=raw_item,
         )

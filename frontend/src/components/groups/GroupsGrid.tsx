@@ -5,18 +5,6 @@
 
 import { useState, useMemo, useCallback, useEffect } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import {
-  DndContext,
-  DragOverlay,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragStartEvent,
-  type DragEndEvent,
-} from "@dnd-kit/core"
-import { sortableKeyboardCoordinates } from "@dnd-kit/sortable"
 import { toast } from "sonner"
 
 import type { GroupDetail, PromptInGroup, EvaluationAnswer } from "@/client/api"
@@ -34,7 +22,6 @@ import {
   useUpdateGroup,
   useDeleteGroup,
   useRemovePromptsFromGroup,
-  useMovePrompt,
   useAddPromptsToGroup,
   useAddGSCPromptsToGroup,
   groupKeys,
@@ -43,7 +30,6 @@ import { useGenerateReport } from "@/hooks/useBilling"
 import { useInvalidateReportQueries } from "@/hooks/useReports"
 import { GroupCard } from "./GroupCard"
 import { AddGroupCard } from "./AddGroupCard"
-import { PromptItem } from "./PromptItem"
 import { PromptSelectionModal } from "./PromptSelectionModal"
 import { MAX_GROUPS, getGroupColor } from "./constants"
 
@@ -132,7 +118,6 @@ export function GroupsGrid() {
   const updateGroup = useUpdateGroup()
   const deleteGroup = useDeleteGroup()
   const removePrompts = useRemovePromptsFromGroup()
-  const movePrompt = useMovePrompt()
   const generateReport = useGenerateReport()
   const addPromptsToGroup = useAddPromptsToGroup()
   const addGSCPromptsToGroup = useAddGSCPromptsToGroup()
@@ -183,24 +168,6 @@ export function GroupsGrid() {
   // Invalidate report queries after generating
   const invalidateReportQueries = useInvalidateReportQueries()
 
-  // Active drag item
-  const [activePrompt, setActivePrompt] = useState<{
-    prompt: PromptWithAnswer
-    groupId: number
-  } | null>(null)
-
-  // Sensors for drag
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  )
-
   // Sort groups by created_at
   const sortedGroups = useMemo(() => {
     if (!groupDetails) return []
@@ -245,57 +212,6 @@ export function GroupsGrid() {
   }, [])
 
   const canAddMore = sortedGroups.length < MAX_GROUPS
-
-  // Handle drag start
-  const handleDragStart = (event: DragStartEvent) => {
-    const { active } = event
-    const data = active.data.current
-    if (data?.type === "prompt" && data.groupId !== "quarantine") {
-      setActivePrompt({
-        prompt: data.prompt,
-        groupId: data.groupId as number,
-      })
-    }
-  }
-
-  // Handle drag end
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event
-    setActivePrompt(null)
-
-    if (!over) return
-
-    const activeData = active.data.current
-    const overId = over.id as string
-
-    if (activeData?.type !== "prompt") return
-
-    const sourceGroupId = activeData.groupId
-    const promptId = activeData.prompt.prompt_id
-
-    // Only handle group-to-group moves
-    if (sourceGroupId === "quarantine") return
-
-    // Determine target group
-    let targetGroupId: number | null = null
-
-    if (overId.startsWith("group-")) {
-      targetGroupId = parseInt(overId.replace("group-", ""), 10)
-    } else if (overId.includes("-")) {
-      // Dropped on another prompt
-      const [groupIdStr] = overId.split("-")
-      targetGroupId = parseInt(groupIdStr, 10)
-    }
-
-    if (!targetGroupId || targetGroupId === sourceGroupId) return
-
-    // Move between groups
-    movePrompt.mutate({
-      promptId,
-      sourceGroupId: sourceGroupId as number,
-      targetGroupId,
-    })
-  }
 
   // Handle group creation
   const handleCreateGroup = async (
@@ -509,12 +425,7 @@ export function GroupsGrid() {
   }
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-    >
+    <>
       <div className="w-full space-y-6">
         {/* Groups section */}
         <div>
@@ -522,11 +433,6 @@ export function GroupsGrid() {
             <h2 className="font-['Fraunces'] text-xl text-[#1F2937]">
               Your prompt groups
             </h2>
-            {sortedGroups.length > 0 && (
-              <span className="text-xs text-[#9CA3AF]">
-                Drag prompts between groups to reorganize
-              </span>
-            )}
           </div>
           <div className="space-y-4">
             {/* User groups - each in its own row */}
@@ -578,25 +484,6 @@ export function GroupsGrid() {
         </div>
       </div>
 
-      {/* Drag overlay - only for group prompts */}
-      <DragOverlay>
-        {activePrompt && (
-          <div className="w-[300px]">
-            <PromptItem
-              prompt={activePrompt.prompt}
-              groupId={activePrompt.groupId}
-              accentColor={
-                getGroupColor(
-                  sortedGroups.findIndex((g) => g.id === activePrompt.groupId)
-                ).accent
-              }
-              onDelete={() => {}}
-              isDragOverlay
-            />
-          </div>
-        )}
-      </DragOverlay>
-
       {/* Prompt selection modal - shown after creating group with topic */}
       {promptSelectionModal && (
         <PromptSelectionModal
@@ -609,6 +496,6 @@ export function GroupsGrid() {
           onClose={() => setPromptSelectionModal(null)}
         />
       )}
-    </DndContext>
+    </>
   )
 }

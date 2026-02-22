@@ -29,6 +29,7 @@ class ParsedWebhookItem:
     prompt_text: str  # Original prompt text (fallback matching)
     answer_text: str
     citations: list[dict[str, Any]]  # Normalized: [{"url": str, "text": str, "domain": str}]
+    web_search_queries: list[str]  # Search queries used by the assistant
     raw_data: dict[str, Any]  # Original webhook data for debugging
 
 

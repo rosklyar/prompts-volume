@@ -34,6 +34,7 @@ class ExportAnswer(BaseModel):
 
     response: str
     citations: List[ExportCitation] = Field(default_factory=list)
+    web_search_queries: List[str] = Field(default_factory=list)
 
 
 class ExportPromptItem(BaseModel):
