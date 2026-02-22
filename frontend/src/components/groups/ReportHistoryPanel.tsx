@@ -31,6 +31,7 @@ interface ReportHistoryPanelProps {
   groupId: number
   selectedReportId: number | null
   onSelectReport: (reportId: number | null) => void
+  onDoubleClickReport: (reportId: number) => void
   accentColor: string
 }
 
@@ -38,6 +39,7 @@ export function ReportHistoryPanel({
   groupId,
   selectedReportId,
   onSelectReport,
+  onDoubleClickReport,
   accentColor,
 }: ReportHistoryPanelProps) {
   // Filter state
@@ -80,7 +82,7 @@ export function ReportHistoryPanel({
             style={{ backgroundColor: accentColor }}
           />
           <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-gray-400">
-            Report history
+            Reports
           </span>
         </div>
         <div className="flex gap-2 overflow-hidden">
@@ -114,7 +116,7 @@ export function ReportHistoryPanel({
               style={{ backgroundColor: accentColor }}
             />
             <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-gray-300">
-              Report history
+              Reports
             </span>
           </div>
 
@@ -172,7 +174,7 @@ export function ReportHistoryPanel({
             style={{ backgroundColor: accentColor }}
           />
           <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-gray-400">
-            Report history
+            Reports
           </span>
           <span
             className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
@@ -233,6 +235,7 @@ export function ReportHistoryPanel({
             <button
               key={report.id}
               onClick={() => handleCardClick(report.id)}
+              onDoubleClick={() => onDoubleClickReport(report.id)}
               className={`
                 flex-shrink-0 relative group
                 w-[175px] px-3 py-2.5 rounded-lg
@@ -330,9 +333,11 @@ export function ReportHistoryPanel({
       </div>
 
       {/* Selection hint */}
-      {!selectedReportId && hasReports && (
+      {hasReports && (
         <p className="text-[10px] text-gray-400 mt-1.5 text-center italic">
-          Click a report to view its details
+          {selectedReportId
+            ? "Double-click a report to view full summary"
+            : "Click a report to select, double-click to view summary"}
         </p>
       )}
     </div>

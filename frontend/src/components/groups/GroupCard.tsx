@@ -3,11 +3,6 @@
  * Similar to QuarantineCard/Staging Area design
  */
 
-import { useDroppable } from "@dnd-kit/core"
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable"
 import { useState } from "react"
 import type { GroupDetail, PromptInGroup, EvaluationAnswer } from "@/client/api"
 import type {
@@ -20,8 +15,8 @@ import { useHasFreshData, useReport, useExportReportJson } from "@/hooks/useRepo
 import { useReportRequestStatus } from "@/hooks/useReportRequest"
 import { EditableTitle } from "./EditableTitle"
 import { PromptItem } from "./PromptItem"
-import { ReportPanel } from "./ReportPanel"
 import { ReportHistoryPanel } from "./ReportHistoryPanel"
+import { ReportSummaryDialog } from "./ReportSummaryDialog"
 import { BrandEditor } from "./BrandEditor"
 import { ReportModal } from "@/components/billing"
 import type { PromptSelection, PromptSelectionInfo } from "@/types/billing"
@@ -86,7 +81,7 @@ export function GroupCard({
   const [showAddFromTopic, setShowAddFromTopic] = useState(false)
   const [showAddFromGSC, setShowAddFromGSC] = useState(false)
   const [showCountrySelector, setShowCountrySelector] = useState(false)
-  const [isReportCollapsed, setIsReportCollapsed] = useState(true)
+  const [showReportSummaryDialog, setShowReportSummaryDialog] = useState(false)
   const [showReportModal, setShowReportModal] = useState(false)
   const colors = getGroupColor(colorIndex)
 
@@ -150,29 +145,22 @@ export function GroupCard({
     onLoadReport(selections, assistantId)
   }
 
-  const { setNodeRef, isOver } = useDroppable({
-    id: `group-${group.id}`,
-    data: {
-      type: "group",
-      groupId: group.id,
-    },
-  })
 
-  const sortableIds = displayPrompts.map((p) => `${group.id}-${p.prompt_id}`)
-
-  // Check if we have report data to display (from selected report)
-  const hasReportData = selectedReport !== null && selectedReport !== undefined
+  // Handle double-click on a report card — ensure selection and open dialog
+  const handleDoubleClickReport = (reportId: number) => {
+    if (selectedReportId !== reportId) {
+      onSelectReport(reportId)
+    }
+    setShowReportSummaryDialog(true)
+  }
 
   return (
     <>
       <section
-        className={`
-          w-full rounded-2xl overflow-hidden transition-all duration-300
-          ${isOver ? "scale-[1.005] shadow-lg" : ""}
-        `}
+        className="w-full rounded-2xl overflow-hidden transition-all duration-300"
         style={{
           backgroundColor: colors.bg,
-          border: `2px solid ${isOver ? colors.accent : `${colors.border}40`}`,
+          border: `2px solid ${colors.border}40`,
         }}
       >
         {/* Color accent bar */}
@@ -464,37 +452,18 @@ export function GroupCard({
             }}
           >
             {/* Body - Vertical prompt list */}
-            <div ref={setNodeRef}>
-              <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
+            <div>
                 {prompts.length === 0 ? (
                   <div
-                    className={`
-                      flex items-center justify-center py-6 rounded-xl border-2 border-dashed transition-colors
-                      ${isOver ? "border-solid" : ""}
-                    `}
+                    className="flex items-center justify-center py-6 rounded-xl border-2 border-dashed"
                     style={{
-                      borderColor: isOver ? colors.accent : `${colors.border}25`,
-                      backgroundColor: isOver ? `${colors.accent}10` : "rgba(255,255,255,0.5)",
+                      borderColor: `${colors.border}25`,
+                      backgroundColor: "rgba(255,255,255,0.5)",
                     }}
                   >
-                    <div className="text-center">
-                      <svg
-                        className="w-8 h-8 mx-auto mb-2 text-gray-300"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth={1.5}
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-                        />
-                      </svg>
-                      <p className="text-sm text-gray-400">
-                        {isOver ? "Drop here" : "Drag prompts from staging area"}
-                      </p>
-                    </div>
+                    <p className="text-sm text-gray-400">
+                      No prompts yet
+                    </p>
                   </div>
                 ) : (
                   <div className="max-h-[220px] overflow-y-auto space-y-2 prompts-scroll">
@@ -502,7 +471,6 @@ export function GroupCard({
                       <PromptItem
                         key={prompt.prompt_id}
                         prompt={prompt}
-                        groupId={group.id}
                         accentColor={colors.accent}
                         targetBrandName={brand?.name}
                         competitorNames={competitors.map((c) => c.name)}
@@ -512,7 +480,6 @@ export function GroupCard({
                     ))}
                   </div>
                 )}
-              </SortableContext>
             </div>
 
             {/* Report History Panel - shows list of past reports */}
@@ -521,27 +488,11 @@ export function GroupCard({
                 groupId={group.id}
                 selectedReportId={selectedReportId}
                 onSelectReport={onSelectReport}
+                onDoubleClickReport={handleDoubleClickReport}
                 accentColor={colors.accent}
               />
             )}
 
-            {/* Report Panel - shown when report data is loaded (at bottom) */}
-            {hasReportData && (
-              <div className="mt-3">
-                <ReportPanel
-                  statistics={selectedReport?.statistics ?? null}
-                  citationLeaderboard={selectedReport?.citation_leaderboard ?? { domains: [], subpaths: [], total_citations: 0, total_answers: 0 }}
-                  accentColor={colors.accent}
-                  targetBrandName={brand?.name}
-                  competitorNames={competitors.map((c) => c.name)}
-                  isCollapsed={isReportCollapsed}
-                  onToggleCollapse={() => setIsReportCollapsed(!isReportCollapsed)}
-                  reportId={selectedReportId}
-                  onExportJson={() => exportMutation.mutate({ groupId: group.id, reportId: selectedReportId! })}
-                  isExporting={exportMutation.isPending}
-                />
-              </div>
-            )}
           </div>
         </div>
       </section>
@@ -610,6 +561,20 @@ export function GroupCard({
         isOpen={showReportModal}
         onClose={() => setShowReportModal(false)}
         onReportGenerated={handleReportGenerated}
+      />
+
+      {/* Report Summary Dialog */}
+      <ReportSummaryDialog
+        isOpen={showReportSummaryDialog}
+        onClose={() => setShowReportSummaryDialog(false)}
+        statistics={selectedReport?.statistics ?? null}
+        citationLeaderboard={selectedReport?.citation_leaderboard ?? { domains: [], subpaths: [], total_citations: 0, total_answers: 0 }}
+        accentColor={colors.accent}
+        targetBrandName={brand?.name}
+        competitorNames={competitors.map((c) => c.name)}
+        reportId={selectedReportId}
+        onExportJson={() => exportMutation.mutate({ groupId: group.id, reportId: selectedReportId! })}
+        isExporting={exportMutation.isPending}
       />
 
     </>

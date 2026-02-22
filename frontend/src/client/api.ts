@@ -402,6 +402,7 @@ export interface Citation {
 export interface EvaluationAnswer {
   response: string
   citations: Citation[]
+  web_search_queries?: string[]
   timestamp: string
 }
 
