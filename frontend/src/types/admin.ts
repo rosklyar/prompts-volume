@@ -35,10 +35,17 @@ export interface BusinessDomainsListResponse {
   business_domains: BusinessDomain[]
 }
 
+export interface Language {
+  id: number
+  name: string
+  code: string
+}
+
 export interface Country {
   id: number
   name: string
   iso_code: string
+  languages: Language[]
 }
 
 export interface CountriesListResponse {

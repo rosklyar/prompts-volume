@@ -26,7 +26,7 @@ from src.gsc.models import (
     GSCPropertyMatchRequest,
     GSCPropertyMatchResponse,
 )
-from src.prompts.services.prompts_generator_service import get_prompts_generator_service
+from src.keyword_inspiration.services.prompts_generator_service import get_prompts_generator_service
 from src.gsc.repository import GSCCredentialRepository
 from src.gsc.services import (
     GSCClient,

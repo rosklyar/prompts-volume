@@ -1,6 +1,8 @@
 /**
  * LinearOnboarding - Traditional multi-step wizard
  * Clean progression through steps with clear navigation
+ *
+ * Flow: Welcome → Market → Brand → Competitors → Discover Clusters → Review Prompts → Topics → Prompts → Complete
  */
 
 import { useState, useCallback, useRef, useMemo, useEffect } from "react"
@@ -21,42 +23,24 @@ import { useCreateGroup, useAddPromptsToGroup } from "@/hooks/useGroups"
 import { normalizeDomain } from "@/lib/domain"
 import { TopicSelectionStep } from "./TopicSelectionStep"
 import { PromptSelectionStep } from "./PromptSelectionStep"
-import { GSCOnboardingStep } from "./GSCOnboardingStep"
 import { CompetitorDiscoveryStep } from "./CompetitorDiscoveryStep"
+import { ClusterDiscoveryStep } from "./ClusterDiscoveryStep"
+import { PromptReviewStep } from "./PromptReviewStep"
 import { VariationsInput } from "./VariationsInput"
 import { BrandLogo } from "@/components/BrandLogo"
 import type { CompetitorInfo } from "@/types/groups"
 import type { Topic } from "@/types/admin"
 import type { DiscoveredCompetitor } from "@/types/onboarding"
+import type { ScoredCluster, CreateGroupsResponse } from "@/types/keyword-inspiration"
 
-type OnboardingStep = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
+type OnboardingStep = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
 
-const TOTAL_STEPS = 8
-const ONBOARDING_STATE_KEY = "onboardingState"
+const TOTAL_STEPS = 9
 
 interface BrandData {
   name: string
   domain: string
   variations: string[]
-}
-
-interface SavedOnboardingState {
-  countryId?: number
-  businessDomainId?: number
-  brand: BrandData
-  competitors: CompetitorInfo[]
-  selectedTopics: Topic[]
-  selectedPromptsByTopic: Record<number, number[]>
-  groupsCreatedCount: number
-  // Discovery state
-  discoveredCompetitors: DiscoveredCompetitor[]
-  selectedDiscovered: number[]
-  editedDiscovered: Record<number, CompetitorInfo>
-  isDiscoveryDone: boolean
-}
-
-interface LinearOnboardingProps {
-  initialGscConnected?: boolean
 }
 
 // Step indicator component
@@ -81,52 +65,27 @@ function StepIndicator({ currentStep, totalSteps }: { currentStep: number; total
   )
 }
 
-export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps) {
+export function LinearOnboarding() {
   const navigate = useNavigate()
   const hasSubmittedRef = useRef(false)
   const completeOnboarding = useCompleteOnboarding()
   const createGroup = useCreateGroup()
   const addPromptsToGroup = useAddPromptsToGroup()
 
-  // Restore state from sessionStorage if returning from OAuth
-  const savedState = useMemo<SavedOnboardingState | null>(() => {
-    if (!initialGscConnected) return null
-    const saved = sessionStorage.getItem(ONBOARDING_STATE_KEY)
-    if (saved) {
-      sessionStorage.removeItem(ONBOARDING_STATE_KEY)  // Clear after use
-      try {
-        return JSON.parse(saved) as SavedOnboardingState
-      } catch {
-        return null
-      }
-    }
-    return null
-  }, [initialGscConnected])
+  // Step state
+  const [currentStep, setCurrentStep] = useState<OnboardingStep>(1)
 
-  // Step state - go to step 7 (GSC) if returning from OAuth
-  const [currentStep, setCurrentStep] = useState<OnboardingStep>(
-    savedState ? 7 : 1
-  )
-
-  // Form data - restore from saved state if available
-  const [countryId, setCountryId] = useState<number | undefined>(savedState?.countryId)
-  const [businessDomainId, setBusinessDomainId] = useState<number | undefined>(savedState?.businessDomainId)
-  const [brand, setBrand] = useState<BrandData>(
-    savedState?.brand || { name: "", domain: "", variations: [] }
-  )
-  const [competitors, setCompetitors] = useState<CompetitorInfo[]>(savedState?.competitors || [])
+  // Form data
+  const [countryId, setCountryId] = useState<number | undefined>()
+  const [businessDomainId, setBusinessDomainId] = useState<number | undefined>()
+  const [brand, setBrand] = useState<BrandData>({ name: "", domain: "", variations: [] })
+  const [competitors, setCompetitors] = useState<CompetitorInfo[]>([])
 
   // Discovery state
-  const [discoveredCompetitors, setDiscoveredCompetitors] = useState<DiscoveredCompetitor[]>(
-    savedState?.discoveredCompetitors || []
-  )
-  const [selectedDiscovered, setSelectedDiscovered] = useState<Set<number>>(
-    new Set(savedState?.selectedDiscovered || [])
-  )
-  const [editedDiscovered, setEditedDiscovered] = useState<Record<number, CompetitorInfo>>(
-    savedState?.editedDiscovered || {}
-  )
-  const [isDiscoveryDone, setIsDiscoveryDone] = useState(savedState?.isDiscoveryDone || false)
+  const [discoveredCompetitors, setDiscoveredCompetitors] = useState<DiscoveredCompetitor[]>([])
+  const [selectedDiscovered, setSelectedDiscovered] = useState<Set<number>>(new Set())
+  const [editedDiscovered, setEditedDiscovered] = useState<Record<number, CompetitorInfo>>({})
+  const [isDiscoveryDone, setIsDiscoveryDone] = useState(false)
 
   // Track previous brand to detect changes and reset discovery state
   const prevBrandRef = useRef({ name: brand.name, domain: brand.domain })
@@ -151,16 +110,15 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
     setCompetitors([])
   }, [brand.name, brand.domain])
 
-  // Topic/Prompt selection state (steps 5-6) - restore from saved state
-  const [selectedTopics, setSelectedTopics] = useState<Topic[]>(savedState?.selectedTopics || [])
-  const [selectedPromptsByTopic, setSelectedPromptsByTopic] = useState<Record<number, number[]>>(
-    savedState?.selectedPromptsByTopic || {}
-  )
-  const [isCreatingGroups, setIsCreatingGroups] = useState(false)
-  const [groupsCreatedCount, setGroupsCreatedCount] = useState(savedState?.groupsCreatedCount || 0)
+  // Keyword inspiration state (steps 5-6)
+  const [selectedClusters, setSelectedClusters] = useState<ScoredCluster[]>([])
+  const [inspirationGroupsCreated, setInspirationGroupsCreated] = useState<CreateGroupsResponse | null>(null)
 
-  // GSC state (step 7)
-  const [gscGroupCreated, setGscGroupCreated] = useState<{ groupId: number; promptCount: number } | null>(null)
+  // Topic/Prompt selection state (steps 7-8)
+  const [selectedTopics, setSelectedTopics] = useState<Topic[]>([])
+  const [selectedPromptsByTopic, setSelectedPromptsByTopic] = useState<Record<number, number[]>>({})
+  const [isCreatingGroups, setIsCreatingGroups] = useState(false)
+  const [groupsCreatedCount, setGroupsCreatedCount] = useState(0)
 
   // Error state
   const [error, setError] = useState<string | null>(null)
@@ -174,6 +132,47 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
 
   // Check if topic steps should be shown
   const shouldShowTopicSteps = countryId !== undefined && businessDomainId !== undefined
+
+  // Derived country/language data
+  const selectedCountry = countriesData?.countries.find((c) => c.id === countryId)
+  const selectedDomain = businessDomainsData?.business_domains.find((d) => d.id === businessDomainId)
+  const languageName = selectedCountry?.languages?.[0]?.name || "English"
+
+  // Build domains list for keyword inspiration
+  const inspirationDomains = useMemo(() => {
+    const domains: string[] = []
+    const brandDomain = normalizeDomain(brand.domain)
+    if (brandDomain) domains.push(brandDomain)
+    for (const comp of getFinalCompetitorsStatic()) {
+      if (comp.domain) {
+        const normalized = normalizeDomain(comp.domain)
+        if (normalized) domains.push(normalized)
+      }
+    }
+    return domains
+
+    // Static version to avoid circular deps in useMemo
+    function getFinalCompetitorsStatic(): CompetitorInfo[] {
+      const withLowercaseName = (comp: CompetitorInfo): CompetitorInfo => ({
+        ...comp,
+        variations: [comp.name.trim().toLowerCase(), ...(comp.variations || [])],
+      })
+      const manual = competitors.map(withLowercaseName)
+      const discovered: CompetitorInfo[] = []
+      discoveredCompetitors.forEach((dc, idx) => {
+        if (selectedDiscovered.has(idx)) {
+          const edited = editedDiscovered[idx]
+          const base = edited || {
+            name: dc.brand_name,
+            domain: dc.domain,
+            variations: dc.variations || [],
+          }
+          discovered.push(withLowercaseName(base))
+        }
+      })
+      return [...manual, ...discovered].slice(0, 10)
+    }
+  }, [brand.domain, competitors, discoveredCompetitors, selectedDiscovered, editedDiscovered])
 
   // Navigation
   const goNext = useCallback(() => {
@@ -212,7 +211,6 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
   // Discovery handlers
   const handleDiscoveryComplete = useCallback((competitors: DiscoveredCompetitor[]) => {
     setDiscoveredCompetitors(competitors)
-    // Select all by default
     setSelectedDiscovered(new Set(competitors.map((_, idx) => idx)))
     setIsDiscoveryDone(true)
   }, [])
@@ -220,34 +218,24 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
   const handleToggleDiscoveredSelection = useCallback((index: number) => {
     setSelectedDiscovered((prev) => {
       const next = new Set(prev)
-      if (next.has(index)) {
-        next.delete(index)
-      } else {
-        next.add(index)
-      }
+      if (next.has(index)) next.delete(index)
+      else next.add(index)
       return next
     })
   }, [])
 
   const handleUpdateDiscovered = useCallback((index: number, updated: CompetitorInfo) => {
-    setEditedDiscovered((prev) => ({
-      ...prev,
-      [index]: updated,
-    }))
+    setEditedDiscovered((prev) => ({ ...prev, [index]: updated }))
   }, [])
 
   // Get merged competitors list (manual + selected discovered)
   const getFinalCompetitors = useCallback((): CompetitorInfo[] => {
-    // Helper to ensure lowercase name is in variations
     const withLowercaseName = (comp: CompetitorInfo): CompetitorInfo => ({
       ...comp,
       variations: [comp.name.trim().toLowerCase(), ...(comp.variations || [])],
     })
 
-    // Start with manually added competitors (add lowercase name to variations)
     const manual = competitors.map(withLowercaseName)
-
-    // Add selected discovered competitors (with any edits applied)
     const discovered: CompetitorInfo[] = []
     discoveredCompetitors.forEach((dc, idx) => {
       if (selectedDiscovered.has(idx)) {
@@ -261,7 +249,7 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
       }
     })
 
-    return [...manual, ...discovered].slice(0, 10) // Max 10
+    return [...manual, ...discovered].slice(0, 10)
   }, [competitors, discoveredCompetitors, selectedDiscovered, editedDiscovered])
 
   // Topic selection handlers
@@ -269,10 +257,9 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
     setSelectedTopics((prev) => {
       const isSelected = prev.some((t) => t.id === topic.id)
       if (isSelected) {
-        // Also clear selected prompts for this topic
         setSelectedPromptsByTopic((prevPrompts) => {
           const { [topic.id]: _removed, ...rest } = prevPrompts
-          void _removed // silence unused var warning
+          void _removed
           return rest
         })
         return prev.filter((t) => t.id !== topic.id)
@@ -297,28 +284,20 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
   }, [])
 
   const handleSelectAllForTopic = useCallback((topicId: number, promptIds: number[]) => {
-    setSelectedPromptsByTopic((prev) => ({
-      ...prev,
-      [topicId]: promptIds,
-    }))
+    setSelectedPromptsByTopic((prev) => ({ ...prev, [topicId]: promptIds }))
   }, [])
 
   const handleDeselectAllForTopic = useCallback((topicId: number) => {
-    setSelectedPromptsByTopic((prev) => ({
-      ...prev,
-      [topicId]: [],
-    }))
+    setSelectedPromptsByTopic((prev) => ({ ...prev, [topicId]: [] }))
   }, [])
 
   // Validation per step
   const canProceed = useCallback(() => {
     switch (currentStep) {
-      case 1: return true // Welcome - always can proceed
-      case 2: return countryId !== undefined // Industry is optional
+      case 1: return true
+      case 2: return countryId !== undefined
       case 3: return brand.name.trim().length > 0
-      case 4: return true // Competitors - optional
-      case 5: return true // Topics - can always proceed (skip or with selection)
-      case 6: return true // Prompts - can always proceed
+      case 4: return true
       default: return true
     }
   }, [currentStep, countryId, brand.name])
@@ -329,9 +308,7 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
       (topic) => (selectedPromptsByTopic[topic.id] || []).length > 0
     )
 
-    if (topicsWithPrompts.length === 0) {
-      return 0
-    }
+    if (topicsWithPrompts.length === 0) return 0
 
     const brandInfo = {
       name: brand.name.trim(),
@@ -347,7 +324,6 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
       if (promptIds.length === 0) continue
 
       try {
-        // Create group with topic title as name
         const group = await createGroup.mutateAsync({
           title: topic.title,
           topic: { existing_topic_id: topic.id },
@@ -355,16 +331,9 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
           competitors: finalCompetitors.length > 0 ? finalCompetitors : undefined,
           countryId,
         })
-
-        // Add selected prompts
-        await addPromptsToGroup.mutateAsync({
-          groupId: group.id,
-          promptIds,
-        })
-
+        await addPromptsToGroup.mutateAsync({ groupId: group.id, promptIds })
         createdCount++
       } catch {
-        // Continue with other groups even if one fails
         console.error(`Failed to create group for topic ${topic.title}`)
       }
     }
@@ -379,13 +348,11 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
     setIsCreatingGroups(true)
 
     try {
-      // First create groups if there are selected prompts
       const groupsCreated = await createGroupsFromSelection()
       setGroupsCreatedCount(groupsCreated)
 
       const finalCompetitors = getFinalCompetitors()
 
-      // Complete onboarding
       await completeOnboarding.mutateAsync({
         default_country_id: countryId!,
         default_business_domain_id: businessDomainId,
@@ -397,8 +364,7 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
         default_competitors: finalCompetitors.length > 0 ? finalCompetitors : undefined,
       })
 
-      // Go to complete step
-      setCurrentStep(8)
+      setCurrentStep(9)
     } catch (err) {
       hasSubmittedRef.current = false
       setError(err instanceof Error ? err.message : "Failed to save preferences")
@@ -407,82 +373,80 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
     }
   }, [brand, countryId, businessDomainId, completeOnboarding, createGroupsFromSelection, getFinalCompetitors])
 
-  // Handle step 4 continue -> go to topics or GSC
+  // Step 4 → step 5 (cluster discovery)
   const handleStep4Continue = useCallback(() => {
-    if (shouldShowTopicSteps) {
-      setCurrentStep(5) // Go to topic selection
-    } else {
-      setCurrentStep(7) // Skip to GSC step
-    }
-  }, [shouldShowTopicSteps])
-
-  // Handle step 5 continue -> go to prompts or GSC
-  const handleStep5Continue = useCallback(() => {
-    if (selectedTopics.length > 0) {
-      setCurrentStep(6) // Go to prompt selection
-    } else {
-      setCurrentStep(7) // No topics selected, skip to GSC
-    }
-  }, [selectedTopics])
-
-  // Handle step 6 continue -> go to GSC step
-  const handleStep6Continue = useCallback(() => {
-    setCurrentStep(7) // Go to GSC step
+    setCurrentStep(5)
   }, [])
 
-  // Handle GSC step completion
-  const handleGSCComplete = useCallback((result: { groupId: number; promptCount: number } | null) => {
-    setGscGroupCreated(result)
-    handleSubmit()
-  }, [handleSubmit])
+  // Step 5: Clusters selected → step 6 (prompt review)
+  const handleClustersSelected = useCallback((clusters: ScoredCluster[]) => {
+    setSelectedClusters(clusters)
+    setCurrentStep(6)
+  }, [])
 
-  // Handle GSC step skip
-  const handleGSCSkip = useCallback(() => {
-    setGscGroupCreated(null)
-    handleSubmit()
-  }, [handleSubmit])
-
-  // Save onboarding state before OAuth redirect
-  const saveOnboardingState = useCallback(() => {
-    const stateToSave: SavedOnboardingState = {
-      countryId,
-      businessDomainId,
-      brand,
-      competitors,
-      selectedTopics,
-      selectedPromptsByTopic,
-      groupsCreatedCount,
-      discoveredCompetitors,
-      selectedDiscovered: Array.from(selectedDiscovered),
-      editedDiscovered,
-      isDiscoveryDone,
+  // Step 5/6 skip → topics (7) or submit
+  const handleInspirationSkip = useCallback(() => {
+    if (shouldShowTopicSteps) {
+      setCurrentStep(7)
+    } else {
+      handleSubmit()
     }
-    sessionStorage.setItem(ONBOARDING_STATE_KEY, JSON.stringify(stateToSave))
-  }, [countryId, businessDomainId, brand, competitors, selectedTopics, selectedPromptsByTopic, groupsCreatedCount, discoveredCompetitors, selectedDiscovered, editedDiscovered, isDiscoveryDone])
+  }, [shouldShowTopicSteps, handleSubmit])
+
+  // Step 6 complete → topics (7) or submit
+  const handleInspirationComplete = useCallback((result: CreateGroupsResponse) => {
+    setInspirationGroupsCreated(result)
+    if (shouldShowTopicSteps) {
+      setCurrentStep(7)
+    } else {
+      handleSubmit()
+    }
+  }, [shouldShowTopicSteps, handleSubmit])
+
+  // Step 6 back → step 5
+  const handlePromptReviewBack = useCallback(() => {
+    setCurrentStep(5)
+  }, [])
+
+  // Step 5 go back to brand
+  const handleGoBackToBrand = useCallback(() => {
+    setCurrentStep(3)
+  }, [])
+
+  // Step 7: topics continue → prompts (8) or submit
+  const handleStep7Continue = useCallback(() => {
+    if (selectedTopics.length > 0) {
+      setCurrentStep(8)
+    } else {
+      handleSubmit()
+    }
+  }, [selectedTopics, handleSubmit])
+
+  // Step 8: prompts continue → submit
+  const handleStep8Continue = useCallback(() => {
+    handleSubmit()
+  }, [handleSubmit])
+
+  // Skip topics → submit
+  const handleSkipTopics = useCallback(() => {
+    setSelectedTopics([])
+    setSelectedPromptsByTopic({})
+    handleSubmit()
+  }, [handleSubmit])
 
   // Get the appropriate handler for each step's continue button
   const getStepContinueHandler = (step: number) => {
     switch (step) {
       case 4: return handleStep4Continue
-      case 5: return handleStep5Continue
-      case 6: return handleStep6Continue
+      case 7: return handleStep7Continue
+      case 8: return handleStep8Continue
       default: return goNext
     }
   }
 
-  // Skip handler for topic/prompt steps -> go to GSC
-  const handleSkipTopics = useCallback(() => {
-    setSelectedTopics([])
-    setSelectedPromptsByTopic({})
-    setCurrentStep(7) // Go to GSC step
-  }, [])
-
-  // Get country and domain names for summary
-  const selectedCountry = countriesData?.countries.find((c) => c.id === countryId)
-  const selectedDomain = businessDomainsData?.business_domains.find((d) => d.id === businessDomainId)
-
-  // Calculate visible steps (4 base + topic steps + GSC step if applicable)
-  const visibleSteps = shouldShowTopicSteps ? 7 : 5 // Exclude complete step from indicator
+  // Calculate visible steps (exclude complete step from indicator)
+  // Base: 4 (welcome, market, brand, competitors) + 2 (inspiration) + topic steps
+  const visibleSteps = shouldShowTopicSteps ? 8 : 6
 
   return (
     <div className="min-h-screen bg-[#FDFBF7] font-['DM_Sans']">
@@ -496,9 +460,9 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
         </div>
 
         {/* Step indicator */}
-        {currentStep < 8 && (
+        {currentStep < 9 && (
           <StepIndicator
-            currentStep={shouldShowTopicSteps ? currentStep : Math.min(currentStep, 5)}
+            currentStep={shouldShowTopicSteps ? currentStep : Math.min(currentStep, 6)}
             totalSteps={visibleSteps}
           />
         )}
@@ -707,8 +671,40 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
               />
             )}
 
-            {/* Step 5: Topic Selection */}
-            {currentStep === 5 && (
+            {/* Step 5: Discover Clusters */}
+            {currentStep === 5 && selectedCountry && (
+              <ClusterDiscoveryStep
+                domains={inspirationDomains}
+                countryCode={selectedCountry.iso_code}
+                languageName={languageName}
+                brandNames={[brand.name.trim().toLowerCase(), ...brand.variations]}
+                onClustersSelected={handleClustersSelected}
+                onSkip={handleInspirationSkip}
+                onGoBackToBrand={handleGoBackToBrand}
+              />
+            )}
+
+            {/* Step 6: Review Prompts */}
+            {currentStep === 6 && countryId && (
+              <PromptReviewStep
+                selectedClusters={selectedClusters}
+                businessDomain={selectedDomain?.name || "general"}
+                language={languageName}
+                countryId={countryId}
+                brand={{
+                  name: brand.name.trim(),
+                  domain: normalizeDomain(brand.domain) || null,
+                  variations: [brand.name.trim().toLowerCase(), ...brand.variations],
+                }}
+                competitors={getFinalCompetitors()}
+                onComplete={handleInspirationComplete}
+                onBack={handlePromptReviewBack}
+                onSkip={handleInspirationSkip}
+              />
+            )}
+
+            {/* Step 7: Topic Selection */}
+            {currentStep === 7 && (
               <TopicSelectionStep
                 topics={topicsData?.topics || []}
                 isLoading={isLoadingTopics}
@@ -717,8 +713,8 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
               />
             )}
 
-            {/* Step 6: Prompt Selection */}
-            {currentStep === 6 && (
+            {/* Step 8: Prompt Selection */}
+            {currentStep === 8 && (
               <PromptSelectionStep
                 selectedTopics={selectedTopics}
                 selectedPromptsByTopic={selectedPromptsByTopic}
@@ -728,26 +724,8 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
               />
             )}
 
-            {/* Step 7: GSC Integration */}
-            {currentStep === 7 && countryId && (
-              <GSCOnboardingStep
-                brandDomain={normalizeDomain(brand.domain) || brand.name}
-                countryId={countryId}
-                businessDomain={selectedDomain?.name}
-                brand={{
-                  name: brand.name.trim(),
-                  domain: normalizeDomain(brand.domain) || null,
-                  variations: [brand.name.trim().toLowerCase(), ...brand.variations],
-                }}
-                competitors={getFinalCompetitors()}
-                onComplete={handleGSCComplete}
-                onSkip={handleGSCSkip}
-                onBeforeConnect={saveOnboardingState}
-              />
-            )}
-
-            {/* Step 8: Complete */}
-            {currentStep === 8 && (
+            {/* Step 9: Complete */}
+            {currentStep === 9 && (
               <div className="text-center animate-in fade-in duration-300">
                 {isPending ? (
                   <>
@@ -792,18 +770,12 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
                             })()}
                           </span>
                         </div>
-                        {(groupsCreatedCount > 0 || gscGroupCreated) && (
+                        {(groupsCreatedCount > 0 || inspirationGroupsCreated) && (
                           <div className="flex items-center gap-2">
                             <span className="text-gray-400">Groups created:</span>
                             <span className="text-[#C4553D] font-medium">
-                              {groupsCreatedCount + (gscGroupCreated ? 1 : 0)}
+                              {groupsCreatedCount + (inspirationGroupsCreated?.groups.length || 0)}
                             </span>
-                          </div>
-                        )}
-                        {gscGroupCreated && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-gray-400">GSC keywords:</span>
-                            <span className="text-[#C4553D] font-medium">{gscGroupCreated.promptCount}</span>
                           </div>
                         )}
                       </div>
@@ -828,11 +800,11 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
               <p className="mt-4 text-sm text-red-600 text-center">{error}</p>
             )}
 
-            {/* Navigation buttons (steps 2-6) */}
-            {currentStep >= 2 && currentStep <= 6 && (
+            {/* Navigation buttons (steps 2-4 and 7-8) */}
+            {((currentStep >= 2 && currentStep <= 4) || currentStep === 7 || currentStep === 8) && (
               <div className="flex items-center justify-between mt-8 pt-6 border-t border-gray-100">
                 <button
-                  onClick={goBack}
+                  onClick={currentStep === 7 ? () => setCurrentStep(6) : goBack}
                   disabled={isPending}
                   className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-600
                     hover:text-gray-800 transition-colors disabled:opacity-50"
@@ -841,8 +813,8 @@ export function LinearOnboarding({ initialGscConnected }: LinearOnboardingProps)
                   Back
                 </button>
                 <div className="flex items-center gap-3">
-                  {/* Skip link for step 6 only - allows undoing topic selection */}
-                  {currentStep === 6 && (
+                  {/* Skip link for step 8 only - allows undoing topic selection */}
+                  {currentStep === 8 && (
                     <button
                       onClick={handleSkipTopics}
                       disabled={isPending}

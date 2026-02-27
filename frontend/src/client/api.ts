@@ -1479,4 +1479,44 @@ export const gscApi = {
   },
 }
 
+// ===== Keyword Inspiration API =====
+
+import type {
+  DiscoverClustersRequest,
+  ClusterKeywordsResponse,
+  GeneratePromptsRequest,
+  GeneratePromptsResponse,
+  ConfirmGroupsRequest,
+  CreateGroupsResponse,
+} from "@/types/keyword-inspiration"
+
+export const keywordInspirationApi = {
+  async discoverClusters(request: DiscoverClustersRequest): Promise<ClusterKeywordsResponse> {
+    const response = await fetchWithAuth("/keyword-inspiration/api/v1/discover-clusters", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    })
+    return response.json()
+  },
+
+  async generatePrompts(request: GeneratePromptsRequest): Promise<GeneratePromptsResponse> {
+    const response = await fetchWithAuth("/keyword-inspiration/api/v1/generate-prompts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    })
+    return response.json()
+  },
+
+  async createGroups(request: ConfirmGroupsRequest): Promise<CreateGroupsResponse> {
+    const response = await fetchWithAuth("/keyword-inspiration/api/v1/create-groups", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    })
+    return response.json()
+  },
+}
+
 export { ApiError }

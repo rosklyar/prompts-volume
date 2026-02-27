@@ -1,32 +1,15 @@
-"""Router for prompts generation endpoints."""
+"""Router for prompts endpoints."""
 
-from decimal import Decimal
 from typing import List
 
-import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.auth.deps import CurrentUser
-from src.billing.exceptions import InsufficientBalanceError, to_http_exception
-from src.billing.services import BalanceService, get_balance_service
 from src.config.settings import settings
 from src.geography.services import CountryService, get_country_service
 from src.prompts.services import (
     PromptService,
     get_prompt_service,
-    DataForSEOService,
-    PromptsGeneratorService,
-    get_dataforseo_service,
-    get_prompts_generator_service,
-)
-from src.embeddings.clustering_service import (
-    ClusteringService,
-    get_clustering_service,
-)
-from src.embeddings.embeddings_service import EmbeddingsService, get_embeddings_service
-from src.topics.services import (
-    TopicRelevanceFilterService,
-    get_topic_relevance_filter_service,
 )
 from src.businessdomain.services import (
     CompanyMetaInfoService,
@@ -39,17 +22,11 @@ from src.businessdomain.models import (
     TopicsResponse,
 )
 from src.prompts.models import (
-    GeneratedPrompts,
     PromptResponse,
     PromptsListResponse,
     SimilarPromptResponse,
     SimilarPromptsResponse,
     TopicPromptsResponse,
-)
-from src.utils.keyword_filters import (
-    deduplicate_keywords,
-    filter_by_brand_exclusion,
-    filter_by_word_count,
 )
 from src.utils.url_validator import extract_domain, validate_url
 
@@ -162,178 +139,6 @@ async def get_company_meta_info(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get company meta info: {str(e)}"
-        )
-
-@router.get("/generate", response_model=GeneratedPrompts)
-async def generate_prompts(
-    current_user: CurrentUser,
-    company_url: str = Query(..., description="Company website URL (e.g., 'moyo.ua', 'https://example.com')"),
-    iso_country_code: str = Query(..., description="ISO 3166-1 alpha-2 country code (e.g., 'UA', 'US')"),
-    topics: List[str] = Query(..., description="List of topics/categories (from /meta-info)"),
-    brand_variations: List[str] = Query(..., description="List of brand variations (from /meta-info)"),
-    dataforseo_service: DataForSEOService = Depends(get_dataforseo_service),
-    embeddings_service: EmbeddingsService = Depends(get_embeddings_service),
-    prompts_service: PromptsGeneratorService = Depends(get_prompts_generator_service),
-    clustering_service: ClusteringService = Depends(get_clustering_service),
-    topic_filter_service: TopicRelevanceFilterService = Depends(get_topic_relevance_filter_service),
-    country_service: CountryService = Depends(get_country_service),
-    balance_service: BalanceService = Depends(get_balance_service),
-):
-    """
-    Generate e-commerce product search prompts from company URL, country, and selected topics.
-
-    Charges $1 USD on successful generation. Check balance before calling.
-
-    Complete automated pipeline:
-    1. Check user balance (requires sufficient credits)
-    2. Validate URL and extract domain
-    3. Validate topics and brand variations
-    4. Get country info (location, language)
-    5. Fetch ALL keywords from DataForSEO (paginated, up to 10k)
-    6. Filter keywords (word count ≥3, brand exclusion, dedupe)
-    7. Generate embeddings for keywords
-    8. Cluster keywords with HDBSCAN
-    9. Filter clusters by topic relevance
-    10. Generate e-commerce prompts (5 keywords per prompt)
-    11. Charge user for successful generation
-
-    Args:
-        company_url: Company website URL
-        iso_country_code: ISO country code for targeting
-        topics: List of topics/categories (from /meta-info endpoint)
-        brand_variations: List of brand variations (from /meta-info endpoint)
-
-    Returns:
-        GeneratedPrompts with topics, clusters, and their prompts
-
-    Raises:
-        HTTPException 400: Invalid URL, ISO code, or empty topics/brand_variations
-        HTTPException 402: Insufficient balance
-        HTTPException 404: No keywords found
-        HTTPException 500: Pipeline errors
-
-    Example:
-        GET /prompts/api/v1/generate?company_url=moyo.ua&iso_country_code=UA&topics=Смартфони&topics=Ноутбуки&brand_variations=moyo&brand_variations=мойо
-    """
-    try:
-        # 0. Check balance before starting (fast fail)
-        generation_price = Decimal(str(settings.billing_price_per_generation))
-        can_afford = await balance_service.can_afford(current_user.id, generation_price)
-
-        if not can_afford:
-            balance_info = await balance_service.get_balance(current_user.id)
-            raise InsufficientBalanceError(
-                user_id=current_user.id,
-                required=generation_price,
-                available=balance_info.available_balance,
-            )
-        # 1. Validate URL and extract domain
-        await validate_url(company_url)
-        domain = extract_domain(company_url)
-
-        # 2. Validate topics and brand variations
-        if not topics:
-            raise HTTPException(
-                status_code=400, detail="At least one topic must be provided"
-            )
-        if not brand_variations:
-            raise HTTPException(
-                status_code=400, detail="At least one brand variation must be provided"
-            )
-
-        # 3. Get country info
-        country = await country_service.get_by_iso_code(iso_country_code)
-        if not country:
-            raise HTTPException(
-                status_code=400, detail=f"Invalid ISO country code: {iso_country_code}"
-            )
-
-        location_name = country.name
-        language = country.languages[0].name if country.languages else "English"
-
-        # 4. Fetch ALL keywords with pagination
-        keywords = await dataforseo_service.get_all_keywords_for_site(
-            target_domain=domain,
-            location_name=location_name,
-            language=language,
-            batch_size=settings.dataforseo_batch_size,
-            max_total=settings.dataforseo_max_total,
-            timeout=settings.dataforseo_timeout
-        )
-
-        if not keywords:
-            raise HTTPException(
-                status_code=404, detail=f"No keywords found for domain: {domain}"
-            )
-
-        # 5. Filter keywords
-        filtered_keywords = filter_by_word_count(keywords, min_words=3)
-        filtered_keywords = filter_by_brand_exclusion(
-            filtered_keywords, brand_variations
-        )
-        filtered_keywords = deduplicate_keywords(filtered_keywords)
-
-        if not filtered_keywords:
-            raise HTTPException(
-                status_code=404, detail="No keywords remaining after filtering"
-            )
-
-        # 6. Generate embeddings
-        text_embeddings = embeddings_service.encode_texts(
-            filtered_keywords, batch_size=64
-        )
-
-        # 7. Cluster with HDBSCAN
-        embeddings_array = np.array([te.embedding for te in text_embeddings])
-
-        clustering_result = clustering_service.cluster(
-            keywords=filtered_keywords,
-            embeddings=embeddings_array,
-            min_cluster_size=settings.clustering_min_cluster_size,
-            min_samples=settings.clustering_min_samples,
-            cluster_selection_epsilon=settings.clustering_cluster_selection_epsilon,
-        )
-
-        # 8. Filter clusters by topic relevance
-        filtered_by_topic = topic_filter_service.filter_by_topics(
-            clustering_result=clustering_result,
-            topics=topics,
-            similarity_threshold=settings.topic_filter_similarity_threshold,
-            min_relevant_ratio=settings.topic_filter_min_relevant_ratio,
-        )
-
-        # 9. Remove empty topics and generate prompts
-        topics_with_clusters = {
-            topic: clusters for topic, clusters in filtered_by_topic.items() if clusters
-        }
-
-        if not topics_with_clusters:
-            raise HTTPException(
-                status_code=404, detail="No relevant topic clusters found"
-            )
-
-        result = await prompts_service.generate_prompts(
-            topics_with_clusters=topics_with_clusters, number_of_keywords_for_prompt=5
-        )
-
-        # 10. Charge user for successful generation
-        await balance_service.debit(
-            user_id=current_user.id,
-            amount=generation_price,
-            reason="Prompt generation via DataForSEO",
-            reference_type="generation",
-            reference_id=domain,
-        )
-
-        return result
-
-    except InsufficientBalanceError as e:
-        raise to_http_exception(e)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to generate prompts: {str(e)}"
         )
 
 

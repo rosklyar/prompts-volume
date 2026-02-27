@@ -20,8 +20,13 @@ class Settings(BaseSettings):
     dataforseo_password: str = ""
     dataforseo_base_url: str = "https://api.dataforseo.com/v3/dataforseo_labs/google/ranked_keywords/live"
     dataforseo_batch_size: int = 1000
-    dataforseo_max_total: int = 10000
+    dataforseo_max_total: int = 1000
     dataforseo_timeout: float = 30.0
+
+    # Keyword Inspiration configuration
+    keyword_inspiration_cache_ttl_days: int = 14
+    keyword_inspiration_top_clusters: int = 10
+    keyword_inspiration_max_prompts_per_cluster: int = 20
 
     # Business Domain Detection configuration
     domain_detection_model: str = "gpt-4o-mini"

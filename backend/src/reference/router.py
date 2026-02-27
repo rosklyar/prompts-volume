@@ -18,6 +18,7 @@ from src.reference.models import (
     BusinessDomainsListResponse,
     CountriesListResponse,
     CountryResponse,
+    LanguageResponse,
     TopicResponse,
     TopicsListResponse,
 )
@@ -63,6 +64,14 @@ async def list_countries(country_service: CountryServiceDep):
                 id=c.id,
                 name=c.name,
                 iso_code=c.iso_code,
+                languages=[
+                    LanguageResponse(
+                        id=cl.language.id,
+                        name=cl.language.name,
+                        code=cl.language.code,
+                    )
+                    for cl in c.country_languages
+                ],
             )
             for c in countries
         ]

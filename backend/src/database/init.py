@@ -12,10 +12,12 @@ from src.database.models import (
     BusinessDomain,
     Country,
     CountryLanguage,
+    KeywordCache,
     Language,
     Prompt,
     Topic,
 )
+from src.utils.keyword_filters import filter_by_word_count
 from src.database.evals_models import (
     AIAssistant,
     EvaluationStatus,
@@ -49,6 +51,9 @@ async def seed_initial_data(session: AsyncSession) -> None:
 
     # 6. Seed Prompts (requires topics)
     await _seed_prompts(session)
+
+    # 7. Seed Keyword Cache (fixture data for local E2E without DataForSEO)
+    await _seed_keyword_cache(session)
 
     await session.commit()
 
@@ -303,6 +308,57 @@ async def _seed_prompts(session: AsyncSession) -> None:
     # Bulk insert all prompts
     if all_prompts:
         session.add_all(all_prompts)
+        await session.flush()
+
+
+async def _seed_keyword_cache(session: AsyncSession) -> None:
+    """Seed keyword cache with fixture data so discover-clusters works without DataForSEO."""
+    domains = ["moyo.ua", "ctrs.com.ua", "allo.ua", "eldorado.ua"]
+
+    # Idempotency: skip if all 4 domains already cached
+    result = await session.execute(
+        select(KeywordCache).where(KeywordCache.domain.in_(domains))
+    )
+    existing_domains = {row.domain for row in result.scalars().all()}
+    if existing_domains >= set(domains):
+        return
+
+    # Load fixture data (4000 entries)
+    fixture_path = Path(__file__).parent.parent / "data" / "dataforseo_keywords.json"
+    if not fixture_path.exists():
+        return
+
+    with open(fixture_path, "r", encoding="utf-8") as f:
+        all_keywords = json.load(f)
+
+    # Slice 1000 per domain, pre-filter by word count to match production behavior
+    domain_slices = [
+        ("moyo.ua", all_keywords[0:1000]),
+        ("ctrs.com.ua", all_keywords[1000:2000]),
+        ("allo.ua", all_keywords[2000:3000]),
+        ("eldorado.ua", all_keywords[3000:4000]),
+    ]
+
+    caches_to_add = []
+    for domain, raw_slice in domain_slices:
+        if domain in existing_domains:
+            continue
+
+        keyword_texts = [kw["keyword"] for kw in raw_slice]
+        filtered_texts = set(filter_by_word_count(keyword_texts, min_words=3))
+        filtered_data = [kw for kw in raw_slice if kw["keyword"] in filtered_texts]
+
+        caches_to_add.append(
+            KeywordCache(
+                domain=domain,
+                country_code="UA",
+                language_name="Ukrainian",
+                keywords_data=filtered_data,
+            )
+        )
+
+    if caches_to_add:
+        session.add_all(caches_to_add)
         await session.flush()
 
 
