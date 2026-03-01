@@ -2,9 +2,10 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
-from src.auth.deps import CurrentUser
+from src.auth.deps import CurrentUser, SessionDep
+from src.businessdomain.services.business_domain_service import BusinessDomainService
 from src.keyword_inspiration.models.api_models import (
     ClusterKeywordsResponse,
     ConfirmGroupsRequest,
@@ -50,9 +51,18 @@ async def generate_prompts(
     request: GeneratePromptsRequest,
     current_user: CurrentUser,
     orchestrator: InspirationOrchestratorDep,
+    session: SessionDep,
 ):
     """Step 2: Generate prompt previews from selected clusters. No DB writes."""
-    return await orchestrator.generate_prompts_preview(request)
+    bd = await BusinessDomainService(session).get_by_id(request.business_domain_id)
+    if not bd:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Business domain not found",
+        )
+    return await orchestrator.generate_prompts_preview(
+        request, business_domain_name=bd.name
+    )
 
 
 @router.post(

@@ -91,7 +91,7 @@ class GSCKeywordExtractRequest(BaseModel):
     site_url: str
     min_word_count: int = 3
     result_limit: int = 10
-    business_domain: str | None = None
+    business_domain_id: int | None = None
     generate_prompts: bool = False
     country_id: int | None = None  # Required when generate_prompts=True
 
@@ -165,7 +165,7 @@ class GSCGeneratePromptsRequest(BaseModel):
 
     keywords: list[str]  # Max 20 enforced at endpoint
     country_id: int
-    business_domain: str | None = None
+    business_domain_id: int | None = None
 
 
 class GSCGeneratePromptsResponse(BaseModel):

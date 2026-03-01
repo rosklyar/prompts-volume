@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.prompts.services.prompts_generator_service import PromptsGeneratorService
+from src.keyword_inspiration.services.prompts_generator_service import PromptsGeneratorService
 
 
 @pytest.fixture
@@ -17,7 +17,7 @@ def mock_openai_client():
 @pytest.fixture
 def service(mock_openai_client):
     """Create a PromptsGeneratorService with mocked client."""
-    with patch("src.prompts.services.prompts_generator_service.AsyncOpenAI") as mock_class:
+    with patch("src.keyword_inspiration.services.prompts_generator_service.AsyncOpenAI") as mock_class:
         mock_class.return_value = mock_openai_client
         svc = PromptsGeneratorService(api_key="test-key")
         return svc
@@ -216,8 +216,8 @@ class TestGeneratePromptsFromKeywords:
         assert "English" in system_message
 
     @pytest.mark.asyncio
-    async def test_unknown_domain_uses_generic_context(self, service):
-        """Verify unknown domains get a generic context string."""
+    async def test_unknown_domain_falls_back_to_general(self, service):
+        """Verify unknown domains fall back to the general prompt builder."""
         keywords = ["test keyword"]
 
         mock_response = MagicMock()
@@ -240,7 +240,8 @@ class TestGeneratePromptsFromKeywords:
 
         call_args = service.client.chat.completions.create.call_args
         system_message = call_args.kwargs["messages"][0]["content"]
-        assert "custom-domain services and solutions" in system_message
+        assert "general" in system_message
+        assert "products, services, and solutions across various industries" in system_message
 
     @pytest.mark.asyncio
     async def test_general_domain_uses_broad_context(self, service):
@@ -269,6 +270,75 @@ class TestGeneratePromptsFromKeywords:
         system_message = call_args.kwargs["messages"][0]["content"]
         assert "general" in system_message
         assert "products, services, and solutions across various industries" in system_message
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "domain, expected_marker",
+        [
+            ("saas|crm", "CRM and sales software"),
+            ("saas|pm", "project management software"),
+            ("saas|marketing", "marketing automation software"),
+            ("saas|analytics", "analytics and business intelligence software"),
+            ("saas|hr", "HR and people management software"),
+        ],
+    )
+    async def test_saas_subcategory_uses_rich_prompt(self, service, domain, expected_marker):
+        """Verify each saas|* subcategory routes to its dedicated prompt."""
+        keywords = ["test keyword"]
+
+        mock_response = MagicMock()
+        mock_response.choices = [
+            MagicMock(
+                message=MagicMock(
+                    content=json.dumps(
+                        {
+                            "prompts": [
+                                {"prompt": "Test prompt", "source_keyword": "test keyword"},
+                            ]
+                        }
+                    )
+                )
+            )
+        ]
+        service.client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+        await service.generate_prompts_from_keywords(keywords, domain, "English")
+
+        call_args = service.client.chat.completions.create.call_args
+        system_message = call_args.kwargs["messages"][0]["content"]
+        assert expected_marker in system_message
+        assert "INTENT UNDERSTANDING" in system_message
+        assert "EXAMPLE STYLE" in system_message
+
+    @pytest.mark.asyncio
+    async def test_bare_saas_still_uses_generic_prompt(self, service):
+        """Verify bare 'saas' domain still routes to the generic prompt."""
+        keywords = ["project management tools"]
+
+        mock_response = MagicMock()
+        mock_response.choices = [
+            MagicMock(
+                message=MagicMock(
+                    content=json.dumps(
+                        {
+                            "prompts": [
+                                {"prompt": "Best project management software?", "source_keyword": "project management tools"},
+                            ]
+                        }
+                    )
+                )
+            )
+        ]
+        service.client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+        await service.generate_prompts_from_keywords(keywords, "saas", "English")
+
+        call_args = service.client.chat.completions.create.call_args
+        system_message = call_args.kwargs["messages"][0]["content"]
+        assert "software as a service" in system_message
+        # Generic prompt should NOT have subcategory-specific markers
+        assert "EXAMPLE STYLE" not in system_message
+        assert "INTENT UNDERSTANDING" not in system_message
 
     @pytest.mark.asyncio
     async def test_keywords_capped_at_20(self, service):
