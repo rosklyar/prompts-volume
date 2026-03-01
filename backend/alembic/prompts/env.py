@@ -19,6 +19,7 @@ from src.database.models import (  # noqa: F401
     BusinessDomain,
     Country,
     CountryLanguage,
+    KeywordCache,
     Language,
     Prompt,
     PromptGroup,

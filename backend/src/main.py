@@ -11,6 +11,7 @@ from src.auth.router import router as auth_router
 from src.billing.router import router as billing_router
 from src.brightdata.router import router as brightdata_router
 from src.gsc.router import router as gsc_router
+from src.keyword_inspiration.router import router as keyword_inspiration_router
 from src.reference.router import router as reference_router
 from src.config.settings import settings
 from src.database import close_db, get_session_maker, init_db, seed_evals_data, seed_initial_data, seed_regular_user, seed_superuser
@@ -104,6 +105,7 @@ app.include_router(reports_router)
 app.include_router(dashboard_router)
 app.include_router(brightdata_router)
 app.include_router(gsc_router)
+app.include_router(keyword_inspiration_router)
 
 
 @app.get("/health")

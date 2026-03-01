@@ -303,3 +303,28 @@ class PromptGroupBinding(Base):
 
     def __repr__(self) -> str:
         return f"<PromptGroupBinding(id={self.id}, group_id={self.group_id}, prompt_id={self.prompt_id})>"
+
+
+class KeywordCache(Base):
+    """Cache for DataForSEO ranked keywords per domain."""
+
+    __tablename__ = "keyword_cache"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    domain: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    country_code: Mapped[str] = mapped_column(String(10), nullable=False)
+    language_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    keywords_data: Mapped[list[dict]] = mapped_column(
+        JSONB,
+        nullable=False,
+        comment="[{keyword, search_volume, rank_group}, ...]",
+    )
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("NOW()"),
+    )
+
+    __table_args__ = (
+        UniqueConstraint("domain", "country_code", "language_name", name="uq_keyword_cache_domain_country_lang"),
+    )

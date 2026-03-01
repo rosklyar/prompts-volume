@@ -222,3 +222,4 @@ sessions/
 backend/.claude/
 .playwright-mcp/
 secrets/
+backend/tests/fixtures/discovered_clusters.json

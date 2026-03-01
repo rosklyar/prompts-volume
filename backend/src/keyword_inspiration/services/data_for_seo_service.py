@@ -13,6 +13,10 @@ from src.config.settings import settings
 logger = logging.getLogger(__name__)
 
 
+class DataForSEOPaymentError(Exception):
+    """Raised when DataForSEO returns 402 (no credits)."""
+
+
 @dataclass(frozen=True)
 class RankedKeywordData:
     """Keyword with search volume and ranking position from DataForSEO."""
@@ -90,6 +94,10 @@ class DataForSEOService:
                         status_code=429,
                         detail="DataForSEO rate limit exceeded. Please try again later.",
                     )
+                elif response.status_code == 402:
+                    raise DataForSEOPaymentError(
+                        "DataForSEO has no credits (402 Payment Required)"
+                    )
                 elif response.status_code != 200:
                     raise HTTPException(
                         status_code=500,
@@ -118,6 +126,8 @@ class DataForSEOService:
                 status_code=500, detail=f"Failed to connect to DataForSEO API: {str(e)}"
             )
         except HTTPException:
+            raise
+        except DataForSEOPaymentError:
             raise
         except Exception as e:
             raise HTTPException(

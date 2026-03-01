@@ -67,7 +67,13 @@ class CountryService:
         Returns:
             List of all Country objects
         """
-        result = await self.session.execute(select(Country).order_by(Country.name))
+        result = await self.session.execute(
+            select(Country)
+            .options(
+                selectinload(Country.country_languages).selectinload(CountryLanguage.language)
+            )
+            .order_by(Country.name)
+        )
         return list(result.scalars().all())
 
     async def create(self, name: str, iso_code: str) -> Country:

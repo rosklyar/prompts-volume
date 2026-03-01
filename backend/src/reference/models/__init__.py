@@ -5,6 +5,7 @@ from src.reference.models.api_models import (
     BusinessDomainsListResponse,
     CountriesListResponse,
     CountryResponse,
+    LanguageResponse,
     TopicResponse,
     TopicsListResponse,
 )
@@ -14,6 +15,7 @@ __all__ = [
     "BusinessDomainsListResponse",
     "CountriesListResponse",
     "CountryResponse",
+    "LanguageResponse",
     "TopicResponse",
     "TopicsListResponse",
 ]

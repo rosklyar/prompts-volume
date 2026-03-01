@@ -17,12 +17,21 @@ class BusinessDomainsListResponse(BaseModel):
     business_domains: list[BusinessDomainResponse]
 
 
+class LanguageResponse(BaseModel):
+    """Language response model."""
+
+    id: int
+    name: str
+    code: str
+
+
 class CountryResponse(BaseModel):
     """Country response model."""
 
     id: int
     name: str
     iso_code: str
+    languages: list[LanguageResponse] = []
 
 
 class CountriesListResponse(BaseModel):

@@ -1,4 +1,4 @@
-"""Tests for PromptsGeneratorService GSC keyword-to-prompt generation."""
+"""Tests for PromptsGeneratorService keyword-to-prompt generation."""
 
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -27,8 +27,8 @@ class TestGeneratePromptsFromKeywords:
     """Tests for generate_prompts_from_keywords method."""
 
     @pytest.mark.asyncio
-    async def test_generates_prompts_for_ecommerce(self, service):
-        """Verify e-comm domain uses correct template and generates prompts."""
+    async def test_ecomm_uses_rich_prompt(self, service):
+        """Verify e-comm domain uses the rich e-commerce system prompt."""
         keywords = ["best running shoes", "cheap laptops", "wireless headphones"]
 
         mock_response = MagicMock()
@@ -39,14 +39,8 @@ class TestGeneratePromptsFromKeywords:
                         {
                             "prompts": [
                                 {"prompt": "Which running shoes are best?", "source_keyword": "best running shoes"},
-                                {"prompt": "Where to buy running shoes?", "source_keyword": "best running shoes"},
-                                {"prompt": "Running shoes for beginners?", "source_keyword": "best running shoes"},
                                 {"prompt": "Best laptop deals right now?", "source_keyword": "cheap laptops"},
-                                {"prompt": "Affordable laptops for students?", "source_keyword": "cheap laptops"},
-                                {"prompt": "Which budget laptop is worth it?", "source_keyword": "cheap laptops"},
                                 {"prompt": "Best wireless headphones 2025?", "source_keyword": "wireless headphones"},
-                                {"prompt": "Wireless vs wired headphones?", "source_keyword": "wireless headphones"},
-                                {"prompt": "Headphones for working out?", "source_keyword": "wireless headphones"},
                             ]
                         }
                     )
@@ -57,19 +51,20 @@ class TestGeneratePromptsFromKeywords:
 
         result = await service.generate_prompts_from_keywords(keywords, "e-comm", "English")
 
-        assert len(result) == 9
+        assert len(result) == 3
         assert all(isinstance(item, tuple) and len(item) == 2 for item in result)
         assert result[0] == ("Which running shoes are best?", "best running shoes")
 
-        # Verify e-comm domain context was used
+        # Verify e-comm rich prompt was used (has Ukrainian examples and intent understanding)
         call_args = service.client.chat.completions.create.call_args
         system_message = call_args.kwargs["messages"][0]["content"]
-        assert "e-comm" in system_message
-        assert "e-commerce products, online shopping, product recommendations" in system_message
+        assert "e-commerce product search prompts" in system_message
+        assert "INTENT UNDERSTANDING" in system_message
+        assert "Телевізори" in system_message
 
     @pytest.mark.asyncio
-    async def test_generates_prompts_for_general_domains(self, service):
-        """Verify fintech, saas, etc. use general template with domain context."""
+    async def test_fintech_uses_generic_prompt(self, service):
+        """Verify fintech domain uses generic template with domain context."""
         keywords = ["best savings account", "high yield savings"]
 
         mock_response = MagicMock()
@@ -80,11 +75,7 @@ class TestGeneratePromptsFromKeywords:
                         {
                             "prompts": [
                                 {"prompt": "Which savings account is best?", "source_keyword": "best savings account"},
-                                {"prompt": "Compare savings accounts rates?", "source_keyword": "best savings account"},
-                                {"prompt": "How to maximize savings?", "source_keyword": "best savings account"},
                                 {"prompt": "Best high yield savings options?", "source_keyword": "high yield savings"},
-                                {"prompt": "High yield vs regular savings?", "source_keyword": "high yield savings"},
-                                {"prompt": "Where to open high yield account?", "source_keyword": "high yield savings"},
                             ]
                         }
                     )
@@ -95,16 +86,17 @@ class TestGeneratePromptsFromKeywords:
 
         result = await service.generate_prompts_from_keywords(keywords, "fintech", "English")
 
-        assert len(result) == 6
+        assert len(result) == 2
 
-        # Verify general template was used with fintech context
         call_args = service.client.chat.completions.create.call_args
         system_message = call_args.kwargs["messages"][0]["content"]
         assert "fintech" in system_message
         assert "financial services, banking, payments" in system_message
+        # Generic prompt should NOT have e-comm-specific content
+        assert "Телевізори" not in system_message
 
     @pytest.mark.asyncio
-    async def test_generates_prompts_for_saas_domain(self, service):
+    async def test_saas_domain(self, service):
         """Verify SaaS domain uses appropriate context."""
         keywords = ["project management tools"]
 
@@ -116,8 +108,6 @@ class TestGeneratePromptsFromKeywords:
                         {
                             "prompts": [
                                 {"prompt": "Best project management software?", "source_keyword": "project management tools"},
-                                {"prompt": "Asana vs Monday comparison?", "source_keyword": "project management tools"},
-                                {"prompt": "Tool for team collaboration?", "source_keyword": "project management tools"},
                             ]
                         }
                     )
@@ -128,9 +118,8 @@ class TestGeneratePromptsFromKeywords:
 
         result = await service.generate_prompts_from_keywords(keywords, "saas", "English")
 
-        assert len(result) == 3
+        assert len(result) == 1
 
-        # Verify SaaS context
         call_args = service.client.chat.completions.create.call_args
         system_message = call_args.kwargs["messages"][0]["content"]
         assert "saas" in system_message
@@ -164,9 +153,8 @@ class TestGeneratePromptsFromKeywords:
         ]
         service.client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-        await service.generate_prompts_from_keywords(keywords, "e-comm", "Ukrainian", prompts_per_keyword=1)
+        await service.generate_prompts_from_keywords(keywords, "e-comm", "Ukrainian")
 
-        # Verify Ukrainian was used
         call_args = service.client.chat.completions.create.call_args
         system_message = call_args.kwargs["messages"][0]["content"]
         assert "Ukrainian" in system_message
@@ -193,9 +181,8 @@ class TestGeneratePromptsFromKeywords:
         ]
         service.client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-        await service.generate_prompts_from_keywords(keywords, "e-comm", "Russian", prompts_per_keyword=1)
+        await service.generate_prompts_from_keywords(keywords, "e-comm", "Russian")
 
-        # Verify Russian was used
         call_args = service.client.chat.completions.create.call_args
         system_message = call_args.kwargs["messages"][0]["content"]
         assert "Russian" in system_message
@@ -222,41 +209,11 @@ class TestGeneratePromptsFromKeywords:
         ]
         service.client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-        await service.generate_prompts_from_keywords(keywords, "e-comm", "English", prompts_per_keyword=1)
+        await service.generate_prompts_from_keywords(keywords, "e-comm", "English")
 
-        # Verify English was used
         call_args = service.client.chat.completions.create.call_args
         system_message = call_args.kwargs["messages"][0]["content"]
         assert "English" in system_message
-
-    @pytest.mark.asyncio
-    async def test_custom_prompts_per_keyword(self, service):
-        """Verify prompts_per_keyword parameter is respected in prompt."""
-        keywords = ["test keyword"]
-
-        mock_response = MagicMock()
-        mock_response.choices = [
-            MagicMock(
-                message=MagicMock(
-                    content=json.dumps(
-                        {
-                            "prompts": [
-                                {"prompt": "Prompt 1", "source_keyword": "test keyword"},
-                                {"prompt": "Prompt 2", "source_keyword": "test keyword"},
-                            ]
-                        }
-                    )
-                )
-            )
-        ]
-        service.client.chat.completions.create = AsyncMock(return_value=mock_response)
-
-        await service.generate_prompts_from_keywords(keywords, "e-comm", "English", prompts_per_keyword=2)
-
-        # Verify prompts_per_keyword was used
-        call_args = service.client.chat.completions.create.call_args
-        system_message = call_args.kwargs["messages"][0]["content"]
-        assert "Prompts per keyword: 2" in system_message
 
     @pytest.mark.asyncio
     async def test_unknown_domain_uses_generic_context(self, service):
@@ -279,9 +236,8 @@ class TestGeneratePromptsFromKeywords:
         ]
         service.client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-        await service.generate_prompts_from_keywords(keywords, "custom-domain", "English", prompts_per_keyword=1)
+        await service.generate_prompts_from_keywords(keywords, "custom-domain", "English")
 
-        # Verify generic context was used
         call_args = service.client.chat.completions.create.call_args
         system_message = call_args.kwargs["messages"][0]["content"]
         assert "custom-domain services and solutions" in system_message
@@ -307,10 +263,41 @@ class TestGeneratePromptsFromKeywords:
         ]
         service.client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-        await service.generate_prompts_from_keywords(keywords, "general", "English", prompts_per_keyword=1)
+        await service.generate_prompts_from_keywords(keywords, "general", "English")
 
-        # Verify general context was used
         call_args = service.client.chat.completions.create.call_args
         system_message = call_args.kwargs["messages"][0]["content"]
         assert "general" in system_message
         assert "products, services, and solutions across various industries" in system_message
+
+    @pytest.mark.asyncio
+    async def test_keywords_capped_at_20(self, service):
+        """Verify keywords are capped at 20."""
+        keywords = [f"keyword_{i}" for i in range(30)]
+
+        mock_response = MagicMock()
+        mock_response.choices = [
+            MagicMock(
+                message=MagicMock(
+                    content=json.dumps(
+                        {
+                            "prompts": [
+                                {"prompt": f"Prompt for keyword_{i}", "source_keyword": f"keyword_{i}"}
+                                for i in range(20)
+                            ]
+                        }
+                    )
+                )
+            )
+        ]
+        service.client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+        result = await service.generate_prompts_from_keywords(keywords, "e-comm", "English")
+
+        assert len(result) == 20
+
+        # Verify only first 20 keywords were sent
+        call_args = service.client.chat.completions.create.call_args
+        user_message = call_args.kwargs["messages"][1]["content"]
+        assert "keyword_19" in user_message
+        assert "keyword_20" not in user_message
