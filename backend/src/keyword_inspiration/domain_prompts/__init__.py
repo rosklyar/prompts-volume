@@ -1,52 +1,87 @@
-"""Domain prompt registry — maps domain name to its prompt builder."""
+"""Domain prompt lookup — fetches system_prompt_template from the database."""
 
-from src.keyword_inspiration.domain_prompts._base import (
-    DomainPromptBuilder,
-    GenericDomainPromptBuilder,
-)
-from src.keyword_inspiration.domain_prompts.crypto import builder as crypto_builder
-from src.keyword_inspiration.domain_prompts.ecomm import builder as ecomm_builder
-from src.keyword_inspiration.domain_prompts.education import builder as education_builder
-from src.keyword_inspiration.domain_prompts.entertainment import (
-    builder as entertainment_builder,
-)
-from src.keyword_inspiration.domain_prompts.fintech import builder as fintech_builder
-from src.keyword_inspiration.domain_prompts.general import builder as general_builder
-from src.keyword_inspiration.domain_prompts.healthcare import (
-    builder as healthcare_builder,
-)
-from src.keyword_inspiration.domain_prompts.real_estate import (
-    builder as real_estate_builder,
-)
-from src.keyword_inspiration.domain_prompts.saas import builder as saas_builder
-from src.keyword_inspiration.domain_prompts.saas_analytics import (
-    builder as saas_analytics_builder,
-)
-from src.keyword_inspiration.domain_prompts.saas_crm import builder as saas_crm_builder
-from src.keyword_inspiration.domain_prompts.saas_hr import builder as saas_hr_builder
-from src.keyword_inspiration.domain_prompts.saas_marketing import (
-    builder as saas_marketing_builder,
-)
-from src.keyword_inspiration.domain_prompts.saas_pm import builder as saas_pm_builder
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-PROMPT_REGISTRY: dict[str, DomainPromptBuilder] = {
-    "e-comm": ecomm_builder,
-    "saas|crm": saas_crm_builder,
-    "saas|pm": saas_pm_builder,
-    "saas|marketing": saas_marketing_builder,
-    "saas|analytics": saas_analytics_builder,
-    "saas|hr": saas_hr_builder,
-    "fintech": fintech_builder,
-    "saas": saas_builder,
-    "education": education_builder,
-    "healthcare": healthcare_builder,
-    "crypto": crypto_builder,
-    "real-estate": real_estate_builder,
-    "entertainment": entertainment_builder,
-    "general": general_builder,
-}
+from src.database.models import BusinessDomain
+
+_FALLBACK_TEMPLATE = """You are an expert in creating search prompts for AI assistants in the {domain_name} domain.
+
+CONTEXT:
+- Business domain: {domain_name}
+- Keywords: {keywords}
+- Language: {language}
+- Generate exactly 1 prompt per keyword
+
+YOUR TASK:
+For each keyword, generate exactly 1 prompt. Choose the most fitting style:
+1. Service/solution finding - Questions about where to find services or solutions
+2. Information/comparison - Questions comparing options or seeking detailed information
+3. Problem-solving - Questions about solving specific problems or achieving goals
+
+CRITICAL INSTRUCTIONS:
+
+1. LANGUAGE: Generate ALL prompts in {language}
+   - Match the exact language of the keywords
+   - Use natural, native-speaker style
+
+2. STYLE: Keep prompts SHORT and CASUAL (5-15 words typical)
+   - Natural, conversational questions
+   - Direct and to the point
+   - Relevant to {domain_name} domain
+
+3. DOMAIN CONTEXT: Frame prompts within {domain_name}
+   - Use domain-specific terminology naturally
+
+4. OUTPUT: Generate exactly 1 prompt per keyword
+
+RESPONSE FORMAT:
+Return ONLY valid JSON in this structure:
+{{{{
+  "prompts": [
+    {{{{"prompt": "First prompt text...", "source_keyword": "original keyword"}}}},
+    {{{{"prompt": "Second prompt text...", "source_keyword": "original keyword"}}}},
+    ...
+  ]
+}}}}
+
+REMEMBER:
+- Exactly 1 prompt per keyword, {keywords_count} prompts total
+- All prompts in {language}
+- Short, casual, conversational style
+- Stay within {domain_name} domain context"""
 
 
-def get_prompt_builder(domain_name: str) -> DomainPromptBuilder:
-    """Get prompt builder for a domain, falling back to general."""
-    return PROMPT_REGISTRY.get(domain_name, PROMPT_REGISTRY["general"])
+def _render_template(
+    template: str,
+    keywords: list[str],
+    language: str,
+    domain_name: str,
+) -> str:
+    return template.format_map({
+        "keywords": ", ".join(keywords),
+        "keywords_count": len(keywords),
+        "language": language,
+        "domain_name": domain_name,
+    })
+
+
+async def _get_template(session: AsyncSession, domain_name: str) -> str | None:
+    result = await session.execute(
+        select(BusinessDomain.system_prompt_template).where(
+            BusinessDomain.name == domain_name
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def build_system_prompt(
+    session: AsyncSession,
+    domain_name: str,
+    keywords: list[str],
+    language: str,
+) -> str:
+    template = await _get_template(session, domain_name)
+    if template is None:
+        template = _FALLBACK_TEMPLATE
+    return _render_template(template, keywords, language, domain_name)

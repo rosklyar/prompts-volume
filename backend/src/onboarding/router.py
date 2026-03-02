@@ -399,7 +399,7 @@ async def extract_gsc_keywords(
                 if bd:
                     domain_name = bd.name
             prompt_tuples = await generator.generate_prompts_from_keywords(
-                keyword_texts, domain_name, language
+                keyword_texts, domain_name, language, session=prompts_session
             )
             generated_prompts = [
                 GeneratedPromptResponse(prompt=prompt, source_keyword=source)
@@ -596,7 +596,7 @@ async def generate_prompts_from_keywords(
         if bd:
             domain_name = bd.name
     prompt_tuples = await generator.generate_prompts_from_keywords(
-        request.keywords, domain_name, language
+        request.keywords, domain_name, language, session=prompts_session
     )
 
     # Return just the prompt texts (no source keyword)

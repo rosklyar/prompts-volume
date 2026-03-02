@@ -3,9 +3,10 @@ import logging
 from typing import List
 
 from openai import AsyncOpenAI
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config.settings import settings
-from src.keyword_inspiration.domain_prompts import get_prompt_builder
+from src.keyword_inspiration.domain_prompts import build_system_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,8 @@ class PromptsGeneratorService:
         keywords: List[str],
         business_domain: str,
         language: str,
+        *,
+        session: AsyncSession,
     ) -> List[tuple[str, str]]:
         """
         Generate exactly 1 LLM prompt per keyword (max 20 keywords).
@@ -60,6 +63,7 @@ class PromptsGeneratorService:
             keywords: List of keywords to generate prompts from
             business_domain: Business domain (e-comm, fintech, saas, etc.)
             language: Language for generated prompts (e.g., "Ukrainian", "English")
+            session: Database session for template lookup
 
         Returns:
             List of (prompt, source_keyword) tuples
@@ -72,8 +76,7 @@ class PromptsGeneratorService:
 
         keywords = keywords[:20]
 
-        builder = get_prompt_builder(business_domain)
-        system_prompt = builder.build_system_prompt(keywords, language)
+        system_prompt = await build_system_prompt(session, business_domain, keywords, language)
 
         user_prompt = (
             f"Generate exactly 1 prompt per keyword. "

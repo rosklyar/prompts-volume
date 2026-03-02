@@ -56,6 +56,7 @@ class InspirationOrchestrator:
                 keywords=cluster.keywords,
                 business_domain=business_domain_name,
                 language=request.language,
+                session=self.session,
             )
 
             prompts = [
