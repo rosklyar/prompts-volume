@@ -101,6 +101,7 @@ class BusinessDomain(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     system_prompt_template: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
 
     # Relationships
     topics: Mapped[List["Topic"]] = relationship(back_populates="business_domain", cascade="all, delete-orphan")

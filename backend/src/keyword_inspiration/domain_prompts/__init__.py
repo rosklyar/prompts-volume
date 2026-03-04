@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models import BusinessDomain
 
-_FALLBACK_TEMPLATE = """You are an expert in creating search prompts for AI assistants in the {domain_name} domain.
+FALLBACK_TEMPLATE = """You are an expert in creating search prompts for AI assistants in the {domain_name} domain.
 
 CONTEXT:
 - Business domain: {domain_name}
@@ -51,6 +51,24 @@ REMEMBER:
 - Short, casual, conversational style
 - Stay within {domain_name} domain context"""
 
+_TEMPLATE_PLACEHOLDERS = {
+    "keywords": "keyword1, keyword2",
+    "keywords_count": "2",
+    "language": "English",
+    "domain_name": "test",
+}
+
+
+def validate_template(template: str) -> None:
+    """Validate that a template string contains only known placeholders.
+
+    Raises ValueError if the template contains broken or unknown placeholders.
+    """
+    try:
+        template.format_map(_TEMPLATE_PLACEHOLDERS)
+    except (KeyError, ValueError) as exc:
+        raise ValueError(f"Invalid template placeholder: {exc}") from exc
+
 
 def _render_template(
     template: str,
@@ -69,7 +87,8 @@ def _render_template(
 async def _get_template(session: AsyncSession, domain_name: str) -> str | None:
     result = await session.execute(
         select(BusinessDomain.system_prompt_template).where(
-            BusinessDomain.name == domain_name
+            BusinessDomain.name == domain_name,
+            BusinessDomain.is_active.is_(True),
         )
     )
     return result.scalar_one_or_none()
@@ -83,5 +102,5 @@ async def build_system_prompt(
 ) -> str:
     template = await _get_template(session, domain_name)
     if template is None:
-        template = _FALLBACK_TEMPLATE
+        template = FALLBACK_TEMPLATE
     return _render_template(template, keywords, language, domain_name)

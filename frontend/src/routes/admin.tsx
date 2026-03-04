@@ -16,6 +16,7 @@ import {
   AdminPromptsTab,
   AdminApprovalsTab,
   AdminOnboardingTab,
+  AdminDomainsTab,
 } from "@/components/admin"
 import { usePendingPrompts } from "@/hooks/useAdminApprovals"
 import { useOnboardingBadgeCount } from "@/hooks/useOnboardingNotifications"
@@ -199,7 +200,9 @@ function AdminDashboard() {
                 ? "Upload prompts and manage topics"
                 : activeTab === "approvals"
                   ? "Review and approve pending prompts"
-                  : "Set up new users after onboarding"}
+                  : activeTab === "domains"
+                    ? "Manage business domain templates for AI prompt generation"
+                    : "Set up new users after onboarding"}
           </p>
         </div>
 
@@ -218,6 +221,7 @@ function AdminDashboard() {
         {activeTab === "prompts" && <AdminPromptsTab />}
         {activeTab === "approvals" && <AdminApprovalsTab />}
         {activeTab === "onboarding" && <AdminOnboardingTab />}
+        {activeTab === "domains" && <AdminDomainsTab />}
 
         {/* User actions modal */}
         {modalType === "actions" && selectedUser && (

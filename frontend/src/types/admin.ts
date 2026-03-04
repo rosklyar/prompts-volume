@@ -164,3 +164,28 @@ export interface UserDeletionResponse {
   total_records_deleted: number
   details: DatabaseCleanupDetail[]
 }
+
+// ===== Admin Business Domains Types =====
+
+export interface AdminBusinessDomain {
+  id: number
+  name: string
+  description: string
+  system_prompt_template: string | null
+  is_active: boolean
+}
+
+export interface AdminBusinessDomainsListResponse {
+  business_domains: AdminBusinessDomain[]
+}
+
+export interface CreateAdminBusinessDomainRequest {
+  name: string
+  description: string
+  system_prompt_template: string
+}
+
+export interface UpdateAdminBusinessDomainRequest {
+  description?: string
+  system_prompt_template?: string
+}

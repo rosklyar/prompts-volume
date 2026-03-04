@@ -44,6 +44,10 @@ import type {
   UserDeletionResponse,
   OnboardingNotificationsResponse,
   OnboardingNotificationsCountResponse,
+  AdminBusinessDomainsListResponse,
+  AdminBusinessDomain,
+  CreateAdminBusinessDomainRequest,
+  UpdateAdminBusinessDomainRequest,
 } from "@/types/admin"
 import type {
   ReportDataResponse,
@@ -908,6 +912,55 @@ export const adminApi = {
       { method: "POST" }
     )
     return response.json()
+  },
+
+  /**
+   * List all business domains including inactive (admin only)
+   */
+  async listBusinessDomains(): Promise<AdminBusinessDomainsListResponse> {
+    const response = await fetchWithAuth("/admin/api/v1/business-domains")
+    return response.json()
+  },
+
+  /**
+   * Get default system prompt template
+   */
+  async getDefaultDomainTemplate(): Promise<{ template: string }> {
+    const response = await fetchWithAuth("/admin/api/v1/business-domains/default-template")
+    return response.json()
+  },
+
+  /**
+   * Create a new business domain (admin only)
+   */
+  async createBusinessDomain(request: CreateAdminBusinessDomainRequest): Promise<AdminBusinessDomain> {
+    const response = await fetchWithAuth("/admin/api/v1/business-domains", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    })
+    return response.json()
+  },
+
+  /**
+   * Update a business domain (admin only)
+   */
+  async updateBusinessDomain(domainId: number, request: UpdateAdminBusinessDomainRequest): Promise<AdminBusinessDomain> {
+    const response = await fetchWithAuth(`/admin/api/v1/business-domains/${domainId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    })
+    return response.json()
+  },
+
+  /**
+   * Deactivate a business domain (admin only)
+   */
+  async deactivateBusinessDomain(domainId: number): Promise<void> {
+    await fetchWithAuth(`/admin/api/v1/business-domains/${domainId}`, {
+      method: "DELETE",
+    })
   },
 }
 

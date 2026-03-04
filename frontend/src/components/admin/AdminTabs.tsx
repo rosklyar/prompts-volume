@@ -2,9 +2,9 @@
  * Tab navigation for admin dashboard
  */
 
-import { Users, FileText, ClipboardCheck, UserCheck } from "lucide-react"
+import { Users, FileText, ClipboardCheck, UserCheck, Globe } from "lucide-react"
 
-export type AdminTab = "users" | "prompts" | "approvals" | "onboarding"
+export type AdminTab = "users" | "prompts" | "approvals" | "onboarding" | "domains"
 
 interface AdminTabsProps {
   activeTab: AdminTab
@@ -43,6 +43,18 @@ export function AdminTabs({
         <Users className="w-4 h-4" />
         Users
       </button>
+      <button
+        onClick={() => onTabChange("onboarding")}
+        className={tabClass("onboarding", true)}
+      >
+        <UserCheck className="w-4 h-4" />
+        Onboarding
+        {onboardingCount !== undefined && <BadgeCount count={onboardingCount} />}
+      </button>
+      <button onClick={() => onTabChange("domains")} className={tabClass("domains")}>
+        <Globe className="w-4 h-4" />
+        Domains
+      </button>
       <button onClick={() => onTabChange("prompts")} className={tabClass("prompts")}>
         <FileText className="w-4 h-4" />
         Prompts
@@ -54,14 +66,6 @@ export function AdminTabs({
         <ClipboardCheck className="w-4 h-4" />
         Approvals
         {pendingCount !== undefined && <BadgeCount count={pendingCount} />}
-      </button>
-      <button
-        onClick={() => onTabChange("onboarding")}
-        className={tabClass("onboarding", true)}
-      >
-        <UserCheck className="w-4 h-4" />
-        Onboarding
-        {onboardingCount !== undefined && <BadgeCount count={onboardingCount} />}
       </button>
     </div>
   )
