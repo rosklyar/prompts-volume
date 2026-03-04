@@ -44,6 +44,8 @@ class InspirationOrchestrator:
     async def generate_prompts_preview(
         self,
         request: GeneratePromptsRequest,
+        *,
+        business_domain_name: str,
     ) -> GeneratePromptsResponse:
         """Generate prompt previews for selected clusters. No DB writes."""
         cluster_results: list[ClusterPrompts] = []
@@ -52,8 +54,9 @@ class InspirationOrchestrator:
         for cluster in request.clusters:
             generated = await self.prompts_generator.generate_prompts_from_keywords(
                 keywords=cluster.keywords,
-                business_domain=request.business_domain,
+                business_domain=business_domain_name,
                 language=request.language,
+                session=self.session,
             )
 
             prompts = [

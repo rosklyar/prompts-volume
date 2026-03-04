@@ -26,6 +26,7 @@ from src.gsc.models import (
     GSCPropertyMatchRequest,
     GSCPropertyMatchResponse,
 )
+from src.businessdomain.services.business_domain_service import BusinessDomainService
 from src.keyword_inspiration.services.prompts_generator_service import get_prompts_generator_service
 from src.gsc.repository import GSCCredentialRepository
 from src.gsc.services import (
@@ -390,9 +391,15 @@ async def extract_gsc_keywords(
         keyword_texts = [kw.query for kw in keywords]
         if keyword_texts:
             generator = get_prompts_generator_service()
-            domain = request.business_domain or "general"
+            domain_name = "general"
+            if request.business_domain_id:
+                bd = await BusinessDomainService(prompts_session).get_by_id(
+                    request.business_domain_id
+                )
+                if bd:
+                    domain_name = bd.name
             prompt_tuples = await generator.generate_prompts_from_keywords(
-                keyword_texts, domain, language
+                keyword_texts, domain_name, language, session=prompts_session
             )
             generated_prompts = [
                 GeneratedPromptResponse(prompt=prompt, source_keyword=source)
@@ -581,9 +588,15 @@ async def generate_prompts_from_keywords(
 
     # Generate prompts
     generator = get_prompts_generator_service()
-    domain = request.business_domain or "general"
+    domain_name = "general"
+    if request.business_domain_id:
+        bd = await BusinessDomainService(prompts_session).get_by_id(
+            request.business_domain_id
+        )
+        if bd:
+            domain_name = bd.name
     prompt_tuples = await generator.generate_prompts_from_keywords(
-        request.keywords, domain, language
+        request.keywords, domain_name, language, session=prompts_session
     )
 
     # Return just the prompt texts (no source keyword)

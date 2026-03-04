@@ -22,9 +22,13 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.admin.models.api_models import (
+    AdminBusinessDomainResponse,
+    AdminBusinessDomainsListResponse,
     AdminUploadRequest,
     AdminUploadResponse,
+    CreateBusinessDomainRequest,
     CreateTopicRequest,
+    UpdateBusinessDomainRequest,
 )
 from src.admin.models.onboarding_models import (
     OnboardingNotificationsCountResponse,
@@ -55,6 +59,8 @@ from src.database import get_async_session
 from src.database.models import BusinessDomain, Country, Topic
 from src.database.users_models import User, UserPreferences
 from src.database.users_session import get_users_session
+from src.businessdomain.services import BusinessDomainService, get_business_domain_service
+from src.keyword_inspiration.domain_prompts import FALLBACK_TEMPLATE, validate_template
 from src.prompts.batch.service import BatchPromptsService, get_batch_prompts_service
 from src.reference.models import TopicResponse
 from src.topics.exceptions import BusinessDomainNotFoundError, CountryNotFoundError
@@ -70,6 +76,117 @@ SessionDep = Annotated[AsyncSession, Depends(get_async_session)]
 UsersSessionDep = Annotated[AsyncSession, Depends(get_users_session)]
 BatchPromptsServiceDep = Annotated[BatchPromptsService, Depends(get_batch_prompts_service)]
 ApprovalServiceDep = Annotated[PromptApprovalService, Depends(get_prompt_approval_service)]
+BusinessDomainServiceDep = Annotated[BusinessDomainService, Depends(get_business_domain_service)]
+
+
+# --- Business Domain Admin Endpoints ---
+# Note: /default-template MUST be defined before /{domain_id} to avoid path conflict.
+
+
+@router.get("/business-domains", response_model=AdminBusinessDomainsListResponse)
+async def list_business_domains_admin(bd_service: BusinessDomainServiceDep):
+    """List all business domains including inactive ones, with templates."""
+    domains = await bd_service.get_all(active_only=False)
+    return AdminBusinessDomainsListResponse(
+        business_domains=[
+            AdminBusinessDomainResponse(
+                id=d.id,
+                name=d.name,
+                description=d.description,
+                system_prompt_template=d.system_prompt_template,
+                is_active=d.is_active,
+            )
+            for d in domains
+        ]
+    )
+
+
+@router.get("/business-domains/default-template")
+async def get_default_template():
+    """Return the fallback template as a starting point for new domain creation."""
+    return {"template": FALLBACK_TEMPLATE}
+
+
+@router.post(
+    "/business-domains",
+    response_model=AdminBusinessDomainResponse,
+    status_code=201,
+)
+async def create_business_domain(
+    request: CreateBusinessDomainRequest,
+    bd_service: BusinessDomainServiceDep,
+    session: SessionDep,
+):
+    """Create a new business domain with a system prompt template."""
+    existing = await bd_service.get_by_name(request.name)
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="Business domain with this name already exists")
+
+    try:
+        validate_template(request.system_prompt_template)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    domain = await bd_service.create(
+        request.name,
+        request.description,
+        system_prompt_template=request.system_prompt_template,
+    )
+    await session.commit()
+
+    return AdminBusinessDomainResponse(
+        id=domain.id,
+        name=domain.name,
+        description=domain.description,
+        system_prompt_template=domain.system_prompt_template,
+        is_active=domain.is_active,
+    )
+
+
+@router.patch("/business-domains/{domain_id}", response_model=AdminBusinessDomainResponse)
+async def update_business_domain(
+    domain_id: int,
+    request: UpdateBusinessDomainRequest,
+    bd_service: BusinessDomainServiceDep,
+    session: SessionDep,
+):
+    """Update a business domain's description and/or system prompt template."""
+    if request.system_prompt_template is not None:
+        try:
+            validate_template(request.system_prompt_template)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+
+    domain = await bd_service.update(
+        domain_id,
+        description=request.description,
+        system_prompt_template=request.system_prompt_template,
+    )
+    if domain is None:
+        raise HTTPException(status_code=404, detail="Business domain not found")
+
+    await session.commit()
+
+    return AdminBusinessDomainResponse(
+        id=domain.id,
+        name=domain.name,
+        description=domain.description,
+        system_prompt_template=domain.system_prompt_template,
+        is_active=domain.is_active,
+    )
+
+
+@router.delete("/business-domains/{domain_id}", status_code=204)
+async def delete_business_domain(
+    domain_id: int,
+    bd_service: BusinessDomainServiceDep,
+    session: SessionDep,
+):
+    """Soft-delete a business domain (sets is_active=False)."""
+    domain = await bd_service.soft_delete(domain_id)
+    if domain is None:
+        raise HTTPException(status_code=404, detail="Business domain not found")
+    await session.commit()
 
 
 @router.post("/topics", response_model=TopicResponse)
