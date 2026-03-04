@@ -15,6 +15,76 @@ import {
 } from "recharts"
 import type { TimelineDataPoint } from "@/types/dashboard"
 
+interface BrandKey {
+  name: string
+  isTarget: boolean
+}
+
+interface CustomTooltipProps {
+  active?: boolean
+  payload?: Array<{ dataKey?: string | number; value?: number }>
+  label?: string
+  brandKeys: BrandKey[]
+  colorMap: Map<string, string>
+}
+
+function CustomTooltip({
+  active,
+  payload,
+  label,
+  brandKeys,
+  colorMap,
+}: CustomTooltipProps) {
+  if (!active || !payload?.length) return null
+
+  const targetName = brandKeys.find((b) => b.isTarget)?.name
+  const sorted = [...payload].sort((a, b) => (b.value ?? 0) - (a.value ?? 0))
+  // Move target brand to top regardless of value
+  const targetIdx = sorted.findIndex((p) => p.dataKey === targetName)
+  if (targetIdx > 0) {
+    const [target] = sorted.splice(targetIdx, 1)
+    sorted.unshift(target)
+  }
+
+  return (
+    <div
+      className="rounded-lg bg-white"
+      style={{
+        border: "1px solid #F3F4F6",
+        boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+        padding: "10px 14px",
+      }}
+    >
+      <p className="font-['Fraunces'] text-xs text-[#9CA3AF] mb-1">{label}</p>
+      <div className="border-t border-[#F3F4F6] pt-1.5 flex flex-col gap-1.5">
+        {sorted.map((entry) => {
+          const isTarget = entry.dataKey === targetName
+          const color = colorMap.get(entry.dataKey as string) ?? "#6B7280"
+          return (
+            <div key={entry.dataKey} className="flex items-center justify-between gap-4 text-xs">
+              <span className="flex items-center gap-1.5">
+                <span
+                  className="inline-block w-2 h-2 rounded-full shrink-0"
+                  style={{ backgroundColor: color }}
+                />
+                <span className={isTarget ? "font-semibold text-[#1E1E1E]" : "text-[#6B7280]"}>
+                  {entry.dataKey}
+                </span>
+              </span>
+              <span
+                className={isTarget ? "font-semibold text-[#1E1E1E]" : "text-[#6B7280]"}
+                style={{ fontVariantNumeric: "tabular-nums" }}
+              >
+                {((entry.value as number) ?? 0).toFixed(1)}%
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 interface VisibilityTrendChartProps {
   timeline: TimelineDataPoint[]
   hasData: boolean
@@ -113,13 +183,7 @@ export function VisibilityTrendChart({ timeline, hasData, colorMap, className = 
               tickFormatter={(v: number) => `${v}%`}
             />
             <Tooltip
-              contentStyle={{
-                fontSize: 11,
-                borderRadius: 8,
-                border: "1px solid #F3F4F6",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-              }}
-              formatter={(value: number | undefined) => [`${(value ?? 0).toFixed(1)}%`]}
+              content={<CustomTooltip brandKeys={brandKeys} colorMap={colorMap} />}
             />
             <Legend
               verticalAlign="top"
