@@ -11,6 +11,7 @@ from src.keyword_inspiration.models.api_models import (
     ScoredClusterResponse,
 )
 from src.keyword_inspiration.models.domain import RankedKeyword, ScoredCluster
+from src.keyword_inspiration.predicates import build_chain_from_config
 from src.keyword_inspiration.repository import KeywordCacheRepository
 from src.keyword_inspiration.services.keyword_fetch_service import KeywordFetchService
 
@@ -44,8 +45,9 @@ class ClusterScoringService:
         language_name: str,
         *,
         brand_names: list[str] | None = None,
+        keyword_filter_config: list[dict] | None = None,
     ) -> ClusterKeywordsResponse:
-        """Fetch keywords (cached), merge, cluster, score, and return top clusters."""
+        """Fetch keywords (cached), merge, filter, cluster, score, and return top clusters."""
         # 1. Ensure keywords are cached
         await self.keyword_fetch_service.fetch_if_needed(
             domains, country_code, language_name, brand_names=brand_names or []
@@ -53,6 +55,10 @@ class ClusterScoringService:
 
         # 2. Load from cache
         all_ranked = await self._load_and_merge(domains, country_code, language_name)
+
+        # 3. Apply predicate chain
+        chain = build_chain_from_config(keyword_filter_config)
+        all_ranked = chain.apply(all_ranked)
 
         if not all_ranked:
             return ClusterKeywordsResponse(clusters=[], total_keywords=0, noise_keywords=0)

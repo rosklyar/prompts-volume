@@ -61,6 +61,7 @@ from src.database.users_models import User, UserPreferences
 from src.database.users_session import get_users_session
 from src.businessdomain.services import BusinessDomainService, get_business_domain_service
 from src.keyword_inspiration.domain_prompts import FALLBACK_TEMPLATE, validate_template
+from src.keyword_inspiration.predicates import build_chain_from_config
 from src.prompts.batch.service import BatchPromptsService, get_batch_prompts_service
 from src.reference.models import TopicResponse
 from src.topics.exceptions import BusinessDomainNotFoundError, CountryNotFoundError
@@ -79,6 +80,31 @@ ApprovalServiceDep = Annotated[PromptApprovalService, Depends(get_prompt_approva
 BusinessDomainServiceDep = Annotated[BusinessDomainService, Depends(get_business_domain_service)]
 
 
+def _validate_filter_config(config) -> list[dict]:
+    """Validate keyword filter config entries via the predicate registry.
+
+    Returns serialized list[dict] ready for persistence.
+    Raises HTTPException(422) on unknown predicate types or bad params.
+    """
+    serialized = [entry.model_dump(exclude_none=True) for entry in config]
+    try:
+        build_chain_from_config(serialized)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid keyword_filter_config: {exc}")
+    return serialized
+
+
+def _domain_to_response(domain: BusinessDomain) -> AdminBusinessDomainResponse:
+    return AdminBusinessDomainResponse(
+        id=domain.id,
+        name=domain.name,
+        description=domain.description,
+        system_prompt_template=domain.system_prompt_template,
+        keyword_filter_config=domain.keyword_filter_config,
+        is_active=domain.is_active,
+    )
+
+
 # --- Business Domain Admin Endpoints ---
 # Note: /default-template MUST be defined before /{domain_id} to avoid path conflict.
 
@@ -88,16 +114,7 @@ async def list_business_domains_admin(bd_service: BusinessDomainServiceDep):
     """List all business domains including inactive ones, with templates."""
     domains = await bd_service.get_all(active_only=False)
     return AdminBusinessDomainsListResponse(
-        business_domains=[
-            AdminBusinessDomainResponse(
-                id=d.id,
-                name=d.name,
-                description=d.description,
-                system_prompt_template=d.system_prompt_template,
-                is_active=d.is_active,
-            )
-            for d in domains
-        ]
+        business_domains=[_domain_to_response(d) for d in domains]
     )
 
 
@@ -127,20 +144,19 @@ async def create_business_domain(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
+    filter_config = None
+    if request.keyword_filter_config is not None:
+        filter_config = _validate_filter_config(request.keyword_filter_config)
+
     domain = await bd_service.create(
         request.name,
         request.description,
         system_prompt_template=request.system_prompt_template,
+        keyword_filter_config=filter_config,
     )
     await session.commit()
 
-    return AdminBusinessDomainResponse(
-        id=domain.id,
-        name=domain.name,
-        description=domain.description,
-        system_prompt_template=domain.system_prompt_template,
-        is_active=domain.is_active,
-    )
+    return _domain_to_response(domain)
 
 
 @router.patch("/business-domains/{domain_id}", response_model=AdminBusinessDomainResponse)
@@ -150,30 +166,27 @@ async def update_business_domain(
     bd_service: BusinessDomainServiceDep,
     session: SessionDep,
 ):
-    """Update a business domain's description and/or system prompt template."""
+    """Update a business domain's description, system prompt template, and/or keyword filter config."""
     if request.system_prompt_template is not None:
         try:
             validate_template(request.system_prompt_template)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc))
 
-    domain = await bd_service.update(
-        domain_id,
+    kwargs: dict = dict(
         description=request.description,
         system_prompt_template=request.system_prompt_template,
     )
+    if request.keyword_filter_config is not None:
+        kwargs["keyword_filter_config"] = _validate_filter_config(request.keyword_filter_config)
+
+    domain = await bd_service.update(domain_id, **kwargs)
     if domain is None:
         raise HTTPException(status_code=404, detail="Business domain not found")
 
     await session.commit()
 
-    return AdminBusinessDomainResponse(
-        id=domain.id,
-        name=domain.name,
-        description=domain.description,
-        system_prompt_template=domain.system_prompt_template,
-        is_active=domain.is_active,
-    )
+    return _domain_to_response(domain)
 
 
 @router.delete("/business-domains/{domain_id}", status_code=204)

@@ -10,7 +10,7 @@ from src.keyword_inspiration.services.data_for_seo_service import (
     DataForSEOPaymentError,
     DataForSEOService,
 )
-from src.utils.keyword_filters import filter_by_brand_exclusion, filter_by_word_count
+from src.utils.keyword_filters import filter_by_brand_exclusion
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ class KeywordFetchService:
 
             # Filter keywords before caching
             keyword_texts = [rk.keyword for rk in ranked_keywords]
-            filtered_texts = filter_by_word_count(keyword_texts, min_words=3)
+            filtered_texts = keyword_texts
             if brand_names:
                 filtered_texts = filter_by_brand_exclusion(filtered_texts, brand_names)
             filtered_set = set(filtered_texts)

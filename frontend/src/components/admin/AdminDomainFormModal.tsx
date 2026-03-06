@@ -3,13 +3,24 @@
  */
 
 import { useState } from "react"
+import { Plus, X } from "lucide-react"
 import { toast } from "sonner"
 import { adminApi } from "@/client/api"
 import {
   useCreateAdminBusinessDomain,
   useUpdateAdminBusinessDomain,
 } from "@/hooks/useAdminDomains"
-import type { AdminBusinessDomain } from "@/types/admin"
+import type { AdminBusinessDomain, KeywordFilterEntry } from "@/types/admin"
+
+const OPERATOR_LABELS: Record<string, string> = {
+  gt: ">",
+  gte: ">=",
+  lt: "<",
+  lte: "<=",
+  eq: "=",
+}
+
+const OPERATORS = Object.keys(OPERATOR_LABELS) as KeywordFilterEntry["operator"][]
 
 interface AdminDomainFormModalProps {
   domain?: AdminBusinessDomain
@@ -28,6 +39,9 @@ export function AdminDomainFormModal({
   const [description, setDescription] = useState(domain?.description ?? "")
   const [template, setTemplate] = useState(domain?.system_prompt_template ?? "")
   const [loadingTemplate, setLoadingTemplate] = useState(false)
+  const [filterEntries, setFilterEntries] = useState<KeywordFilterEntry[]>(
+    domain?.keyword_filter_config ?? []
+  )
 
   const createMutation = useCreateAdminBusinessDomain()
   const updateMutation = useUpdateAdminBusinessDomain()
@@ -50,6 +64,9 @@ export function AdminDomainFormModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
 
+    const keyword_filter_config =
+      filterEntries.length > 0 ? filterEntries : undefined
+
     if (isEdit) {
       updateMutation.mutate(
         {
@@ -57,6 +74,7 @@ export function AdminDomainFormModal({
           request: {
             description,
             system_prompt_template: template,
+            keyword_filter_config,
           },
         },
         {
@@ -73,6 +91,7 @@ export function AdminDomainFormModal({
           name: name.trim(),
           description,
           system_prompt_template: template,
+          keyword_filter_config,
         },
         {
           onSuccess: () => {
@@ -189,6 +208,103 @@ export function AdminDomainFormModal({
                   <code className="bg-gray-200 px-1 py-0.5 rounded text-gray-700">{"{language}"}</code>
                 </p>
               </div>
+            </div>
+
+            {/* Keyword Filter Rules */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Keyword Filter Rules
+                  </label>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Filter keywords before sending to LLM
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFilterEntries([
+                      ...filterEntries,
+                      { type: "word_count", operator: "gte", value: 1 },
+                    ])
+                  }
+                  className="flex items-center gap-1 text-xs text-[#C4553D] hover:text-[#B04A35]
+                    font-medium transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Add Rule
+                </button>
+              </div>
+
+              {filterEntries.length > 0 && (
+                <div className="space-y-2">
+                  {filterEntries.map((entry, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2"
+                    >
+                      <select
+                        value={entry.type}
+                        onChange={(e) => {
+                          const next = [...filterEntries]
+                          next[idx] = { ...next[idx], type: e.target.value }
+                          setFilterEntries(next)
+                        }}
+                        className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm
+                          bg-white outline-none focus:ring-2 focus:ring-[#C4553D]/20"
+                      >
+                        <option value="word_count">word_count</option>
+                      </select>
+
+                      <select
+                        value={entry.operator ?? "gte"}
+                        onChange={(e) => {
+                          const next = [...filterEntries]
+                          next[idx] = {
+                            ...next[idx],
+                            operator: e.target.value as KeywordFilterEntry["operator"],
+                          }
+                          setFilterEntries(next)
+                        }}
+                        className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm
+                          bg-white outline-none focus:ring-2 focus:ring-[#C4553D]/20"
+                      >
+                        {OPERATORS.map((op) => (
+                          <option key={op} value={op}>
+                            {OPERATOR_LABELS[op!]}
+                          </option>
+                        ))}
+                      </select>
+
+                      <input
+                        type="number"
+                        value={entry.value ?? 0}
+                        onChange={(e) => {
+                          const next = [...filterEntries]
+                          next[idx] = {
+                            ...next[idx],
+                            value: parseInt(e.target.value, 10) || 0,
+                          }
+                          setFilterEntries(next)
+                        }}
+                        className="w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-sm
+                          bg-white outline-none focus:ring-2 focus:ring-[#C4553D]/20"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setFilterEntries(filterEntries.filter((_, i) => i !== idx))
+                        }
+                        className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Error message */}
