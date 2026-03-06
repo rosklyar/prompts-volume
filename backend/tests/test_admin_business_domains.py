@@ -243,6 +243,116 @@ class TestDeleteBusinessDomain:
         assert response.status_code == 404
 
 
+VALID_FILTER_CONFIG = [{"type": "word_count", "operator": "gte", "value": 2}]
+
+
+class TestKeywordFilterConfig:
+    """Tests for keyword_filter_config in business domain CRUD."""
+
+    def test_create_with_filter_config(self, client, superuser_auth_headers):
+        response = client.post(
+            "/admin/api/v1/business-domains",
+            json={
+                "name": "domain-with-filter",
+                "description": "Has keyword filter",
+                "system_prompt_template": VALID_TEMPLATE,
+                "keyword_filter_config": VALID_FILTER_CONFIG,
+            },
+            headers=superuser_auth_headers,
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["keyword_filter_config"] == VALID_FILTER_CONFIG
+
+    def test_create_without_filter_config(self, client, superuser_auth_headers):
+        response = client.post(
+            "/admin/api/v1/business-domains",
+            json={
+                "name": "domain-no-filter",
+                "description": "No keyword filter",
+                "system_prompt_template": VALID_TEMPLATE,
+            },
+            headers=superuser_auth_headers,
+        )
+        assert response.status_code == 201
+        assert response.json()["keyword_filter_config"] is None
+
+    def test_update_filter_config(self, client, superuser_auth_headers):
+        create_resp = client.post(
+            "/admin/api/v1/business-domains",
+            json={
+                "name": "domain-update-filter",
+                "description": "Will update filter",
+                "system_prompt_template": VALID_TEMPLATE,
+            },
+            headers=superuser_auth_headers,
+        )
+        domain_id = create_resp.json()["id"]
+
+        update_resp = client.patch(
+            f"/admin/api/v1/business-domains/{domain_id}",
+            json={"keyword_filter_config": VALID_FILTER_CONFIG},
+            headers=superuser_auth_headers,
+        )
+        assert update_resp.status_code == 200
+        assert update_resp.json()["keyword_filter_config"] == VALID_FILTER_CONFIG
+
+    def test_filter_config_in_list_response(self, client, superuser_auth_headers):
+        client.post(
+            "/admin/api/v1/business-domains",
+            json={
+                "name": "domain-list-filter",
+                "description": "Check list response",
+                "system_prompt_template": VALID_TEMPLATE,
+                "keyword_filter_config": VALID_FILTER_CONFIG,
+            },
+            headers=superuser_auth_headers,
+        )
+
+        list_resp = client.get(
+            "/admin/api/v1/business-domains",
+            headers=superuser_auth_headers,
+        )
+        assert list_resp.status_code == 200
+        domain = next(
+            d for d in list_resp.json()["business_domains"]
+            if d["name"] == "domain-list-filter"
+        )
+        assert domain["keyword_filter_config"] == VALID_FILTER_CONFIG
+
+    def test_create_invalid_filter_config_422(self, client, superuser_auth_headers):
+        response = client.post(
+            "/admin/api/v1/business-domains",
+            json={
+                "name": "domain-bad-filter",
+                "description": "Bad filter config",
+                "system_prompt_template": VALID_TEMPLATE,
+                "keyword_filter_config": [{"type": "nonexistent_predicate"}],
+            },
+            headers=superuser_auth_headers,
+        )
+        assert response.status_code == 422
+
+    def test_update_invalid_filter_config_422(self, client, superuser_auth_headers):
+        create_resp = client.post(
+            "/admin/api/v1/business-domains",
+            json={
+                "name": "domain-bad-update-filter",
+                "description": "Will fail update",
+                "system_prompt_template": VALID_TEMPLATE,
+            },
+            headers=superuser_auth_headers,
+        )
+        domain_id = create_resp.json()["id"]
+
+        update_resp = client.patch(
+            f"/admin/api/v1/business-domains/{domain_id}",
+            json={"keyword_filter_config": [{"type": "unknown_type"}]},
+            headers=superuser_auth_headers,
+        )
+        assert update_resp.status_code == 422
+
+
 class TestReferenceListExcludesInactive:
     """Reference endpoint should exclude inactive domains."""
 

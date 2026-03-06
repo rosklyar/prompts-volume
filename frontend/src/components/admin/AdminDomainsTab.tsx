@@ -149,13 +149,40 @@ export function AdminDomainsTab() {
                 </div>
               </div>
 
-              {/* Expanded template preview */}
-              {isExpanded && domain.system_prompt_template && (
-                <div className="border-t border-gray-100 px-5 py-4">
-                  <span className="text-xs text-gray-400 block mb-1">System Prompt Template</span>
-                  <pre className="bg-gray-50 rounded-xl p-3 text-xs text-gray-700 font-mono whitespace-pre-wrap max-h-32 overflow-y-auto">
-                    {domain.system_prompt_template}
-                  </pre>
+              {/* Expanded details */}
+              {isExpanded && (
+                <div className="border-t border-gray-100">
+                  {domain.system_prompt_template && (
+                    <div className="px-5 py-4">
+                      <span className="text-xs text-gray-400 block mb-1">System Prompt Template</span>
+                      <pre className="bg-gray-50 rounded-xl p-3 text-xs text-gray-700 font-mono whitespace-pre-wrap max-h-32 overflow-y-auto">
+                        {domain.system_prompt_template}
+                      </pre>
+                    </div>
+                  )}
+
+                  {!!domain.keyword_filter_config?.length && (
+                    <div className="px-5 py-4 border-t border-gray-100">
+                      <span className="text-xs text-gray-400 block mb-2">Keyword Filters</span>
+                      <div className="flex flex-wrap gap-2">
+                        {domain.keyword_filter_config.map((entry, idx) => (
+                          <span
+                            key={idx}
+                            className="inline-flex items-center px-2.5 py-1 rounded-full text-xs
+                              font-medium bg-blue-50 text-blue-700 border border-blue-100"
+                          >
+                            {entry.type}{" "}
+                            {entry.operator === "gt" && ">"}
+                            {entry.operator === "gte" && ">="}
+                            {entry.operator === "lt" && "<"}
+                            {entry.operator === "lte" && "<="}
+                            {entry.operator === "eq" && "="}{" "}
+                            {entry.value}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

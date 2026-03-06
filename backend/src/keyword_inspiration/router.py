@@ -36,13 +36,21 @@ async def discover_clusters(
     request: DiscoverClustersRequest,
     current_user: CurrentUser,
     service: ClusterScoringServiceDep,
+    session: SessionDep,
 ):
     """Step 1: Fetch keywords (cached) + cluster + return top clusters."""
+    keyword_filter_config = None
+    if request.business_domain_id is not None:
+        bd = await BusinessDomainService(session).get_by_id(request.business_domain_id)
+        if bd:
+            keyword_filter_config = bd.keyword_filter_config
+
     return await service.discover_clusters(
         domains=request.domains,
         country_code=request.country_code,
         language_name=request.language_name,
         brand_names=request.brand_names,
+        keyword_filter_config=keyword_filter_config,
     )
 
 

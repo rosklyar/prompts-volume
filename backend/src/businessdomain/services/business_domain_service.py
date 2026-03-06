@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database import BusinessDomain, get_async_session
 
+_UNSET = object()
+
 
 class BusinessDomainService:
     """Service for managing business domains in the database."""
@@ -40,11 +42,13 @@ class BusinessDomainService:
         description: str,
         *,
         system_prompt_template: str | None = None,
+        keyword_filter_config: list[dict] | None = None,
     ) -> BusinessDomain:
         business_domain = BusinessDomain(
             name=name,
             description=description,
             system_prompt_template=system_prompt_template,
+            keyword_filter_config=keyword_filter_config,
         )
         self.session.add(business_domain)
         await self.session.flush()
@@ -57,6 +61,7 @@ class BusinessDomainService:
         *,
         description: str | None = None,
         system_prompt_template: str | None = None,
+        keyword_filter_config: list[dict] | None = _UNSET,
     ) -> Optional[BusinessDomain]:
         domain = await self.get_by_id(domain_id)
         if domain is None:
@@ -65,6 +70,8 @@ class BusinessDomainService:
             domain.description = description
         if system_prompt_template is not None:
             domain.system_prompt_template = system_prompt_template
+        if keyword_filter_config is not _UNSET:
+            domain.keyword_filter_config = keyword_filter_config
         await self.session.flush()
         await self.session.refresh(domain)
         return domain

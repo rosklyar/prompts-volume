@@ -167,11 +167,18 @@ export interface UserDeletionResponse {
 
 // ===== Admin Business Domains Types =====
 
+export interface KeywordFilterEntry {
+  type: string
+  operator?: "gt" | "gte" | "lt" | "lte" | "eq"
+  value?: number
+}
+
 export interface AdminBusinessDomain {
   id: number
   name: string
   description: string
   system_prompt_template: string | null
+  keyword_filter_config: KeywordFilterEntry[] | null
   is_active: boolean
 }
 
@@ -183,9 +190,11 @@ export interface CreateAdminBusinessDomainRequest {
   name: string
   description: string
   system_prompt_template: string
+  keyword_filter_config?: KeywordFilterEntry[]
 }
 
 export interface UpdateAdminBusinessDomainRequest {
   description?: string
   system_prompt_template?: string
+  keyword_filter_config?: KeywordFilterEntry[]
 }

@@ -13,6 +13,7 @@ class DiscoverClustersRequest(BaseModel):
     country_code: str = Field(..., min_length=2, max_length=10)
     language_name: str = Field(..., min_length=1, max_length=100)
     brand_names: list[str] = Field(default_factory=list)
+    business_domain_id: int | None = None
 
 
 class ScoredClusterResponse(BaseModel):
