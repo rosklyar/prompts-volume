@@ -10,8 +10,6 @@ from src.keyword_inspiration.services.data_for_seo_service import (
     DataForSEOPaymentError,
     DataForSEOService,
 )
-from src.utils.keyword_filters import filter_by_brand_exclusion
-
 logger = logging.getLogger(__name__)
 
 
@@ -34,8 +32,6 @@ class KeywordFetchService:
         domains: list[str],
         country_code: str,
         language_name: str,
-        *,
-        brand_names: list[str] | None = None,
     ) -> None:
         """Fetch keywords for all domains, using cache when fresh. No return value."""
         for domain in domains:
@@ -60,13 +56,6 @@ class KeywordFetchService:
                 logger.warning(f"DataForSEO has no credits, skipping {domain}")
                 continue
 
-            # Filter keywords before caching
-            keyword_texts = [rk.keyword for rk in ranked_keywords]
-            filtered_texts = keyword_texts
-            if brand_names:
-                filtered_texts = filter_by_brand_exclusion(filtered_texts, brand_names)
-            filtered_set = set(filtered_texts)
-
             keywords_data = [
                 {
                     "keyword": rk.keyword,
@@ -74,7 +63,6 @@ class KeywordFetchService:
                     "rank_group": rk.rank_group,
                 }
                 for rk in ranked_keywords
-                if rk.keyword in filtered_set
             ]
 
             await self.repo.upsert(domain, country_code, language_name, keywords_data)
