@@ -31,6 +31,7 @@ class KeywordFetchService:
         self,
         domains: list[str],
         country_code: str,
+        country_name: str,
         language_name: str,
     ) -> None:
         """Fetch keywords for all domains, using cache when fresh. No return value."""
@@ -46,7 +47,7 @@ class KeywordFetchService:
             try:
                 ranked_keywords = await self.dataforseo.get_all_ranked_keywords_for_site(
                     target_domain=domain,
-                    location_name=country_code,
+                    location_name=country_name,
                     language=language_name,
                     batch_size=settings.dataforseo_batch_size,
                     max_total=settings.dataforseo_max_total,

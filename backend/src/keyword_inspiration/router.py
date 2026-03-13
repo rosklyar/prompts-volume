@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from src.auth.deps import CurrentUser, SessionDep
 from src.businessdomain.services.business_domain_service import BusinessDomainService
+from src.geography.services.country_service import CountryService
 from src.keyword_inspiration.models.api_models import (
     ClusterKeywordsResponse,
     ConfirmGroupsRequest,
@@ -39,6 +40,13 @@ async def discover_clusters(
     session: SessionDep,
 ):
     """Step 1: Fetch keywords (cached) + cluster + return top clusters."""
+    country = await CountryService(session).get_by_iso_code(request.country_code)
+    if not country:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Country not found for code: {request.country_code}",
+        )
+
     keyword_filter_config = None
     if request.business_domain_id is not None:
         bd = await BusinessDomainService(session).get_by_id(request.business_domain_id)
@@ -48,6 +56,7 @@ async def discover_clusters(
     return await service.discover_clusters(
         domains=request.domains,
         country_code=request.country_code,
+        country_name=country.name,
         language_name=request.language_name,
         brand_names=request.brand_names,
         keyword_filter_config=keyword_filter_config,
@@ -59,17 +68,10 @@ async def generate_prompts(
     request: GeneratePromptsRequest,
     current_user: CurrentUser,
     orchestrator: InspirationOrchestratorDep,
-    session: SessionDep,
 ):
     """Step 2: Generate prompt previews from selected clusters. No DB writes."""
-    bd = await BusinessDomainService(session).get_by_id(request.business_domain_id)
-    if not bd:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Business domain not found",
-        )
     return await orchestrator.generate_prompts_preview(
-        request, business_domain_name=bd.name
+        request, business_domain_name=request.business_domain
     )
 
 

@@ -42,6 +42,7 @@ class ClusterScoringService:
         self,
         domains: list[str],
         country_code: str,
+        country_name: str,
         language_name: str,
         *,
         brand_names: list[str] | None = None,
@@ -50,7 +51,7 @@ class ClusterScoringService:
         """Fetch keywords (cached), merge, filter, cluster, score, and return top clusters."""
         # 1. Ensure keywords are cached
         await self.keyword_fetch_service.fetch_if_needed(
-            domains, country_code, language_name
+            domains, country_code, country_name, language_name
         )
 
         # 2. Load from cache

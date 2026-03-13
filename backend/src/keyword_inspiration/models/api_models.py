@@ -41,7 +41,7 @@ class ClusterSelection(BaseModel):
 
 class GeneratePromptsRequest(BaseModel):
     clusters: list[ClusterSelection] = Field(..., min_length=1)
-    business_domain_id: int
+    business_domain: str
     language: str
 
 
