@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models import KeywordCache
@@ -47,26 +48,21 @@ class KeywordCacheRepository:
         keywords_data: list[dict],
     ) -> None:
         """Insert or update cached keywords for a domain."""
-        stmt = select(KeywordCache).where(
-            KeywordCache.domain == domain,
-            KeywordCache.country_code == country_code,
-            KeywordCache.language_name == language_name,
-        )
-        result = await self.session.execute(stmt)
-        existing = result.scalar_one_or_none()
-
-        if existing:
-            existing.keywords_data = keywords_data
-            existing.fetched_at = datetime.now(timezone.utc)
-        else:
-            cache = KeywordCache(
+        now = datetime.now(timezone.utc)
+        stmt = (
+            insert(KeywordCache)
+            .values(
                 domain=domain,
                 country_code=country_code,
                 language_name=language_name,
                 keywords_data=keywords_data,
-                fetched_at=datetime.now(timezone.utc),
+                fetched_at=now,
             )
-            self.session.add(cache)
-
+            .on_conflict_do_update(
+                constraint="uq_keyword_cache_domain_country_lang",
+                set_={"keywords_data": keywords_data, "fetched_at": now},
+            )
+        )
+        await self.session.execute(stmt)
         await self.session.flush()
         logger.info(f"Cached {len(keywords_data)} keywords for {domain}")
