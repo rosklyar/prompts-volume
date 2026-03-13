@@ -31,6 +31,7 @@ import { useInvalidateReportQueries } from "@/hooks/useReports"
 import { GroupCard } from "./GroupCard"
 import { AddGroupCard } from "./AddGroupCard"
 import { PromptSelectionModal } from "./PromptSelectionModal"
+import { BatchUploadModal } from "./BatchUploadModal"
 import { MAX_GROUPS, getGroupColor } from "./constants"
 
 interface PromptWithAnswer extends PromptInGroup {
@@ -142,6 +143,12 @@ export function GroupsGrid() {
     topicTitle: string
   } | null>(null)
 
+  // Modal state for batch upload after "No Topic" group creation
+  const [batchUploadModal, setBatchUploadModal] = useState<{
+    groupId: number
+    groupTitle: string
+  } | null>(null)
+
   // Persist selected reports to localStorage when they change
   useEffect(() => {
     saveSelectedReports(selectedReports)
@@ -247,6 +254,14 @@ export function GroupsGrid() {
         await addGSCPromptsToGroup.mutateAsync({
           groupId: newGroup.id,
           prompts: selectedGSCPrompts,
+        })
+      }
+
+      // Show batch upload modal for "No Topic" groups so user can add own prompts
+      if (topic === null) {
+        setBatchUploadModal({
+          groupId: newGroup.id,
+          groupTitle: title,
         })
       }
 
@@ -494,6 +509,17 @@ export function GroupsGrid() {
           accentColor={getGroupColor(sortedGroups.length).accent}
           isOpen={true}
           onClose={() => setPromptSelectionModal(null)}
+        />
+      )}
+
+      {/* Batch upload modal - shown after creating group with no topic */}
+      {batchUploadModal && (
+        <BatchUploadModal
+          groupId={batchUploadModal.groupId}
+          groupTitle={batchUploadModal.groupTitle}
+          accentColor={getGroupColor(sortedGroups.length).accent}
+          isOpen={true}
+          onClose={() => setBatchUploadModal(null)}
         />
       )}
     </>

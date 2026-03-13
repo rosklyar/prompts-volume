@@ -40,6 +40,26 @@ def _delete_cache(engine, domains: list[str]) -> None:
     asyncio.get_event_loop().run_until_complete(_remove())
 
 
+def _set_keyword_filter_config(engine, domain_id: int, config: list[dict]) -> None:
+    """Set keyword_filter_config on a business domain."""
+    from sqlalchemy import text
+
+    async def _update():
+        session_maker = async_sessionmaker(
+            bind=engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with session_maker() as session:
+            await session.execute(
+                text(
+                    "UPDATE business_domains SET keyword_filter_config = :config WHERE id = :id"
+                ),
+                {"config": json.dumps(config), "id": domain_id},
+            )
+            await session.commit()
+
+    asyncio.get_event_loop().run_until_complete(_update())
+
+
 def test_discover_clusters(client, test_engine, auth_headers):
     """Integration: discover-clusters with 2 API-fetched + 2 cached domains.
 
@@ -59,6 +79,9 @@ def test_discover_clusters(client, test_engine, auth_headers):
     # -- Delete seed cache for moyo.ua and ctrs.com.ua to exercise API-fetch path --
     # (allo.ua and eldorado.ua remain cached from seed_initial_data)
     _delete_cache(test_engine, ["moyo.ua", "ctrs.com.ua"])
+
+    # -- Set brand_exclusion filter on e-comm business domain (id=1) --
+    _set_keyword_filter_config(test_engine, 1, [{"type": "word_count", "operator": "gte", "value": 2}, {"type": "brand_exclusion"}])
 
     # -- Build mock DataForSEO responses --
     def _to_ranked(entries: list[dict]) -> list[RankedKeywordData]:
@@ -95,6 +118,7 @@ def test_discover_clusters(client, test_engine, auth_headers):
                 "country_code": "UA",
                 "language_name": "Ukrainian",
                 "brand_names": ["moyo", "мойо"],
+                "business_domain_id": 1,
             },
             headers=auth_headers,
         )

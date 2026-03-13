@@ -50,14 +50,14 @@ class ClusterScoringService:
         """Fetch keywords (cached), merge, filter, cluster, score, and return top clusters."""
         # 1. Ensure keywords are cached
         await self.keyword_fetch_service.fetch_if_needed(
-            domains, country_code, language_name, brand_names=brand_names or []
+            domains, country_code, language_name
         )
 
         # 2. Load from cache
         all_ranked = await self._load_and_merge(domains, country_code, language_name)
 
         # 3. Apply predicate chain
-        chain = build_chain_from_config(keyword_filter_config)
+        chain = build_chain_from_config(keyword_filter_config, brand_names=brand_names)
         all_ranked = chain.apply(all_ranked)
 
         if not all_ranked:
