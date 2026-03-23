@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Enum, Integer, Numeric, String, Text, UniqueConstraint, text
+from sqlalchemy import Boolean, DateTime, Enum, Float, Integer, Numeric, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -319,3 +319,33 @@ class GSCCredential(UsersBase):
 
     def __repr__(self) -> str:
         return f"<GSCCredential(user_id='{self.user_id}', connected_at='{self.connected_at}')>"
+
+
+class GeoAuditResult(UsersBase):
+    """Persisted GEO audit report per user.
+
+    Stores the full JSON response alongside denormalized score fields
+    for efficient querying. Multiple results per user (audit history).
+    """
+
+    __tablename__ = "geo_audit_results"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String(36),
+        nullable=False,
+        index=True,
+    )  # No FK - application-level integrity
+    url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    score_total: Mapped[float] = mapped_column(Float, nullable=False)
+    score_rating: Mapped[str] = mapped_column(String(20), nullable=False)
+    result_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("NOW()"),
+        index=True,
+    )
+
+    def __repr__(self) -> str:
+        return f"<GeoAuditResult(id={self.id}, user_id='{self.user_id}', score={self.score_total})>"

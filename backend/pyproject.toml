@@ -29,6 +29,7 @@ dependencies = [
     "apscheduler>=3.11.2",
     "brightdata-sdk>=0.2.0",
     "google-auth>=2.48.0",
+    "beautifulsoup4>=4.14.3",
 ]
 
 [[tool.uv.index]]

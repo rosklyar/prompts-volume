@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     # Prompts Generator configuration
     pg_openai_model: str = "gpt-4o-mini"
 
+    # GEO Audit configuration
+    geo_audit_model: str = "gpt-4o-mini"
+    geo_audit_cooldown_hours: int = 24
+
     # Clustering configuration
     clustering_min_cluster_size: int = 5
     clustering_min_samples: int = 5

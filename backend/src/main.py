@@ -19,6 +19,7 @@ from src.database.users_session import close_users_db, get_users_session_maker, 
 from src.database.evals_session import close_evals_db, get_evals_session_maker, init_evals_db
 from src.daily_scheduling.scheduler import setup_scheduler, shutdown_scheduler
 from src.execution.router import router as execution_router
+from src.geo_audit.router import router as geo_audit_router
 from src.onboarding.router import router as onboarding_router
 from src.prompt_groups.router import router as prompt_groups_router
 from src.prompts import router as prompts_router
@@ -106,6 +107,7 @@ app.include_router(dashboard_router)
 app.include_router(brightdata_router)
 app.include_router(gsc_router)
 app.include_router(keyword_inspiration_router)
+app.include_router(geo_audit_router)
 
 
 @app.get("/health")

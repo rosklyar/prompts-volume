@@ -21,9 +21,10 @@ import { ProfileBlock } from "@/components/navigation/ProfileBlock"
 import { CitationsView } from "@/components/citations/CitationsView"
 import { DashboardView } from "@/components/dashboard/DashboardView"
 import { CompetitorsView } from "@/components/competitors/CompetitorsView"
+import { GeoAuditView } from "@/components/geo-audit/GeoAuditView"
 
 const indexSearchSchema = z.object({
-  tab: z.enum(["dashboard", "prompts", "sources", "competitors"]).optional(),
+  tab: z.enum(["dashboard", "prompts", "sources", "competitors", "geo-audit"]).optional(),
 })
 
 export const Route = createFileRoute("/")({
@@ -774,6 +775,8 @@ function PromptDiscovery() {
               <CitationsView groups={groups} isLoadingGroups={isLoadingGroups} />
             ) : activeTab === "competitors" ? (
               <CompetitorsView />
+            ) : activeTab === "geo-audit" ? (
+              <GeoAuditView />
             ) : null}
           </div>
         </main>
