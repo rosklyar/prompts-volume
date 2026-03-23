@@ -1,4 +1,5 @@
 import type { AggregatedCitationsResponse, BrandInfo, CompetitorInfo, TopicInput } from "@/types/groups"
+import type { GeoAuditStoredResponse } from "@/types/geo-audit"
 import type {
   OnboardingStatusResponse,
   UserPreferencesResponse,
@@ -135,10 +136,12 @@ export interface LoginCredentials {
 
 class ApiError extends Error {
   status: number
+  retryAfter: number | null
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, retryAfter: number | null = null) {
     super(message)
     this.status = status
+    this.retryAfter = retryAfter
     this.name = "ApiError"
   }
 }
@@ -179,7 +182,10 @@ async function fetchWithAuth(
       window.location.href = "/login"
     }
 
-    throw new ApiError(response.status, errorData.detail || "Request failed")
+    const retryAfter = response.status === 429
+      ? parseInt(response.headers.get("Retry-After") || "0", 10)
+      : null
+    throw new ApiError(response.status, errorData.detail || "Request failed", retryAfter)
   }
 
   return response
@@ -1567,6 +1573,22 @@ export const keywordInspirationApi = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request),
+    })
+    return response.json()
+  },
+}
+
+export const geoAuditApi = {
+  async getLatest(): Promise<GeoAuditStoredResponse> {
+    const response = await fetchWithAuth("/api/v1/geo-audit")
+    return response.json()
+  },
+
+  async runAudit(url?: string): Promise<GeoAuditStoredResponse> {
+    const response = await fetchWithAuth("/api/v1/geo-audit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: url ? JSON.stringify({ url }) : undefined,
     })
     return response.json()
   },

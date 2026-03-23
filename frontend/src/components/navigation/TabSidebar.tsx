@@ -3,7 +3,7 @@
  * Horizontal icon+text layout with filled active state
  */
 
-export type TabKey = "dashboard" | "prompts" | "sources" | "competitors"
+export type TabKey = "dashboard" | "prompts" | "sources" | "competitors" | "geo-audit"
 
 interface TabSidebarProps {
   activeTab: TabKey
@@ -64,6 +64,24 @@ function ChartIcon({ active }: { active: boolean }) {
   )
 }
 
+function GeoAuditIcon({ active }: { active: boolean }) {
+  return (
+    <svg
+      className="w-5 h-5"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={active ? 2 : 1.5}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5"
+      />
+    </svg>
+  )
+}
+
 function CompetitorsIcon({ active }: { active: boolean }) {
   return (
     <svg
@@ -88,6 +106,7 @@ export function TabSidebar({ activeTab, onTabChange }: TabSidebarProps) {
     { key: "prompts" as const, label: "Prompts", Icon: DocumentIcon },
     { key: "sources" as const, label: "Sources", Icon: LinkIcon },
     { key: "competitors" as const, label: "Competitors", Icon: CompetitorsIcon },
+    { key: "geo-audit" as const, label: "GEO Audit", Icon: GeoAuditIcon },
   ]
 
   return (

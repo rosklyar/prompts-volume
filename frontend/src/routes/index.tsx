@@ -21,9 +21,11 @@ import { ProfileBlock } from "@/components/navigation/ProfileBlock"
 import { CitationsView } from "@/components/citations/CitationsView"
 import { DashboardView } from "@/components/dashboard/DashboardView"
 import { CompetitorsView } from "@/components/competitors/CompetitorsView"
+import { GeoAuditView } from "@/components/geo-audit/GeoAuditView"
+import { useFilterPreferences } from "@/hooks/useFilterPreferences"
 
 const indexSearchSchema = z.object({
-  tab: z.enum(["dashboard", "prompts", "sources", "competitors"]).optional(),
+  tab: z.enum(["dashboard", "prompts", "sources", "competitors", "geo-audit"]).optional(),
 })
 
 export const Route = createFileRoute("/")({
@@ -72,6 +74,15 @@ function PromptDiscovery() {
 
   const { suggestions, isLoading, isFetching, shouldSearch } =
     useSimilarPrompts(searchQuery)
+
+  // Filter preferences (shared across Dashboard and Sources tabs)
+  const {
+    activePreset,
+    dateRange,
+    assistantId,
+    setAssistantId,
+    handleDateRangeChange,
+  } = useFilterPreferences()
 
   // Groups data and mutations
   const { data: groupsData, isLoading: isLoadingGroups } = useGroups()
@@ -500,7 +511,15 @@ function PromptDiscovery() {
         <main className="flex-1 pb-12 px-4 md:px-8 lg:px-12">
           <div className="w-full">
             {activeTab === "dashboard" ? (
-              <DashboardView groups={groups} isLoadingGroups={isLoadingGroups} />
+              <DashboardView
+                groups={groups}
+                isLoadingGroups={isLoadingGroups}
+                activePreset={activePreset}
+                dateRange={dateRange}
+                assistantId={assistantId}
+                setAssistantId={setAssistantId}
+                handleDateRangeChange={handleDateRangeChange}
+              />
             ) : activeTab === "prompts" ? (
               <>
                 {/* Search container */}
@@ -771,9 +790,19 @@ function PromptDiscovery() {
                 </div>
               </>
             ) : activeTab === "sources" ? (
-              <CitationsView groups={groups} isLoadingGroups={isLoadingGroups} />
+              <CitationsView
+                groups={groups}
+                isLoadingGroups={isLoadingGroups}
+                activePreset={activePreset}
+                dateRange={dateRange}
+                assistantId={assistantId}
+                setAssistantId={setAssistantId}
+                handleDateRangeChange={handleDateRangeChange}
+              />
             ) : activeTab === "competitors" ? (
               <CompetitorsView />
+            ) : activeTab === "geo-audit" ? (
+              <GeoAuditView />
             ) : null}
           </div>
         </main>
