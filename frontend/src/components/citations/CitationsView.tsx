@@ -5,9 +5,10 @@
 
 import { useState, useMemo, useEffect } from "react"
 import type { GroupSummary } from "@/types/groups"
+import type { DashboardPeriod } from "@/types/dashboard"
+import type { DateRange } from "@/types/date-range"
 import { useCitationsLeaderboard, type CitationsDateRangeOption } from "@/hooks/useCitationsLeaderboard"
 import { useAssistants } from "@/hooks/useAssistants"
-import { useFilterPreferences } from "@/hooks/useFilterPreferences"
 import { getGroupColor } from "@/components/groups/constants"
 import { GroupChipsSelector } from "./GroupChipsSelector"
 import { CitationFilters } from "./CitationFilters"
@@ -16,18 +17,15 @@ import { CitationLeaderboardDisplay } from "./CitationLeaderboardDisplay"
 interface CitationsViewProps {
   groups: GroupSummary[]
   isLoadingGroups: boolean
+  activePreset: DashboardPeriod | null
+  dateRange: DateRange | null
+  assistantId: number | undefined
+  setAssistantId: (id: number | undefined) => void
+  handleDateRangeChange: (range: DateRange, preset: string | null) => void
 }
 
-export function CitationsView({ groups, isLoadingGroups }: CitationsViewProps) {
+export function CitationsView({ groups, isLoadingGroups, activePreset, dateRange, assistantId, setAssistantId, handleDateRangeChange }: CitationsViewProps) {
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
-
-  const {
-    activePreset,
-    dateRange,
-    assistantId,
-    setAssistantId,
-    handleDateRangeChange,
-  } = useFilterPreferences()
 
   const { data: assistantsData, isLoading: isLoadingAssistants } = useAssistants()
   const assistants = useMemo(() => assistantsData?.assistants ?? [], [assistantsData?.assistants])

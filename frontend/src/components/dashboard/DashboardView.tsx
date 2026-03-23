@@ -5,9 +5,10 @@
 
 import { useState, useMemo, useEffect } from "react"
 import type { GroupSummary } from "@/types/groups"
+import type { DashboardPeriod } from "@/types/dashboard"
+import type { DateRange } from "@/types/date-range"
 import { useDashboardData, type DateRangeOption } from "@/hooks/useDashboardData"
 import { useAssistants } from "@/hooks/useAssistants"
-import { useFilterPreferences } from "@/hooks/useFilterPreferences"
 import { GroupChipsSelector } from "@/components/citations/GroupChipsSelector"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
 import { DashboardSkeleton } from "./DashboardSkeleton"
@@ -21,18 +22,15 @@ import { buildBrandColorMap } from "@/lib/brandColors"
 interface DashboardViewProps {
   groups: GroupSummary[]
   isLoadingGroups: boolean
+  activePreset: DashboardPeriod | null
+  dateRange: DateRange | null
+  assistantId: number | undefined
+  setAssistantId: (id: number | undefined) => void
+  handleDateRangeChange: (range: DateRange, preset: string | null) => void
 }
 
-export function DashboardView({ groups, isLoadingGroups }: DashboardViewProps) {
+export function DashboardView({ groups, isLoadingGroups, activePreset, dateRange, assistantId, setAssistantId, handleDateRangeChange }: DashboardViewProps) {
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
-
-  const {
-    activePreset,
-    dateRange,
-    assistantId,
-    setAssistantId,
-    handleDateRangeChange,
-  } = useFilterPreferences()
 
   const { data: assistantsData, isLoading: isLoadingAssistants } = useAssistants()
   const assistants = useMemo(() => assistantsData?.assistants ?? [], [assistantsData?.assistants])

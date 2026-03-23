@@ -15,7 +15,7 @@ interface StoredPreferences {
   assistantId: number | undefined
 }
 
-interface FilterPreferences {
+export interface FilterPreferences {
   activePreset: DashboardPeriod | null
   dateRange: DateRange | null
   assistantId: number | undefined
@@ -51,7 +51,9 @@ function loadPreferences(): { activePreset: DashboardPeriod | null; dateRange: D
     }
     const parsed: StoredPreferences = JSON.parse(stored)
 
-    const activePreset = isValidPreset(parsed.activePreset) ? parsed.activePreset : "30d"
+    const activePreset = isValidPreset(parsed.activePreset) ? parsed.activePreset
+      : parsed.activePreset === null ? null
+      : "30d"
     const dateRange = parseStoredDateRange(parsed.dateRange)
     const assistantId = typeof parsed.assistantId === "number" ? parsed.assistantId : undefined
 
