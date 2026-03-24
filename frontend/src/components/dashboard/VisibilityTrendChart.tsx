@@ -3,7 +3,7 @@
  * Uses Recharts with one line per brand (target + competitors)
  */
 
-import { useMemo } from "react"
+import { useState, useEffect, useMemo } from "react"
 import {
   ResponsiveContainer,
   LineChart,
@@ -14,6 +14,26 @@ import {
   Legend,
 } from "recharts"
 import type { TimelineDataPoint } from "@/types/dashboard"
+
+const SHOW_COMPETITORS_KEY = "show_competitor_trends"
+
+function loadShowCompetitors(): boolean {
+  try {
+    const saved = localStorage.getItem(SHOW_COMPETITORS_KEY)
+    if (saved === null) return true
+    return saved === "true"
+  } catch {
+    return true
+  }
+}
+
+function saveShowCompetitors(value: boolean): void {
+  try {
+    localStorage.setItem(SHOW_COMPETITORS_KEY, String(value))
+  } catch {
+    // localStorage unavailable
+  }
+}
 
 interface BrandKey {
   name: string
@@ -98,6 +118,12 @@ function formatDate(iso: string): string {
 }
 
 export function VisibilityTrendChart({ timeline, hasData, colorMap, className = "" }: VisibilityTrendChartProps) {
+  const [showCompetitors, setShowCompetitors] = useState(loadShowCompetitors)
+
+  useEffect(() => {
+    saveShowCompetitors(showCompetitors)
+  }, [showCompetitors])
+
   // Transform timeline into flat rows for Recharts: { date, brandA: 45, brandB: 20, ... }
   const { chartData, brandKeys, yAxisMax } = useMemo(() => {
     if (timeline.length < 2) return { chartData: [], brandKeys: [], yAxisMax: 10 }
@@ -146,6 +172,11 @@ export function VisibilityTrendChart({ timeline, hasData, colorMap, className = 
     }
   }, [timeline])
 
+  const hasCompetitors = brandKeys.some((b) => !b.isTarget)
+  const visibleBrandKeys = showCompetitors
+    ? brandKeys
+    : brandKeys.filter((b) => b.isTarget)
+
   if (!hasData || timeline.length < 2) {
     return (
       <div className={`bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full flex flex-col ${className}`}>
@@ -163,9 +194,30 @@ export function VisibilityTrendChart({ timeline, hasData, colorMap, className = 
 
   return (
     <div className={`bg-white rounded-2xl p-6 shadow-sm border border-[#F3F4F6] h-full flex flex-col ${className}`}>
-      <h3 className="font-['Fraunces'] text-sm font-semibold text-[#1E1E1E] mb-4 shrink-0">
-        VISIBILITY TREND
-      </h3>
+      <div className="flex items-center justify-between mb-4 shrink-0">
+        <h3 className="font-['Fraunces'] text-sm font-semibold text-[#1E1E1E]">
+          VISIBILITY TREND
+        </h3>
+        {hasCompetitors && (
+          <button
+            onClick={() => setShowCompetitors((prev) => !prev)}
+            className="flex items-center gap-1.5 text-[10px] text-[#9CA3AF] hover:text-[#6B7280] transition-colors"
+          >
+            <span
+              className={`relative inline-flex h-3.5 w-7 items-center rounded-full transition-colors ${
+                showCompetitors ? "bg-[#C4553D]" : "bg-[#D1D5DB]"
+              }`}
+            >
+              <span
+                className={`inline-block h-2.5 w-2.5 rounded-full bg-white transition-transform ${
+                  showCompetitors ? "translate-x-3.5" : "translate-x-0.5"
+                }`}
+              />
+            </span>
+            Competitors
+          </button>
+        )}
+      </div>
       <div className="flex-1 min-h-0">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartData} margin={{ top: 5, right: 10, left: -15, bottom: 0 }}>
@@ -183,7 +235,7 @@ export function VisibilityTrendChart({ timeline, hasData, colorMap, className = 
               tickFormatter={(v: number) => `${v}%`}
             />
             <Tooltip
-              content={<CustomTooltip brandKeys={brandKeys} colorMap={colorMap} />}
+              content={<CustomTooltip brandKeys={visibleBrandKeys} colorMap={colorMap} />}
             />
             <Legend
               verticalAlign="top"
@@ -191,7 +243,7 @@ export function VisibilityTrendChart({ timeline, hasData, colorMap, className = 
               iconSize={8}
               wrapperStyle={{ fontSize: 10, paddingBottom: 8 }}
             />
-            {brandKeys.map((brand) => {
+            {visibleBrandKeys.map((brand) => {
               const isTarget = brand.isTarget
               const color = colorMap.get(brand.name) ?? "#6B7280"
               return (
