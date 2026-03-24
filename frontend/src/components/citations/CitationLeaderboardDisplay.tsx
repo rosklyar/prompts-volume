@@ -61,7 +61,7 @@ function RankedList({
         ) : (
           <div className="max-h-[480px] overflow-y-auto">
             {/* Column headers */}
-            <div className="flex items-center gap-3 px-3 py-2 border-b border-gray-100 bg-gray-50/50">
+            <div className="sticky top-0 z-10 flex items-center gap-3 px-3 py-2 border-b border-gray-100 bg-gray-50">
               <span className="w-5 flex-shrink-0" />
               <span className="flex-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">
                 {isDomain ? "Domain" : "Path"}
