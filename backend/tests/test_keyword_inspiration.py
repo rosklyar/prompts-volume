@@ -234,7 +234,7 @@ def test_generate_prompts(client, auth_headers):
                     "keywords": third_cluster["keywords"],
                 }
             ],
-            "business_domain": "e-comm",
+            "business_domain_id": 1,
             "language": "Ukrainian",
         },
         headers=auth_headers,
@@ -242,10 +242,14 @@ def test_generate_prompts(client, auth_headers):
 
     assert resp.status_code == 200, resp.text
     data = resp.json()
-    assert "prompts" in data
-    assert len(data["prompts"]) == 3
-    for prompt in data["prompts"]:
-        assert "cluster_id" in prompt
-        assert "prompt_text" in prompt
-        assert isinstance(prompt["prompt_text"], str)
-        assert len(prompt["prompt_text"]) > 0
+    assert "clusters" in data
+    assert len(data["clusters"]) == 3
+    assert data["total_prompts"] > 0
+    for cluster in data["clusters"]:
+        assert "cluster_id" in cluster
+        assert "title" in cluster
+        assert "prompts" in cluster
+        for prompt in cluster["prompts"]:
+            assert "prompt_text" in prompt
+            assert isinstance(prompt["prompt_text"], str)
+            assert len(prompt["prompt_text"]) > 0
