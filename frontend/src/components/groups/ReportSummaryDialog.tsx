@@ -7,8 +7,15 @@
 import { useEffect, useCallback } from "react"
 import { createPortal } from "react-dom"
 import type { CitationLeaderboard } from "@/types/groups"
-import type { ReportStatistics } from "@/types/billing"
+import type { BrandPositionReliability, ReportStatistics } from "@/types/billing"
 import { getBrandColor } from "./constants"
+
+const RELIABILITY_CONFIG: Record<BrandPositionReliability, { label: string; className: string }> = {
+  high_reliability: { label: "High reliability", className: "bg-green-50 text-green-700" },
+  reliable: { label: "Reliable", className: "bg-blue-50 text-blue-700" },
+  low_reliability: { label: "Low reliability", className: "bg-amber-50 text-amber-700" },
+  not_reliable: { label: "Not reliable", className: "bg-gray-100 text-gray-400" },
+}
 
 interface ReportSummaryDialogProps {
   isOpen: boolean
@@ -123,10 +130,12 @@ export function ReportSummaryDialog({
   if (!isOpen) return null
 
   const visibilityScores = statistics?.brand_visibility ?? []
+  const brandPositions = statistics?.brand_positions ?? []
   const domainMentions = statistics?.domain_mentions ?? []
   const citationDomainCounts = statistics?.citation_domains ?? []
 
   const hasVisibilityData = visibilityScores.length > 0
+  const hasBrandPositions = brandPositions.length > 0 && brandPositions.some(bp => bp.prompts_counted > 0)
   const hasDomainMentions = domainMentions.length > 0 && domainMentions.some(dm => dm.total_mentions > 0)
   const hasCitationDomains = citationDomainCounts.length > 0 && citationDomainCounts.some(cd => cd.citation_count > 0)
   const hasDomainData = citationLeaderboard.domains.length > 0
@@ -260,7 +269,62 @@ export function ReportSummaryDialog({
                   </section>
                 )}
 
-                {/* 2. Domain Mentions */}
+                {/* 2. Average Brand Position */}
+                {hasBrandPositions && (
+                  <section className="border-t border-gray-100 pt-8">
+                    <SectionHeader
+                      title="Average brand position"
+                      accentColor={accentColor}
+                    />
+                    <div className="space-y-1.5">
+                      {[...brandPositions]
+                        .filter(bp => bp.prompts_counted > 0)
+                        .sort((a, b) => {
+                          if (a.is_target_brand) return -1
+                          if (b.is_target_brand) return 1
+                          return a.average_position - b.average_position
+                        })
+                        .map((bp) => {
+                          const brandColor = getBrandColor(bp.brand_name, targetBrandName, competitorNames, accentColor)
+                          const reliability = RELIABILITY_CONFIG[bp.reliability]
+                          return (
+                            <div
+                              key={bp.brand_name}
+                              className="flex items-center gap-3 px-3 py-2 rounded-md bg-gray-50/80 hover:bg-gray-50 transition-colors"
+                            >
+                              <span
+                                className="w-2 h-2 rounded-full flex-shrink-0"
+                                style={{ backgroundColor: bp.is_target_brand ? accentColor : `${brandColor.text}40` }}
+                              />
+                              <span
+                                className={`text-sm flex-shrink-0 w-36 truncate ${bp.is_target_brand ? "font-semibold" : ""}`}
+                                style={{ color: brandColor.text }}
+                                title={bp.brand_name}
+                              >
+                                {bp.brand_name}
+                              </span>
+                              <span
+                                className="text-base font-semibold tabular-nums w-10 text-center"
+                                style={{ color: brandColor.text }}
+                              >
+                                {bp.average_position.toFixed(1)}
+                              </span>
+                              <span
+                                className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${reliability.className}`}
+                              >
+                                {reliability.label}
+                              </span>
+                              <span className="text-[10px] text-gray-400 ml-auto">
+                                {bp.prompts_counted}/{bp.total_prompts} prompts
+                              </span>
+                            </div>
+                          )
+                        })}
+                    </div>
+                  </section>
+                )}
+
+                {/* 3. Domain Mentions */}
                 {hasDomainMentions && (
                   <section className="border-t border-gray-100 pt-8">
                     <SectionHeader

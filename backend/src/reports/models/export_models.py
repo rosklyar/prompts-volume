@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from decimal import Decimal
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -56,6 +56,20 @@ class BrandVisibilityScore(BaseModel):
     visibility_percentage: float = Field(ge=0, le=100)
 
 
+class BrandPositionScore(BaseModel):
+    """Average mention position for a single brand across a report."""
+
+    brand_name: str
+    is_target_brand: bool
+    average_position: float = Field(ge=0)
+    prompts_counted: int
+    total_prompts: int
+    visibility_percentage: float = Field(ge=0, le=100)
+    reliability: Literal[
+        "not_reliable", "low_reliability", "reliable", "high_reliability"
+    ]
+
+
 class DomainMentionStat(BaseModel):
     """Domain mention statistics."""
 
@@ -87,6 +101,7 @@ class ExportStatistics(BaseModel):
     """All calculated statistics for export."""
 
     brand_visibility: List[BrandVisibilityScore] = Field(default_factory=list)
+    brand_positions: List[BrandPositionScore] = Field(default_factory=list)
     domain_mentions: List[DomainMentionStat] = Field(default_factory=list)
     citation_domains: List[CitationDomainStat] = Field(default_factory=list)
     domain_sources_leaderboard: List[LeaderboardItem] = Field(default_factory=list)

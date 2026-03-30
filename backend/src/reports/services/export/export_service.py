@@ -17,6 +17,9 @@ from src.reports.models.export_models import (
     LeaderboardItem,
     ReportJsonExport,
 )
+from src.reports.services.statistics.brand_position import (
+    BrandPositionCalculator,
+)
 from src.reports.services.statistics.brand_visibility import (
     BrandConfig,
     BrandVisibilityCalculator,
@@ -42,10 +45,12 @@ class ReportExportService:
     def __init__(
         self,
         visibility_calculator: BrandVisibilityCalculator,
+        position_calculator: BrandPositionCalculator,
         domain_mention_calculator: DomainMentionCalculator,
         citation_domain_calculator: CitationDomainCalculator,
     ):
         self._visibility_calc = visibility_calculator
+        self._position_calc = position_calculator
         self._domain_mention_calc = domain_mention_calculator
         self._citation_domain_calc = citation_domain_calculator
 
@@ -148,6 +153,13 @@ class ReportExportService:
             brands=brands,
         )
 
+        # Calculate brand positions (depends on visibility scores)
+        position_scores = self._position_calc.calculate(
+            brand_mentions_per_item=brand_mentions_per_item,
+            brands=brands,
+            visibility_scores=visibility_scores,
+        )
+
         # Build domain configs for domain mention calculation
         domains: List[DomainConfig] = []
         if brand_config and brand_config.get("domain"):
@@ -214,6 +226,7 @@ class ReportExportService:
 
         return ExportStatistics(
             brand_visibility=visibility_scores,
+            brand_positions=position_scores,
             domain_mentions=domain_mention_stats,
             citation_domains=citation_domain_stats,
             domain_sources_leaderboard=domain_sources,

@@ -43,6 +43,22 @@ export interface BrandVisibilityScore {
   visibility_percentage: number
 }
 
+export type BrandPositionReliability =
+  | "not_reliable"
+  | "low_reliability"
+  | "reliable"
+  | "high_reliability"
+
+export interface BrandPositionScore {
+  brand_name: string
+  is_target_brand: boolean
+  average_position: number
+  prompts_counted: number
+  total_prompts: number
+  visibility_percentage: number
+  reliability: BrandPositionReliability
+}
+
 export interface DomainMentionStat {
   name: string
   domain: string
@@ -60,6 +76,7 @@ export interface CitationDomainStat {
 
 export interface ReportStatistics {
   brand_visibility: BrandVisibilityScore[]
+  brand_positions: BrandPositionScore[]
   domain_mentions: DomainMentionStat[]
   citation_domains: CitationDomainStat[]
 }

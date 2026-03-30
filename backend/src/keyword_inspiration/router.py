@@ -68,10 +68,17 @@ async def generate_prompts(
     request: GeneratePromptsRequest,
     current_user: CurrentUser,
     orchestrator: InspirationOrchestratorDep,
+    session: SessionDep,
 ):
     """Step 2: Generate prompt previews from selected clusters. No DB writes."""
+    bd = await BusinessDomainService(session).get_by_id(request.business_domain_id)
+    if not bd:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Business domain not found for id: {request.business_domain_id}",
+        )
     return await orchestrator.generate_prompts_preview(
-        request, business_domain_name=request.business_domain
+        request, business_domain_name=bd.name
     )
 
 

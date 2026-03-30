@@ -421,6 +421,7 @@ async def generate_report(
 
     statistics = ReportStatistics(
         brand_visibility=stats_result.brand_visibility,
+        brand_positions=stats_result.brand_positions,
         domain_mentions=stats_result.domain_mentions,
         citation_domains=stats_result.citation_domains,
     )
@@ -601,6 +602,7 @@ async def get_report(
 
     statistics = ReportStatistics(
         brand_visibility=stats_result.brand_visibility,
+        brand_positions=stats_result.brand_positions,
         domain_mentions=stats_result.domain_mentions,
         citation_domains=stats_result.citation_domains,
     )

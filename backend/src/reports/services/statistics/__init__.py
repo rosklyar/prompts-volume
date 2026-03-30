@@ -1,5 +1,8 @@
 """Statistics calculators for report export."""
 
+from src.reports.services.statistics.brand_position import (
+    BrandPositionCalculator,
+)
 from src.reports.services.statistics.brand_visibility import (
     BrandConfig,
     BrandVisibilityCalculator,
@@ -16,6 +19,7 @@ from src.reports.services.statistics.domain_mentions import (
 
 # Singleton instances
 _brand_visibility_calculator: BrandVisibilityCalculator | None = None
+_brand_position_calculator: BrandPositionCalculator | None = None
 _domain_mention_calculator: DomainMentionCalculator | None = None
 _citation_domain_calculator: CitationDomainCalculator | None = None
 
@@ -26,6 +30,14 @@ def get_brand_visibility_calculator() -> BrandVisibilityCalculator:
     if _brand_visibility_calculator is None:
         _brand_visibility_calculator = BrandVisibilityCalculator()
     return _brand_visibility_calculator
+
+
+def get_brand_position_calculator() -> BrandPositionCalculator:
+    """Get the singleton BrandPositionCalculator instance."""
+    global _brand_position_calculator
+    if _brand_position_calculator is None:
+        _brand_position_calculator = BrandPositionCalculator()
+    return _brand_position_calculator
 
 
 def get_domain_mention_calculator() -> DomainMentionCalculator:
@@ -48,6 +60,8 @@ __all__ = [
     "BrandConfig",
     "BrandVisibilityCalculator",
     "get_brand_visibility_calculator",
+    "BrandPositionCalculator",
+    "get_brand_position_calculator",
     "DomainConfig",
     "DomainMentionCalculator",
     "get_domain_mention_calculator",
