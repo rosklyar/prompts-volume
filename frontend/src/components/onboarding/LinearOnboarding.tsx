@@ -685,10 +685,10 @@ export function LinearOnboarding() {
             )}
 
             {/* Step 6: Review Prompts */}
-            {currentStep === 6 && countryId && (
+            {currentStep === 6 && countryId && businessDomainId && (
               <PromptReviewStep
                 selectedClusters={selectedClusters}
-                businessDomain={selectedDomain?.name || "general"}
+                businessDomainId={businessDomainId}
                 language={languageName}
                 countryId={countryId}
                 brand={{

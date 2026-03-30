@@ -29,7 +29,7 @@ export interface ClusterSelection {
 
 export interface GeneratePromptsRequest {
   clusters: ClusterSelection[]
-  business_domain: string
+  business_domain_id: number
   language: string
 }
 

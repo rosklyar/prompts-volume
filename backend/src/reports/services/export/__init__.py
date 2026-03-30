@@ -3,6 +3,7 @@
 from src.reports.services.export.export_service import ReportExportService
 from src.reports.services.export.json_formatter import JsonExportFormatter
 from src.reports.services.statistics import (
+    get_brand_position_calculator,
     get_brand_visibility_calculator,
     get_citation_domain_calculator,
     get_domain_mention_calculator,
@@ -20,6 +21,7 @@ def get_report_export_service() -> ReportExportService:
     if _report_export_service is None:
         _report_export_service = ReportExportService(
             visibility_calculator=get_brand_visibility_calculator(),
+            position_calculator=get_brand_position_calculator(),
             domain_mention_calculator=get_domain_mention_calculator(),
             citation_domain_calculator=get_citation_domain_calculator(),
         )

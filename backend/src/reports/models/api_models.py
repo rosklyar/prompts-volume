@@ -12,6 +12,7 @@ from src.reports.models.brand_models import (
 )
 from src.reports.models.citation_models import CitationLeaderboardModel
 from src.reports.models.export_models import (
+    BrandPositionScore,
     BrandVisibilityScore,
     CitationDomainStat,
     DomainMentionStat,
@@ -135,6 +136,7 @@ class ReportStatistics(BaseModel):
     """Pre-calculated statistics for a report."""
 
     brand_visibility: List[BrandVisibilityScore] = []
+    brand_positions: List[BrandPositionScore] = []
     domain_mentions: List[DomainMentionStat] = []
     citation_domains: List[CitationDomainStat] = []
 

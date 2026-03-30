@@ -6,7 +6,7 @@ import type { CompetitorInfo } from "@/types/groups"
 
 interface PromptReviewStepProps {
   selectedClusters: ScoredCluster[]
-  businessDomain: string
+  businessDomainId: number
   language: string
   countryId: number
   brand: { name: string; domain?: string | null; variations: string[] }
@@ -47,7 +47,7 @@ function PromptItem({
 
 export function PromptReviewStep({
   selectedClusters,
-  businessDomain,
+  businessDomainId,
   language,
   countryId,
   brand,
@@ -73,7 +73,7 @@ export function PromptReviewStep({
             keywords: c.keywords,
             title: c.title,
           })),
-          business_domain: businessDomain,
+          business_domain_id: businessDomainId,
           language,
         },
         {
@@ -198,7 +198,7 @@ export function PromptReviewStep({
                     keywords: c.keywords,
                     title: c.title,
                   })),
-                  business_domain: businessDomain,
+                  business_domain_id: businessDomainId,
                   language,
                 },
                 {
