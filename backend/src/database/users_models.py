@@ -337,9 +337,18 @@ class GeoAuditResult(UsersBase):
         index=True,
     )  # No FK - application-level integrity
     url: Mapped[str] = mapped_column(String(2048), nullable=False)
-    score_total: Mapped[float] = mapped_column(Float, nullable=False)
-    score_rating: Mapped[str] = mapped_column(String(20), nullable=False)
-    result_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        server_default=text("'completed'"),
+    )
+    score_total: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    score_rating: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    result_json: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    pages_discovered: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    pages_audited: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    pages_total: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -348,4 +357,29 @@ class GeoAuditResult(UsersBase):
     )
 
     def __repr__(self) -> str:
-        return f"<GeoAuditResult(id={self.id}, user_id='{self.user_id}', score={self.score_total})>"
+        return f"<GeoAuditResult(id={self.id}, user_id='{self.user_id}', status='{self.status}', score={self.score_total})>"
+
+
+class GeoAuditPageResult(UsersBase):
+    """Per-page audit result linked to a site-level audit."""
+
+    __tablename__ = "geo_audit_page_results"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    audit_id: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        index=True,
+    )  # Logical FK to geo_audit_results.id
+    url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    score_total: Mapped[float] = mapped_column(Float, nullable=False)
+    score_rating: Mapped[str] = mapped_column(String(20), nullable=False)
+    result_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("NOW()"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<GeoAuditPageResult(id={self.id}, audit_id={self.audit_id}, url='{self.url[:50]}')>"

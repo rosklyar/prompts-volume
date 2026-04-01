@@ -1,6 +1,6 @@
 import { RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import type { GeoAuditStoredResponse, ScoreRating } from "@/types/geo-audit"
+import type { ScoreRating } from "@/types/geo-audit"
 
 const RATING_COLORS: Record<ScoreRating, string> = {
   Critical: "text-red-600 bg-red-50 border-red-200",
@@ -18,14 +18,24 @@ const SCORE_RING_COLORS: Record<ScoreRating, string> = {
   Excellent: "#059669",
 }
 
+interface ScoreHeaderAudit {
+  url: string
+  score_total: number | null
+  score_rating: string | null
+  created_at: string
+}
+
 interface ScoreHeaderProps {
-  audit: GeoAuditStoredResponse
+  audit: ScoreHeaderAudit
   onRerun: () => void
   isRerunning: boolean
   cooldownSeconds: number | null
+  pageCount?: number
 }
 
-export function ScoreHeader({ audit, onRerun, isRerunning, cooldownSeconds }: ScoreHeaderProps) {
+export function ScoreHeader({ audit, onRerun, isRerunning, cooldownSeconds, pageCount }: ScoreHeaderProps) {
+  if (audit.score_total === null || !audit.score_rating) return null
+
   const rating = audit.score_rating as ScoreRating
   const ringColor = SCORE_RING_COLORS[rating]
   const pct = Math.round(audit.score_total)
@@ -59,6 +69,9 @@ export function ScoreHeader({ audit, onRerun, isRerunning, cooldownSeconds }: Sc
           <span className="text-sm text-gray-400">{relativeTime}</span>
         </div>
         <p className="text-sm text-gray-500 truncate font-mono">{audit.url}</p>
+        {pageCount !== undefined && pageCount > 0 && (
+          <p className="text-xs text-gray-400">{pageCount} pages audited</p>
+        )}
       </div>
 
       {/* Re-run button */}

@@ -1,22 +1,39 @@
-import { useEffect, useRef, useState } from "react"
-import { useLatestGeoAudit, useRunGeoAudit } from "@/hooks/useGeoAudit"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { useLatestGeoAudit, useRunGeoAudit, useAuditProgress, useAuditPages } from "@/hooks/useGeoAudit"
 import { ApiError } from "@/client/api"
 import { ScoreHeader } from "./ScoreHeader"
-import { ExtractionCard } from "./ExtractionCard"
-import { ValidationCard } from "./ValidationCard"
-import { RichResultsCard } from "./RichResultsCard"
-import { GeoReadinessCard } from "./GeoReadinessCard"
-import { DeprecatedSchemasCard } from "./DeprecatedSchemasCard"
-import { JsWarningsCard } from "./JsWarningsCard"
+import { AuditProgressBar } from "./AuditProgressBar"
+import { PageListCard } from "./PageListCard"
+import { PageDetailView } from "./PageDetailView"
 import { TemplatesCard } from "./TemplatesCard"
 import { ScoreBreakdownCard } from "./ScoreBreakdownCard"
-import type { GeoAuditStoredResponse } from "@/types/geo-audit"
+import type { PageAuditStoredResponse, PageSummary, SiteAuditStoredResponse } from "@/types/geo-audit"
 
 export function GeoAuditView() {
   const latestQuery = useLatestGeoAudit()
   const runAudit = useRunGeoAudit()
   const [cooldownSeconds, setCooldownSeconds] = useState<number | null>(null)
+  const [manualAuditId, setManualAuditId] = useState<number | null>(null)
+  const [selectedPage, setSelectedPage] = useState<PageAuditStoredResponse | null>(null)
   const autoTriggered = useRef(false)
+
+  // Derive active audit ID from latest query or manual trigger (no setState in effect)
+  const activeAuditId = useMemo(() => {
+    if (manualAuditId) return manualAuditId
+    if (latestQuery.data) {
+      const status = latestQuery.data.status
+      if (status === "pending" || status === "discovering" || status === "auditing") {
+        return latestQuery.data.id
+      }
+    }
+    return null
+  }, [manualAuditId, latestQuery.data])
+
+  // Track in-progress audit for polling
+  const progressQuery = useAuditProgress(activeAuditId)
+  const pagesQuery = useAuditPages(
+    activeAuditId && progressQuery.data?.status === "completed" ? activeAuditId : null
+  )
 
   // Auto-trigger on first visit when no prior audit exists
   useEffect(() => {
@@ -30,7 +47,11 @@ export function GeoAuditView() {
 
     if (is404 && runAudit.isIdle) {
       autoTriggered.current = true
-      runAudit.mutate(undefined)
+      runAudit.mutate(undefined, {
+        onSuccess: (data) => {
+          setManualAuditId(data.id)
+        },
+      })
     }
   }, [latestQuery.isLoading, latestQuery.isError, latestQuery.error, runAudit])
 
@@ -51,6 +72,10 @@ export function GeoAuditView() {
 
   const handleRerun = () => {
     runAudit.mutate(undefined, {
+      onSuccess: (data) => {
+        setManualAuditId(data.id)
+        setSelectedPage(null)
+      },
       onError: (err) => {
         if (err instanceof ApiError && err.status === 429 && err.retryAfter) {
           setCooldownSeconds(err.retryAfter)
@@ -59,70 +84,118 @@ export function GeoAuditView() {
     })
   }
 
-  // Determine what data to show: mutation result, query result, or nothing
-  const audit: GeoAuditStoredResponse | undefined = runAudit.data ?? latestQuery.data
+  const handlePageClick = (page: PageSummary) => {
+    const stored = pagesQuery.data?.find((p) => p.url === page.url)
+    if (stored) {
+      setSelectedPage(stored)
+    }
+  }
 
   // Loading: initial query loading
   if (latestQuery.isLoading) {
     return <LoadingState message="Loading..." />
   }
 
-  // Running audit (auto-triggered or manual re-run)
+  // Show progress if audit is running
+  if (progressQuery.data && progressQuery.data.status !== "completed" && progressQuery.data.status !== "failed") {
+    return (
+      <div className="max-w-4xl mx-auto">
+        <AuditProgressBar progress={progressQuery.data} />
+      </div>
+    )
+  }
+
+  // Running audit (auto-triggered, before we have an audit ID)
   if (runAudit.isPending) {
-    return <LoadingState message="Running GEO audit on your brand domain..." />
+    return <LoadingState message="Starting GEO audit on your brand domain..." />
   }
 
   // Error from auto-trigger (non-429)
-  if (!audit && runAudit.isError) {
+  if (!latestQuery.data && runAudit.isError) {
     const err = runAudit.error
     if (err instanceof ApiError && err.status === 400) {
       return (
         <ErrorState message="No brand domain configured. Please set up your brand in Settings to run a GEO audit." />
       )
     }
-    if (err instanceof ApiError && err.status === 422) {
-      return (
-        <ErrorState
-          message="Could not fetch the URL. Please check it is accessible."
-          onRetry={handleRerun}
-        />
-      )
-    }
     return <ErrorState message={err.message} onRetry={handleRerun} />
   }
 
-  // No audit data at all (shouldn't normally happen given auto-trigger)
-  if (!audit) {
+  // Failed progress
+  if (progressQuery.data?.status === "failed") {
+    return (
+      <div className="max-w-4xl mx-auto space-y-4">
+        <AuditProgressBar progress={progressQuery.data} />
+        <ErrorState
+          message={progressQuery.data.error_message ?? "Audit failed unexpectedly."}
+          onRetry={handleRerun}
+        />
+      </div>
+    )
+  }
+
+  // No audit data at all
+  const audit = latestQuery.data
+  if (!audit || audit.status !== "completed" || !audit.result) {
     return <LoadingState message="Preparing audit..." />
   }
 
-  // Show results
-  const result = audit.result
+  // Page detail drill-down
+  if (selectedPage) {
+    return (
+      <div className="max-w-4xl mx-auto">
+        <PageDetailView
+          pageUrl={selectedPage.url}
+          result={selectedPage.result}
+          onBack={() => setSelectedPage(null)}
+        />
+      </div>
+    )
+  }
+
+  // Show completed site-level results
+  const siteResult = audit.result
   return (
     <div className="max-w-4xl mx-auto space-y-4">
-      <ScoreHeader
+      <SiteScoreHeader
         audit={audit}
         onRerun={handleRerun}
         isRerunning={runAudit.isPending}
         cooldownSeconds={cooldownSeconds}
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <ExtractionCard extraction={result.extraction} />
-        <ValidationCard validation={result.validation} />
-        <RichResultsCard richResults={result.rich_results} />
-        <GeoReadinessCard geoReadiness={result.geo_readiness} />
-      </div>
+      <PageListCard pages={siteResult.pages} onPageClick={handlePageClick} />
 
-      <TemplatesCard templates={result.recommended_templates} />
+      <TemplatesCard templates={siteResult.recommended_templates} />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <DeprecatedSchemasCard deprecatedSchemas={result.deprecated_schemas} />
-        <JsWarningsCard warnings={result.js_rendering_warnings} />
-      </div>
-
-      <ScoreBreakdownCard breakdown={result.score.breakdown} />
+      {siteResult.site_score && (
+        <ScoreBreakdownCard breakdown={siteResult.site_score.breakdown} />
+      )}
     </div>
+  )
+}
+
+function SiteScoreHeader({
+  audit,
+  onRerun,
+  isRerunning,
+  cooldownSeconds,
+}: {
+  audit: SiteAuditStoredResponse
+  onRerun: () => void
+  isRerunning: boolean
+  cooldownSeconds: number | null
+}) {
+  if (!audit.score_total || !audit.score_rating) return null
+
+  return (
+    <ScoreHeader
+      audit={audit}
+      onRerun={onRerun}
+      isRerunning={isRerunning}
+      cooldownSeconds={cooldownSeconds}
+      pageCount={audit.pages_total}
+    />
   )
 }
 

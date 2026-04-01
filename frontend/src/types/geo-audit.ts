@@ -1,5 +1,7 @@
 export type ScoreRating = "Critical" | "Poor" | "Fair" | "Good" | "Excellent"
 
+export type AuditStatus = "pending" | "discovering" | "auditing" | "completed" | "failed"
+
 export interface DetectedSchema {
   format: string
   schema_type: string
@@ -86,6 +88,73 @@ export interface AuditScore {
   rating: ScoreRating
   breakdown: ScoreBreakdown[]
 }
+
+// --- Per-page audit result (no templates) ---
+
+export interface PageAuditResult {
+  url: string
+  extraction: ExtractionResult
+  validation: ValidationResult
+  rich_results: RichResultCheck
+  geo_readiness: GeoReadiness
+  deprecated_schemas: DeprecatedSchema[]
+  js_rendering_warnings: JsRenderingWarning[]
+  score: AuditScore
+}
+
+export interface PageAuditStoredResponse {
+  id: number
+  audit_id: number
+  url: string
+  score_total: number
+  score_rating: ScoreRating
+  result: PageAuditResult
+  created_at: string
+}
+
+// --- Site-level audit ---
+
+export interface PageSummary {
+  id?: number
+  url: string
+  score_total: number
+  score_rating: string
+}
+
+export interface SiteAuditResult {
+  url: string
+  site_score: AuditScore
+  pages: PageSummary[]
+  recommended_templates: GeneratedTemplate[]
+}
+
+export interface SiteAuditStoredResponse {
+  id: number
+  url: string
+  status: AuditStatus
+  score_total: number | null
+  score_rating: ScoreRating | null
+  pages_discovered: number
+  pages_audited: number
+  pages_total: number
+  result: SiteAuditResult | null
+  error_message: string | null
+  created_at: string
+}
+
+// --- Progress polling ---
+
+export interface GeoAuditProgressResponse {
+  id: number
+  status: AuditStatus
+  url: string
+  pages_discovered: number
+  pages_audited: number
+  pages_total: number
+  error_message: string | null
+}
+
+// Legacy single-page types (kept for backward compatibility)
 
 export interface GeoAuditResult {
   url: string

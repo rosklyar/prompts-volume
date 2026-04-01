@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     # GEO Audit configuration
     geo_audit_model: str = "gpt-4o-mini"
     geo_audit_cooldown_hours: int = 24
+    geo_audit_max_pages: int = 25
+    geo_audit_default_crawl_delay: float = 0.2
+    geo_audit_max_concurrent_pages: int = 5
 
     # Clustering configuration
     clustering_min_cluster_size: int = 5

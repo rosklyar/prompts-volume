@@ -1,18 +1,20 @@
 """API router for GEO schema audit."""
 
+import asyncio
 import math
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
 from src.auth.deps import CurrentUser
-from src.database.users_models import GeoAuditResult
+from src.database.users_models import GeoAuditPageResult, GeoAuditResult
 from src.geo_audit.exceptions import FetchError
 from src.geo_audit.models.api_models import (
     AuditScoreResponse,
     DeprecatedSchemaResponse,
     DetectedSchemaResponse,
     ExtractionResponse,
+    GeoAuditProgressResponse,
     GeoAuditRequest,
     GeoAuditResponse,
     GeoAuditStoredResponse,
@@ -20,39 +22,44 @@ from src.geo_audit.models.api_models import (
     GeoSignalResponse,
     GeneratedTemplateResponse,
     JsRenderingWarningResponse,
+    PageAuditResponse,
+    PageAuditStoredResponse,
     RichResultCheckResponse,
     RichResultGapResponse,
     SameAsLinkResponse,
     ScoreBreakdownResponse,
+    SiteAuditResponse,
+    SiteAuditStoredResponse,
+    PageSummaryResponse,
     ValidationIssueResponse,
     ValidationResponse,
 )
 from src.geo_audit.models.domain_models import GeoAuditReport
-from src.geo_audit.services import GeoAuditOrchestratorDep, GeoAuditServiceDep
+from src.geo_audit.services import GeoAuditOrchestratorDep, GeoAuditServiceDep, SiteAuditOrchestratorDep
 from src.onboarding.services import PreferencesServiceDep
 
 router = APIRouter(prefix="/api/v1", tags=["geo-audit"])
 
 
-@router.get("/geo-audit", response_model=GeoAuditStoredResponse)
+@router.get("/geo-audit", response_model=SiteAuditStoredResponse)
 async def get_latest_audit(
     current_user: CurrentUser,
     audit_service: GeoAuditServiceDep,
-) -> GeoAuditStoredResponse:
+) -> SiteAuditStoredResponse:
     result = await audit_service.get_latest(current_user.id)
     if result is None:
         raise HTTPException(status_code=404, detail="No audit results found")
-    return _to_stored_response(result)
+    return _to_site_stored_response(result)
 
 
-@router.post("/geo-audit", response_model=GeoAuditStoredResponse)
+@router.post("/geo-audit", response_model=GeoAuditProgressResponse)
 async def run_geo_audit(
     current_user: CurrentUser,
-    orchestrator: GeoAuditOrchestratorDep,
+    site_orchestrator: SiteAuditOrchestratorDep,
     audit_service: GeoAuditServiceDep,
     preferences_service: PreferencesServiceDep,
     body: GeoAuditRequest | None = None,
-) -> GeoAuditStoredResponse:
+) -> GeoAuditProgressResponse:
     # 1. Resolve URL
     url = _resolve_url(body)
     if url is None:
@@ -76,21 +83,72 @@ async def run_geo_audit(
             headers={"Retry-After": str(seconds)},
         )
 
-    # 3. Run audit
-    try:
-        report = await orchestrator.audit(url)
-    except FetchError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+    # 3. Create pending audit and launch background job
+    pending = await audit_service.create_pending(user_id=current_user.id, url=url)
+    asyncio.create_task(site_orchestrator.run(audit_id=pending.id, base_url=url))
 
-    # 4. Convert and persist
-    response = _to_response(report)
-    stored = await audit_service.save(
-        user_id=current_user.id,
+    return GeoAuditProgressResponse(
+        id=pending.id,
+        status="pending",
         url=url,
-        result=response,
+        pages_discovered=0,
+        pages_audited=0,
+        pages_total=0,
+        error_message=None,
     )
 
-    return _to_stored_response(stored)
+
+@router.get("/geo-audit/{audit_id}/progress", response_model=GeoAuditProgressResponse)
+async def get_audit_progress(
+    audit_id: int,
+    current_user: CurrentUser,
+    audit_service: GeoAuditServiceDep,
+) -> GeoAuditProgressResponse:
+    result = await audit_service.get_by_id(audit_id)
+    if result is None or result.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Audit not found")
+
+    return GeoAuditProgressResponse(
+        id=result.id,
+        status=result.status,
+        url=result.url,
+        pages_discovered=result.pages_discovered,
+        pages_audited=result.pages_audited,
+        pages_total=result.pages_total,
+        error_message=result.error_message,
+    )
+
+
+@router.get("/geo-audit/{audit_id}/pages", response_model=list[PageAuditStoredResponse])
+async def get_audit_pages(
+    audit_id: int,
+    current_user: CurrentUser,
+    audit_service: GeoAuditServiceDep,
+) -> list[PageAuditStoredResponse]:
+    audit = await audit_service.get_by_id(audit_id)
+    if audit is None or audit.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Audit not found")
+
+    pages = await audit_service.get_page_results(audit_id)
+    return [_to_page_stored_response(p) for p in pages]
+
+
+@router.get("/geo-audit/{audit_id}/pages/{page_id}", response_model=PageAuditStoredResponse)
+async def get_audit_page(
+    audit_id: int,
+    page_id: int,
+    current_user: CurrentUser,
+    audit_service: GeoAuditServiceDep,
+) -> PageAuditStoredResponse:
+    audit = await audit_service.get_by_id(audit_id)
+    if audit is None or audit.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Audit not found")
+
+    page = await audit_service.get_page_result(page_id)
+    if page is None or page.audit_id != audit_id:
+        raise HTTPException(status_code=404, detail="Page result not found")
+
+    return _to_page_stored_response(page)
 
 
 def _resolve_url(body: GeoAuditRequest | None) -> str | None:
@@ -99,112 +157,41 @@ def _resolve_url(body: GeoAuditRequest | None) -> str | None:
     return str(body.url)
 
 
-def _to_stored_response(row: GeoAuditResult) -> GeoAuditStoredResponse:
-    return GeoAuditStoredResponse(
+def _to_site_stored_response(row: GeoAuditResult) -> SiteAuditStoredResponse:
+    site_result = None
+    if row.status == "completed" and row.result_json is not None:
+        site_result = SiteAuditResponse(
+            url=row.url,
+            site_score=AuditScoreResponse(**row.result_json["site_score"]),
+            pages=[PageSummaryResponse(**p) for p in row.result_json.get("pages", [])],
+            recommended_templates=[
+                GeneratedTemplateResponse(**t)
+                for t in row.result_json.get("recommended_templates", [])
+            ],
+        )
+
+    return SiteAuditStoredResponse(
         id=row.id,
         url=row.url,
-        score_total=float(row.score_total),
+        status=row.status,
+        score_total=row.score_total,
         score_rating=row.score_rating,
-        result=GeoAuditResponse(**row.result_json),
+        pages_discovered=row.pages_discovered,
+        pages_audited=row.pages_audited,
+        pages_total=row.pages_total,
+        result=site_result,
+        error_message=row.error_message,
         created_at=row.created_at,
     )
 
 
-def _to_response(report: GeoAuditReport) -> GeoAuditResponse:
-    return GeoAuditResponse(
-        url=report.url,
-        extraction=ExtractionResponse(
-            total_blocks=report.extraction.total_blocks,
-            formats_found=report.extraction.formats_found,
-            schema_types_found=report.extraction.schema_types_found,
-            schemas=[
-                DetectedSchemaResponse(
-                    format=s.format,
-                    schema_type=s.schema_type,
-                    properties=s.properties,
-                )
-                for s in report.extraction.schemas
-            ],
-        ),
-        validation=ValidationResponse(
-            valid_count=report.validation.valid_count,
-            invalid_count=report.validation.invalid_count,
-            issues=[
-                ValidationIssueResponse(
-                    schema_type=i.schema_type,
-                    severity=i.severity,
-                    field=i.field,
-                    message=i.message,
-                )
-                for i in report.validation.issues
-            ],
-        ),
-        rich_results=RichResultCheckResponse(
-            eligible=report.rich_results.eligible,
-            gaps=[
-                RichResultGapResponse(
-                    schema_type=g.schema_type,
-                    status=g.status,
-                    missing_required=g.missing_required,
-                    missing_recommended=g.missing_recommended,
-                )
-                for g in report.rich_results.gaps
-            ],
-        ),
-        geo_readiness=GeoReadinessResponse(
-            signals=[
-                GeoSignalResponse(
-                    name=s.name,
-                    present=s.present,
-                    completeness=s.completeness,
-                    details=s.details,
-                )
-                for s in report.geo_readiness.signals
-            ],
-            same_as_links=[
-                SameAsLinkResponse(
-                    platform=l.platform,
-                    linked=l.linked,
-                    url=l.url,
-                )
-                for l in report.geo_readiness.same_as_links
-            ],
-            overall_readiness=report.geo_readiness.overall_readiness,
-        ),
-        deprecated_schemas=[
-            DeprecatedSchemaResponse(
-                schema_type=d.schema_type,
-                status=d.status,
-                message=d.message,
-            )
-            for d in report.deprecated_schemas
-        ],
-        js_rendering_warnings=[
-            JsRenderingWarningResponse(
-                framework=w.framework,
-                confidence=w.confidence,
-                message=w.message,
-            )
-            for w in report.js_rendering_warnings
-        ],
-        recommended_templates=[
-            GeneratedTemplateResponse(
-                schema_type=t.schema_type,
-                json_ld=t.json_ld,
-                rationale=t.rationale,
-            )
-            for t in report.recommended_templates
-        ],
-        score=AuditScoreResponse(
-            total=report.score.total,
-            rating=report.score.rating,
-            breakdown=[
-                ScoreBreakdownResponse(
-                    component=b.component,
-                    max_points=b.max_points,
-                    earned_points=b.earned_points,
-                )
-                for b in report.score.breakdown
-            ],
-        ),
+def _to_page_stored_response(row: GeoAuditPageResult) -> PageAuditStoredResponse:
+    return PageAuditStoredResponse(
+        id=row.id,
+        audit_id=row.audit_id,
+        url=row.url,
+        score_total=float(row.score_total),
+        score_rating=row.score_rating,
+        result=PageAuditResponse(**row.result_json),
+        created_at=row.created_at,
     )

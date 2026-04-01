@@ -2,7 +2,7 @@
 
 import logging
 
-from src.geo_audit.models.domain_models import GeoAuditReport
+from src.geo_audit.models.domain_models import GeoAuditReport, PageAuditReport
 from src.geo_audit.services.audit_scorer import AuditScorer
 from src.geo_audit.services.deprecation_checker import DeprecationChecker
 from src.geo_audit.services.geo_readiness_evaluator import GeoReadinessEvaluator
@@ -43,38 +43,43 @@ class GeoAuditOrchestrator:
         self._scorer = scorer
 
     async def audit(self, url: str) -> GeoAuditReport:
+        """Full single-page audit including HTML fetch and template generation."""
         logger.info("Starting GEO audit for %s", url)
 
-        # Step 1: Fetch HTML
         html = await self._html_fetcher.fetch(url)
+        page_report = self.audit_page(html, url)
 
-        # Step 2: Extract structured data
-        extraction = self._extractor.extract(html)
-        logger.info("Found %d schema blocks", extraction.total_blocks)
-
-        # Step 3: Validate schemas
-        validation = self._validator.validate(extraction.schemas)
-
-        # Step 4: Check rich result eligibility
-        rich_results = self._rich_result_checker.check(extraction.schemas)
-
-        # Step 5: Evaluate GEO readiness
-        geo_readiness = self._geo_readiness_evaluator.evaluate(extraction.schemas)
-
-        # Step 6: Flag deprecated schemas
-        deprecated = self._deprecation_checker.check(extraction.schemas)
-
-        # Step 7: Detect JS rendering risks
-        js_warnings = self._js_rendering_detector.detect(html)
-
-        # Step 8: Generate recommended templates (async — OpenAI call)
         templates = await self._template_generator.generate(
             url=url,
-            extraction=extraction,
-            geo_readiness=geo_readiness,
+            extraction=page_report.extraction,
+            geo_readiness=page_report.geo_readiness,
         )
 
-        # Step 9: Compute score
+        logger.info("GEO audit complete for %s — score: %s/100", url, page_report.score.total)
+
+        return GeoAuditReport(
+            url=url,
+            extraction=page_report.extraction,
+            validation=page_report.validation,
+            rich_results=page_report.rich_results,
+            geo_readiness=page_report.geo_readiness,
+            deprecated_schemas=page_report.deprecated_schemas,
+            js_rendering_warnings=page_report.js_rendering_warnings,
+            recommended_templates=templates,
+            score=page_report.score,
+        )
+
+    def audit_page(self, html: str, url: str) -> PageAuditReport:
+        """Run steps 2-7 and 9 on already-fetched HTML. No templates."""
+        extraction = self._extractor.extract(html)
+        logger.info("Found %d schema blocks on %s", extraction.total_blocks, url)
+
+        validation = self._validator.validate(extraction.schemas)
+        rich_results = self._rich_result_checker.check(extraction.schemas)
+        geo_readiness = self._geo_readiness_evaluator.evaluate(extraction.schemas)
+        deprecated = self._deprecation_checker.check(extraction.schemas)
+        js_warnings = self._js_rendering_detector.detect(html)
+
         score = self._scorer.score(
             extraction=extraction,
             validation=validation,
@@ -82,9 +87,7 @@ class GeoAuditOrchestrator:
             deprecated=deprecated,
         )
 
-        logger.info("GEO audit complete for %s — score: %s/100", url, score.total)
-
-        return GeoAuditReport(
+        return PageAuditReport(
             url=url,
             extraction=extraction,
             validation=validation,
@@ -92,6 +95,5 @@ class GeoAuditOrchestrator:
             geo_readiness=geo_readiness,
             deprecated_schemas=deprecated,
             js_rendering_warnings=js_warnings,
-            recommended_templates=templates,
             score=score,
         )

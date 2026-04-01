@@ -5,6 +5,8 @@ from typing import Literal
 
 SchemaFormat = Literal["json-ld", "microdata", "rdfa"]
 
+AuditStatus = Literal["pending", "discovering", "auditing", "completed", "failed"]
+
 
 @dataclass
 class DetectedSchema:
@@ -149,3 +151,54 @@ class GeoAuditReport:
     js_rendering_warnings: list[JsRenderingWarning]
     recommended_templates: list[GeneratedTemplate]
     score: AuditScore
+
+
+# --- Multi-page (site) audit models ---
+
+
+@dataclass
+class RobotsResult:
+    """Parsed robots.txt data for a domain."""
+
+    sitemap_urls: list[str] = field(default_factory=list)
+    disallow_rules: list[str] = field(default_factory=list)
+    crawl_delay: float = 0.2  # seconds
+
+
+@dataclass
+class PageDiscoveryResult:
+    """Result of page discovery (sitemap + BFS crawl)."""
+
+    urls: list[str] = field(default_factory=list)
+    robots: RobotsResult = field(default_factory=RobotsResult)
+    sitemap_page_count: int = 0
+    crawled_page_count: int = 0
+
+
+@dataclass
+class PageAuditReport:
+    """Per-page audit result (no templates — those are site-wide)."""
+
+    url: str
+    extraction: ExtractionResult
+    validation: ValidationResult
+    rich_results: RichResultCheckResult
+    geo_readiness: GeoReadinessResult
+    deprecated_schemas: list[DeprecatedSchemaWarning]
+    js_rendering_warnings: list[JsRenderingWarning]
+    score: AuditScore
+
+
+@dataclass
+class SiteAuditReport:
+    """Full site-level report with per-page details."""
+
+    url: str
+    status: AuditStatus
+    pages_discovered: int
+    pages_audited: int
+    pages_total: int
+    page_reports: list[PageAuditReport] = field(default_factory=list)
+    recommended_templates: list[GeneratedTemplate] = field(default_factory=list)
+    site_score: AuditScore | None = None
+    discovery: PageDiscoveryResult = field(default_factory=PageDiscoveryResult)
