@@ -373,10 +373,14 @@ export function LinearOnboarding() {
     }
   }, [brand, countryId, businessDomainId, completeOnboarding, createGroupsFromSelection, getFinalCompetitors])
 
-  // Step 4 → step 5 (cluster discovery)
+  // Step 4 → skip inspiration, go to topics (7) or submit
   const handleStep4Continue = useCallback(() => {
-    setCurrentStep(5)
-  }, [])
+    if (shouldShowTopicSteps) {
+      setCurrentStep(7)
+    } else {
+      handleSubmit()
+    }
+  }, [shouldShowTopicSteps, handleSubmit])
 
   // Step 5: Clusters selected → step 6 (prompt review)
   const handleClustersSelected = useCallback((clusters: ScoredCluster[]) => {
@@ -446,7 +450,7 @@ export function LinearOnboarding() {
 
   // Calculate visible steps (exclude complete step from indicator)
   // Base: 4 (welcome, market, brand, competitors) + 2 (inspiration) + topic steps
-  const visibleSteps = shouldShowTopicSteps ? 8 : 6
+  const visibleSteps = shouldShowTopicSteps ? 6 : 4
 
   return (
     <div className="min-h-screen bg-[#FDFBF7] font-['DM_Sans']">
@@ -462,7 +466,7 @@ export function LinearOnboarding() {
         {/* Step indicator */}
         {currentStep < 9 && (
           <StepIndicator
-            currentStep={shouldShowTopicSteps ? currentStep : Math.min(currentStep, 6)}
+            currentStep={currentStep >= 7 ? currentStep - 2 : currentStep}
             totalSteps={visibleSteps}
           />
         )}

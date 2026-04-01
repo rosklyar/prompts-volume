@@ -1,5 +1,9 @@
 import type { AggregatedCitationsResponse, BrandInfo, CompetitorInfo, TopicInput } from "@/types/groups"
-import type { GeoAuditStoredResponse } from "@/types/geo-audit"
+import type {
+  GeoAuditProgressResponse,
+  PageAuditStoredResponse,
+  SiteAuditStoredResponse,
+} from "@/types/geo-audit"
 import type {
   OnboardingStatusResponse,
   UserPreferencesResponse,
@@ -1579,17 +1583,32 @@ export const keywordInspirationApi = {
 }
 
 export const geoAuditApi = {
-  async getLatest(): Promise<GeoAuditStoredResponse> {
+  async getLatest(): Promise<SiteAuditStoredResponse> {
     const response = await fetchWithAuth("/api/v1/geo-audit")
     return response.json()
   },
 
-  async runAudit(url?: string): Promise<GeoAuditStoredResponse> {
+  async runAudit(url?: string): Promise<GeoAuditProgressResponse> {
     const response = await fetchWithAuth("/api/v1/geo-audit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: url ? JSON.stringify({ url }) : undefined,
     })
+    return response.json()
+  },
+
+  async getProgress(auditId: number): Promise<GeoAuditProgressResponse> {
+    const response = await fetchWithAuth(`/api/v1/geo-audit/${auditId}/progress`)
+    return response.json()
+  },
+
+  async getPages(auditId: number): Promise<PageAuditStoredResponse[]> {
+    const response = await fetchWithAuth(`/api/v1/geo-audit/${auditId}/pages`)
+    return response.json()
+  },
+
+  async getPage(auditId: number, pageId: number): Promise<PageAuditStoredResponse> {
+    const response = await fetchWithAuth(`/api/v1/geo-audit/${auditId}/pages/${pageId}`)
     return response.json()
   },
 }

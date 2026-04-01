@@ -1,7 +1,7 @@
 """APScheduler configuration for daily scheduled report jobs."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -94,6 +94,15 @@ async def setup_scheduler() -> None:
         id="chunk_timeout_retry_checker",
         replace_existing=True,
         name="Chunk timeout and retry checker",
+    )
+
+    # Job 7: Clean up stale geo audits every 10 minutes
+    scheduler.add_job(
+        _cleanup_stale_geo_audits_job,
+        trigger=IntervalTrigger(minutes=10),
+        id="stale_geo_audit_cleanup",
+        replace_existing=True,
+        name="Stale GEO audit cleanup",
     )
 
     scheduler.start()
@@ -249,6 +258,38 @@ async def _check_chunk_timeouts_and_retry_job() -> None:
                 )
         except Exception:
             logger.exception("Failed to check chunk timeouts")
+
+
+async def _cleanup_stale_geo_audits_job() -> None:
+    """Mark geo audits stuck in non-terminal status for >30 minutes as failed.
+
+    Runs every 10 minutes.
+    """
+    from src.database.users_models import GeoAuditResult
+
+    session_maker = get_users_session_maker()
+    async with session_maker() as session:
+        try:
+            cutoff = datetime.now(timezone.utc) - timedelta(minutes=30)
+            stuck_statuses = ("pending", "discovering", "auditing")
+            query = (
+                select(GeoAuditResult)
+                .where(
+                    GeoAuditResult.status.in_(stuck_statuses),
+                    GeoAuditResult.created_at < cutoff,
+                )
+            )
+            result = await session.execute(query)
+            stale = result.scalars().all()
+            for audit in stale:
+                audit.status = "failed"
+                audit.error_message = "Audit timed out after 30 minutes"
+            if stale:
+                await session.commit()
+                logger.info("Marked %d stale geo audits as failed", len(stale))
+        except Exception:
+            logger.exception("Failed to clean up stale geo audits")
+            await session.rollback()
 
 
 async def trigger_daily_batch_manually() -> int | None:

@@ -1,6 +1,7 @@
 """Pydantic request/response models for GEO schema audit."""
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field, HttpUrl
 
@@ -114,4 +115,72 @@ class GeoAuditStoredResponse(BaseModel):
     score_total: float
     score_rating: str
     result: GeoAuditResponse
+    created_at: datetime
+
+
+# --- Multi-page (site) audit models ---
+
+AuditStatusType = Literal["pending", "discovering", "auditing", "completed", "failed"]
+
+
+class GeoAuditProgressResponse(BaseModel):
+    id: int
+    status: AuditStatusType
+    url: str
+    pages_discovered: int
+    pages_audited: int
+    pages_total: int
+    error_message: str | None
+
+
+class PageAuditResponse(BaseModel):
+    """Per-page audit result (no templates)."""
+
+    url: str
+    extraction: ExtractionResponse
+    validation: ValidationResponse
+    rich_results: RichResultCheckResponse
+    geo_readiness: GeoReadinessResponse
+    deprecated_schemas: list[DeprecatedSchemaResponse]
+    js_rendering_warnings: list[JsRenderingWarningResponse]
+    score: AuditScoreResponse
+
+
+class PageAuditStoredResponse(BaseModel):
+    id: int
+    audit_id: int
+    url: str
+    score_total: float
+    score_rating: str
+    result: PageAuditResponse
+    created_at: datetime
+
+
+class PageSummaryResponse(BaseModel):
+    id: int
+    url: str
+    score_total: float
+    score_rating: str
+
+
+class SiteAuditResponse(BaseModel):
+    """Site-level audit with page summaries."""
+
+    url: str
+    site_score: AuditScoreResponse
+    pages: list[PageSummaryResponse]
+    recommended_templates: list[GeneratedTemplateResponse]
+
+
+class SiteAuditStoredResponse(BaseModel):
+    id: int
+    url: str
+    status: AuditStatusType
+    score_total: float | None
+    score_rating: str | None
+    pages_discovered: int
+    pages_audited: int
+    pages_total: int
+    result: SiteAuditResponse | None
+    error_message: str | None
     created_at: datetime

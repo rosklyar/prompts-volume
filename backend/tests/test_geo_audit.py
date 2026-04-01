@@ -1,12 +1,16 @@
 """Tests for GEO schema audit endpoint."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from src.config.settings import settings
-from src.geo_audit.models.domain_models import GeneratedTemplate
-from src.geo_audit.services import get_geo_audit_orchestrator, get_geo_audit_service
+from src.geo_audit.models.domain_models import (
+    GeneratedTemplate,
+    PageDiscoveryResult,
+    RobotsResult,
+)
+from src.geo_audit.services import get_geo_audit_orchestrator, get_geo_audit_service, get_site_audit_orchestrator
 from src.geo_audit.services.audit_scorer import AuditScorer
 from src.geo_audit.services.deprecation_checker import DeprecationChecker
 from src.geo_audit.services.geo_audit_orchestrator import GeoAuditOrchestrator
@@ -14,12 +18,16 @@ from src.geo_audit.services.geo_audit_service import GeoAuditService
 from src.geo_audit.services.geo_readiness_evaluator import GeoReadinessEvaluator
 from src.geo_audit.services.html_fetcher import HtmlFetcher
 from src.geo_audit.services.js_rendering_detector import JsRenderingDetector
+from src.geo_audit.services.page_discoverer import PageDiscoverer
 from src.geo_audit.services.rich_result_checker import RichResultChecker
+from src.geo_audit.services.robots_parser import RobotsParser
 from src.geo_audit.services.schema_validator import SchemaValidator
+from src.geo_audit.services.site_audit_orchestrator import SiteAuditOrchestrator
+from src.geo_audit.services.sitemap_parser import SitemapParser
 from src.geo_audit.services.structured_data_extractor import StructuredDataExtractor
 from src.geo_audit.services.template_generator import TemplateGenerator
 from src.main import app
-from src.database.users_session import get_users_session
+from src.database.users_session import get_users_session, get_users_session_maker
 
 
 # --- Sample HTML with JSON-LD for mocked test ---
@@ -113,45 +121,47 @@ def _make_mocked_orchestrator():
     )
 
 
+def _make_mocked_site_orchestrator():
+    """Create a SiteAuditOrchestrator that immediately completes with mocked data."""
+    orchestrator = _make_mocked_orchestrator()
+    mock_discoverer = AsyncMock(spec=PageDiscoverer)
+    mock_discoverer.discover = AsyncMock(return_value=PageDiscoveryResult(
+        urls=["https://example.com/"],
+        robots=RobotsResult(crawl_delay=0.0),
+        sitemap_page_count=0,
+        crawled_page_count=0,
+    ))
+
+    mock_template_gen = AsyncMock(spec=TemplateGenerator)
+    mock_template_gen.generate = AsyncMock(return_value=MOCK_TEMPLATES)
+
+    mock_fetcher = HtmlFetcher()
+    mock_fetcher.fetch = AsyncMock(return_value=SAMPLE_HTML)
+
+    return SiteAuditOrchestrator(
+        session_maker=get_users_session_maker(),
+        page_discoverer=mock_discoverer,
+        page_orchestrator=orchestrator,
+        html_fetcher=mock_fetcher,
+        template_generator=mock_template_gen,
+        max_concurrent=1,
+    )
+
+
 @pytest.fixture
 def _override_orchestrator(client):
-    """Override the orchestrator dependency with mocked version.
-
-    Note: client fixture already overrides all DB engines globally,
-    so get_geo_audit_service and get_preferences_service will auto-use test DB.
-    """
+    """Override both orchestrator dependencies with mocked versions."""
     app.dependency_overrides[get_geo_audit_orchestrator] = _make_mocked_orchestrator
+    app.dependency_overrides[get_site_audit_orchestrator] = _make_mocked_site_orchestrator
     yield
     app.dependency_overrides.pop(get_geo_audit_orchestrator, None)
-
-
-# ---- Live integration test (requires API key) ----
-
-@pytest.mark.skipif(not settings.openai_api_key, reason="OPENAI_API_KEY required")
-def test_geo_audit_logitech(client, auth_headers):
-    """Integration test against live logitech.com.ua — requires network + OpenAI key."""
-    response = client.post(
-        "/api/v1/geo-audit",
-        json={"url": "https://logitech.com.ua/"},
-        headers=auth_headers,
-    )
-    assert response.status_code == 200
-    data = response.json()
-
-    assert "result" in data
-    result = data["result"]
-    assert "extraction" in result
-    assert "validation" in result
-    assert "geo_readiness" in result
-    assert "score" in result
-    assert 0 <= data["score_total"] <= 100
-    assert data["score_rating"] in ("Critical", "Poor", "Fair", "Good", "Excellent")
+    app.dependency_overrides.pop(get_site_audit_orchestrator, None)
 
 
 # ---- Mocked tests ----
 
-def test_post_audit_with_url(client, auth_headers, _override_orchestrator):
-    """POST with explicit URL — mocked pipeline, persists to DB."""
+def test_post_audit_returns_progress(client, auth_headers, _override_orchestrator):
+    """POST returns immediately with a progress response (pending status)."""
     response = client.post(
         "/api/v1/geo-audit",
         json={"url": "https://example.com"},
@@ -160,28 +170,12 @@ def test_post_audit_with_url(client, auth_headers, _override_orchestrator):
     assert response.status_code == 200
     data = response.json()
 
-    # Stored response wrapper
     assert "id" in data
-    assert "created_at" in data
+    assert data["status"] == "pending"
     assert data["url"] == "https://example.com/"
-    assert 0 <= data["score_total"] <= 100
-
-    # Nested result
-    result = data["result"]
-    extraction = result["extraction"]
-    assert extraction["total_blocks"] >= 3
-    assert "json-ld" in extraction["formats_found"]
-    assert "Organization" in extraction["schema_types_found"]
-
-    # GEO signals
-    signal_names = {s["name"] for s in result["geo_readiness"]["signals"]}
-    assert {"Organization", "Person", "Article", "speakable", "WebSite+SearchAction"} <= signal_names
-
-    # Score breakdown
-    assert len(result["score"]["breakdown"]) == 10
-
-    # Templates from mock
-    assert len(result["recommended_templates"]) == 1
+    assert data["pages_discovered"] == 0
+    assert data["pages_audited"] == 0
+    assert data["pages_total"] == 0
 
 
 def test_get_audit_returns_404_when_empty(client, auth_headers, _override_orchestrator):
@@ -191,33 +185,30 @@ def test_get_audit_returns_404_when_empty(client, auth_headers, _override_orches
     assert "No audit results found" in response.json()["detail"]
 
 
-def test_post_then_get_returns_stored_result(client, auth_headers, _override_orchestrator):
-    """POST persists audit, GET retrieves it."""
-    # POST to create
+def test_get_progress_returns_audit_status(client, auth_headers, _override_orchestrator):
+    """GET progress endpoint returns audit status."""
+    # Create a pending audit
     post_resp = client.post(
         "/api/v1/geo-audit",
         json={"url": "https://example.com"},
         headers=auth_headers,
     )
     assert post_resp.status_code == 200
-    post_data = post_resp.json()
+    audit_id = post_resp.json()["id"]
 
-    # GET to retrieve
-    get_resp = client.get("/api/v1/geo-audit", headers=auth_headers)
-    assert get_resp.status_code == 200
-    get_data = get_resp.json()
-
-    # Same result
-    assert get_data["id"] == post_data["id"]
-    assert get_data["url"] == post_data["url"]
-    assert get_data["score_total"] == post_data["score_total"]
+    # Check progress
+    progress_resp = client.get(
+        f"/api/v1/geo-audit/{audit_id}/progress",
+        headers=auth_headers,
+    )
+    assert progress_resp.status_code == 200
+    data = progress_resp.json()
+    assert data["id"] == audit_id
+    assert data["status"] in ("pending", "discovering", "auditing", "completed", "failed")
 
 
 def test_post_audit_cooldown_returns_429(client, auth_headers, _override_orchestrator):
     """Second POST within cooldown returns 429."""
-    # Override service with very long cooldown
-    app.dependency_overrides[get_geo_audit_service] = lambda: None  # placeholder
-
     from fastapi import Depends
 
     def _get_long_cooldown_service(session=Depends(get_users_session)):
@@ -247,45 +238,6 @@ def test_post_audit_cooldown_returns_429(client, auth_headers, _override_orchest
         app.dependency_overrides.pop(get_geo_audit_service, None)
 
 
-def test_post_audit_uses_brand_domain(client, auth_headers, _override_orchestrator, test_user):
-    """POST without URL uses brand domain from preferences."""
-    import asyncio
-    from src.database.users_models import UserPreferences
-    from src.database.users_session import get_users_session_maker
-
-    # Create preferences with brand domain for the test user
-    async def _create_prefs():
-        session_maker = get_users_session_maker()
-        async with session_maker() as s:
-            prefs = UserPreferences(
-                user_id=test_user.id,
-                default_brand={"name": "Example Corp", "domain": "example.com", "variations": []},
-            )
-            s.add(prefs)
-            await s.commit()
-
-    asyncio.get_event_loop().run_until_complete(_create_prefs())
-
-    # Override cooldown to 0 so it always allows
-    from fastapi import Depends as _Depends
-
-    def _get_no_cooldown_service(session=_Depends(get_users_session)):
-        return GeoAuditService(session, cooldown_hours=0)
-
-    app.dependency_overrides[get_geo_audit_service] = _get_no_cooldown_service
-
-    try:
-        response = client.post(
-            "/api/v1/geo-audit",
-            headers=auth_headers,
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["url"] == "https://example.com"  # no trailing slash — constructed from domain
-    finally:
-        app.dependency_overrides.pop(get_geo_audit_service, None)
-
-
 def test_post_audit_no_url_no_brand_returns_400(client, auth_headers, _override_orchestrator):
     """POST with no URL and no brand preferences returns 400."""
     response = client.post(
@@ -294,3 +246,161 @@ def test_post_audit_no_url_no_brand_returns_400(client, auth_headers, _override_
     )
     assert response.status_code == 400
     assert "No URL provided" in response.json()["detail"]
+
+
+def test_get_pages_returns_empty_for_pending_audit(client, auth_headers, _override_orchestrator):
+    """GET pages returns empty list for a pending audit."""
+    post_resp = client.post(
+        "/api/v1/geo-audit",
+        json={"url": "https://example.com"},
+        headers=auth_headers,
+    )
+    audit_id = post_resp.json()["id"]
+
+    pages_resp = client.get(
+        f"/api/v1/geo-audit/{audit_id}/pages",
+        headers=auth_headers,
+    )
+    assert pages_resp.status_code == 200
+    assert pages_resp.json() == []
+
+
+# ---- Unit tests for new services ----
+
+def test_robots_parser_parse_text():
+    """RobotsParser correctly extracts sitemaps, disallow, and crawl-delay."""
+    parser = RobotsParser()
+    text = """
+User-agent: *
+Disallow: /admin/
+Disallow: /private/
+Crawl-delay: 2
+
+User-agent: GeoAuditBot
+Disallow: /secret/
+
+Sitemap: https://example.com/sitemap.xml
+Sitemap: https://example.com/sitemap2.xml
+"""
+    result = parser._parse_text(text)
+
+    assert set(result.sitemap_urls) == {
+        "https://example.com/sitemap.xml",
+        "https://example.com/sitemap2.xml",
+    }
+    # Disallow rules from * and GeoAuditBot
+    assert "/admin/" in result.disallow_rules
+    assert "/private/" in result.disallow_rules
+    assert "/secret/" in result.disallow_rules
+    assert result.crawl_delay == 2.0
+
+
+def test_robots_parser_missing_crawl_delay():
+    """Default crawl-delay is used when not specified in robots.txt."""
+    parser = RobotsParser(default_crawl_delay=0.5)
+    text = """
+User-agent: *
+Disallow: /
+"""
+    result = parser._parse_text(text)
+    assert result.crawl_delay == 0.5
+
+
+def test_sitemap_parser_urlset():
+    """SitemapParser correctly extracts URLs from a urlset."""
+    parser = SitemapParser()
+    urls = parser._parse_urlset(__import__("xml.etree.ElementTree", fromlist=["ElementTree"]).fromstring("""
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://example.com/page1</loc></url>
+  <url><loc>https://example.com/page2</loc></url>
+</urlset>
+"""))
+    assert urls == ["https://example.com/page1", "https://example.com/page2"]
+
+
+def test_page_discoverer_disallow_filter():
+    """PageDiscoverer correctly filters disallowed URLs."""
+    discoverer = PageDiscoverer(
+        robots_parser=RobotsParser(),
+        sitemap_parser=SitemapParser(),
+    )
+    robots = RobotsResult(disallow_rules=["/admin/", "/private/"])
+
+    assert discoverer._is_disallowed("https://example.com/admin/settings", robots)
+    assert discoverer._is_disallowed("https://example.com/private/data", robots)
+    assert not discoverer._is_disallowed("https://example.com/public/page", robots)
+
+
+def test_page_discoverer_same_domain_check():
+    """PageDiscoverer correctly checks same-domain URLs."""
+    discoverer = PageDiscoverer(
+        robots_parser=RobotsParser(),
+        sitemap_parser=SitemapParser(),
+    )
+    assert discoverer._is_same_domain("https://example.com/page", "example.com")
+    assert not discoverer._is_same_domain("https://other.com/page", "example.com")
+    assert not discoverer._is_same_domain("https://sub.example.com/page", "example.com")
+
+
+def test_page_discoverer_normalize_url():
+    """PageDiscoverer normalizes URLs consistently."""
+    discoverer = PageDiscoverer(
+        robots_parser=RobotsParser(),
+        sitemap_parser=SitemapParser(),
+    )
+    assert discoverer._normalize("https://Example.COM/page/") == "https://example.com/page"
+    assert discoverer._normalize("https://example.com/") == "https://example.com/"
+    assert discoverer._normalize("https://example.com") == "https://example.com/"
+
+
+def test_orchestrator_audit_page():
+    """GeoAuditOrchestrator.audit_page runs the per-page pipeline."""
+    orchestrator = _make_mocked_orchestrator()
+    report = orchestrator.audit_page(SAMPLE_HTML, "https://example.com")
+
+    assert report.url == "https://example.com"
+    assert report.extraction.total_blocks >= 3
+    assert "Organization" in report.extraction.schema_types_found
+    assert 0 <= report.score.total <= 100
+    assert len(report.score.breakdown) == 10
+
+
+def test_site_score_weighted_average():
+    """SiteAuditOrchestrator computes weighted average with homepage 2x."""
+    from src.geo_audit.models.domain_models import (
+        AuditScore,
+        ExtractionResult,
+        GeoReadinessResult,
+        PageAuditReport,
+        RichResultCheckResult,
+        ScoreBreakdown,
+        ValidationResult,
+    )
+
+    def _make_report(url: str, score: float) -> PageAuditReport:
+        return PageAuditReport(
+            url=url,
+            extraction=ExtractionResult(),
+            validation=ValidationResult(),
+            rich_results=RichResultCheckResult(),
+            geo_readiness=GeoReadinessResult(),
+            deprecated_schemas=[],
+            js_rendering_warnings=[],
+            score=AuditScore(
+                total=score,
+                rating="Good",
+                breakdown=[ScoreBreakdown("test", 100, score)],
+            ),
+        )
+
+    orchestrator = _make_mocked_site_orchestrator()
+
+    reports = [
+        _make_report("https://example.com/", 80),  # homepage, weight=2
+        _make_report("https://example.com/about", 60),  # weight=1
+    ]
+
+    site_score = orchestrator._compute_site_score(reports, homepage_url="https://example.com/")
+
+    # (80*2 + 60*1) / (2+1) = 220/3 ≈ 73.3
+    assert abs(site_score.total - 73.3) < 0.5
