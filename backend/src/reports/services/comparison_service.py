@@ -35,6 +35,7 @@ class ComparisonService:
         group_id: int,
         user_id: str,
         *,
+        assistant_id: int | None = None,
         country_id: int | None = None,
     ) -> GroupReport | None:
         """Get the most recent report for a group.
@@ -42,6 +43,8 @@ class ComparisonService:
         Args:
             group_id: The prompt group ID
             user_id: The user ID
+            assistant_id: Optional assistant filter. If provided, only returns
+                         reports for that specific assistant.
             country_id: Optional country filter. If provided, only returns
                        reports for that specific country.
         """
@@ -49,6 +52,8 @@ class ComparisonService:
             GroupReport.group_id == group_id,
             GroupReport.user_id == user_id,
         ]
+        if assistant_id is not None:
+            conditions.append(GroupReport.assistant_id == assistant_id)
         if country_id is not None:
             conditions.append(GroupReport.country_id == country_id)
 
@@ -66,6 +71,7 @@ class ComparisonService:
         group_id: int,
         user_id: str,
         *,
+        assistant_id: int | None = None,
         country_id: int | None = None,
     ) -> set[int] | None:
         """Get evaluation IDs from user's latest report for the group.
@@ -73,19 +79,47 @@ class ComparisonService:
         Args:
             group_id: The prompt group ID
             user_id: The user ID
+            assistant_id: Optional assistant filter. If provided, only considers
+                         reports for that specific assistant.
             country_id: Optional country filter. If provided, only considers
                        reports for that specific country.
 
         Returns None if no previous report exists.
         Returns set of evaluation_ids (excluding None values).
         """
-        latest = await self.get_latest_report(group_id, user_id, country_id=country_id)
+        latest = await self.get_latest_report(
+            group_id, user_id, assistant_id=assistant_id, country_id=country_id,
+        )
         if not latest:
             return None
 
         query = select(GroupReportItem.evaluation_id).where(
             GroupReportItem.report_id == latest.id,
             GroupReportItem.evaluation_id.isnot(None),
+        )
+        result = await self._evals_session.execute(query)
+        return set(result.scalars().all())
+
+    async def get_latest_report_prompt_ids(
+        self,
+        group_id: int,
+        user_id: str,
+        *,
+        assistant_id: int | None = None,
+        country_id: int | None = None,
+    ) -> set[int] | None:
+        """Get prompt IDs from user's latest report for the group.
+
+        Returns None if no previous report exists.
+        """
+        latest = await self.get_latest_report(
+            group_id, user_id, assistant_id=assistant_id, country_id=country_id,
+        )
+        if not latest:
+            return None
+
+        query = select(GroupReportItem.prompt_id).where(
+            GroupReportItem.report_id == latest.id,
         )
         result = await self._evals_session.execute(query)
         return set(result.scalars().all())
