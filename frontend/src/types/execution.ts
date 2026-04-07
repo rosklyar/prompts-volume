@@ -40,9 +40,6 @@ export interface ReportDataResponse {
   // Queue info
   prompts_pending_execution: number
   global_queue_size: number
-
-  // Duplicate detection
-  would_be_duplicate: boolean
 }
 
 // === Request Fresh Execution ===
