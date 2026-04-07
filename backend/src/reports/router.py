@@ -44,7 +44,6 @@ from src.reports.models.export_models import (
     ExportReportMeta,
 )
 from src.reports.services import (
-    ComparisonService,
     FreshnessAnalyzerService,
     ReportEnricher,
     ReportRequestService,
@@ -53,7 +52,6 @@ from src.reports.services import (
     SelectionPricingService,
     SelectionValidatorService,
     extract_brands_and_domains,
-    get_comparison_service,
     get_freshness_analyzer,
     get_report_enricher,
     get_report_request_service,
@@ -66,7 +64,6 @@ from src.reports.services.citations_leaderboard_service import (
     CitationsLeaderboardService,
 )
 from src.reports.services import get_citations_leaderboard_service
-from src.reports.services.report_service import DuplicateReportError
 from src.reports.services.export import (
     JsonExportFormatter,
     ReportExportService,
@@ -83,7 +80,6 @@ from src.execution.models.api_models import (
 router = APIRouter(prefix="/reports/api/v1", tags=["reports"])
 
 ReportServiceDep = Annotated[ReportService, Depends(get_report_service)]
-ComparisonServiceDep = Annotated[ComparisonService, Depends(get_comparison_service)]
 PromptGroupServiceDep = Annotated[PromptGroupService, Depends(get_prompt_group_service)]
 ReportEnricherDep = Annotated[ReportEnricher, Depends(get_report_enricher)]
 FreshnessAnalyzerDep = Annotated[FreshnessAnalyzerService, Depends(get_freshness_analyzer)]
@@ -122,9 +118,6 @@ async def get_report_data(
         raise to_http_exception(GroupNotFoundError(group_id))
 
     country_id = group.country_id
-
-    # Get comparison service for duplicate detection
-    comparison_service = ComparisonService(prompts_session, evals_session)
 
     # Get all prompt IDs in the group
     bindings_result = await prompts_session.execute(
@@ -240,22 +233,6 @@ async def get_report_data(
             )
         )
 
-    # Check if generating a report now would be a duplicate
-    # (same evaluation IDs AND same prompt composition as the latest report)
-    would_be_duplicate = False
-    current_eval_ids = {
-        e.id for e in latest_eval_by_prompt.values()
-    }
-    if current_eval_ids:
-        latest_report_eval_ids = await comparison_service.get_latest_report_evaluation_ids(
-            group_id, current_user.id, assistant_id=assistant_id, country_id=country_id,
-        )
-        if latest_report_eval_ids is not None and current_eval_ids == latest_report_eval_ids:
-            latest_report_prompt_ids = await comparison_service.get_latest_report_prompt_ids(
-                group_id, current_user.id, assistant_id=assistant_id, country_id=country_id,
-            )
-            would_be_duplicate = set(prompt_ids) == latest_report_prompt_ids
-
     return ReportDataResponse(
         group_id=group_id,
         prompts=prompts_data,
@@ -265,7 +242,6 @@ async def get_report_data(
         prompts_absent=counts["absent"],
         prompts_pending_execution=counts["pending"],
         global_queue_size=pending_count,
-        would_be_duplicate=would_be_duplicate,
     )
 
 
@@ -325,18 +301,15 @@ async def generate_report(
     brands, domains = extract_brands_and_domains(group.brand, group.competitors)
 
     # Generate report with validated selections
-    try:
-        report = await report_service.generate_report_with_selections(
-            group_id=group_id,
-            user_id=current_user.id,
-            selections=validation.normalized_selections,
-            title=request.title,
-            brand_snapshot=group.brand,
-            competitors_snapshot=group.competitors,
-            assistant_id=request.assistant_id,
-        )
-    except DuplicateReportError as e:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    report = await report_service.generate_report_with_selections(
+        group_id=group_id,
+        user_id=current_user.id,
+        selections=validation.normalized_selections,
+        title=request.title,
+        brand_snapshot=group.brand,
+        competitors_snapshot=group.competitors,
+        assistant_id=request.assistant_id,
+    )
 
     # Get full report with items
     result = await report_service.get_report(report.id, current_user.id)

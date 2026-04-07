@@ -28,12 +28,6 @@ from src.reports.services.comparison_service import ComparisonService
 logger = logging.getLogger(__name__)
 
 
-class DuplicateReportError(Exception):
-    """Raised when attempting to generate a duplicate report."""
-
-    pass
-
-
 class ReportService:
     """Service for generating and managing prompt group reports.
 
@@ -368,7 +362,6 @@ class ReportService:
         group_id: int,
         user_id: str,
         *,
-        assistant_id: int | None = None,
         country_id: int | None = None,
     ) -> GroupReport | None:
         """Get the most recent report for a group.
@@ -376,13 +369,11 @@ class ReportService:
         Args:
             group_id: The prompt group ID
             user_id: The user ID
-            assistant_id: Optional assistant filter. If provided, only returns
-                         reports for that specific assistant.
             country_id: Optional country filter. If provided, only returns
                        reports for that specific country.
         """
         return await self._comparison_service.get_latest_report(
-            group_id, user_id, assistant_id=assistant_id, country_id=country_id,
+            group_id, user_id, country_id=country_id,
         )
 
     def detect_brand_changes(
@@ -501,25 +492,6 @@ class ReportService:
 
         # Build selection map: prompt_id -> evaluation_id (or None)
         selection_map = {s.prompt_id: s.evaluation_id for s in selections}
-
-        # Check for duplicate report (filtered by country and assistant)
-        selected_eval_ids_set = {
-            s.evaluation_id for s in selections if s.evaluation_id is not None
-        }
-        latest_eval_ids = await self._comparison_service.get_latest_report_evaluation_ids(
-            group_id, user_id, assistant_id=assistant_id, country_id=country_id,
-        )
-        if latest_eval_ids is not None and selected_eval_ids_set == latest_eval_ids:
-            # Also check prompt composition — new/removed prompts mean a different report
-            current_prompt_ids = set(prompts_map.keys())
-            latest_report_prompt_ids = await self._comparison_service.get_latest_report_prompt_ids(
-                group_id, user_id, assistant_id=assistant_id, country_id=country_id,
-            )
-            if current_prompt_ids == latest_report_prompt_ids:
-                raise DuplicateReportError(
-                    "Report would be identical to your most recent report. "
-                    "Wait for new evaluation data before generating another report."
-                )
 
         # Get all selected evaluation IDs (non-None)
         selected_eval_ids = [

@@ -19,7 +19,7 @@ from src.database.models import Prompt, PromptGroup, PromptGroupBinding
 from src.reports.models.api_models import PromptSelection
 from src.config.settings import settings
 from src.reports.repositories.report_request_repo import ReportRequestRepository
-from src.reports.services.report_service import DuplicateReportError, ReportService
+from src.reports.services.report_service import ReportService
 
 logger = logging.getLogger(__name__)
 
@@ -312,19 +312,6 @@ class ReportRequestService:
             await self._prompts_session.commit()
 
             logger.info(f"Generated report {report.id} for request {request_id}")
-
-        except DuplicateReportError:
-            # Report would be identical to the latest - mark as completed without new report
-            logger.info(
-                f"Report request {request_id} skipped: would be duplicate of latest report"
-            )
-            await self._repo.update_status(
-                request_id,
-                ReportRequestStatus.COMPLETED,
-                completed_at=datetime.now(timezone.utc),
-                report_id=None,  # No new report created
-            )
-            await self._evals_session.commit()
 
         except Exception:
             logger.exception(f"Failed to generate report for request {request_id}")

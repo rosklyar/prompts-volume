@@ -102,6 +102,3 @@ class ReportDataResponse(BaseModel):
     # Queue info
     prompts_pending_execution: int
     global_queue_size: int
-
-    # Duplicate detection
-    would_be_duplicate: bool = False

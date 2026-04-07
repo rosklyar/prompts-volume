@@ -178,18 +178,22 @@ def test_complete_report_user_flow(client, create_verified_user, simulate_webhoo
     # Build selections (should use same evaluations but now they're consumed)
     selections2 = _build_selections_from_compare(compare2)
 
-    # Attempt to generate duplicate report - should be rejected with 409
+    # Generate report again with same data - should succeed (no duplicate blocking)
     report2_response = client.post(
         f"/reports/api/v1/groups/{group_id}/generate",
         json={"selections": selections2},
         headers=auth_headers,
     )
-    assert report2_response.status_code == 409, \
-        f"Expected 409 Conflict for duplicate report, got {report2_response.status_code}"
-    assert "identical" in report2_response.json()["detail"].lower(), \
-        f"Expected duplicate error message, got: {report2_response.json()['detail']}"
+    assert report2_response.status_code == 200, \
+        f"Expected 200 for regenerated report, got {report2_response.status_code}"
 
-    # Balance should remain unchanged (no report was generated)
+    # All evaluations already consumed, so no additional charge
+    report2 = report2_response.json()
+    second_report_cost = Decimal(str(report2["total_cost"]))
+    assert second_report_cost == Decimal("0"), \
+        f"Expected 0 cost for re-consumed evaluations, got {second_report_cost}"
+
+    # Balance should remain unchanged (no fresh evaluations to charge for)
     balance_response = client.get("/billing/api/v1/balance", headers=auth_headers)
     balance_after_second = Decimal(str(balance_response.json()["available_balance"]))
     assert balance_after_second == balance_after_first, \
@@ -271,8 +275,7 @@ def test_complete_report_user_flow(client, create_verified_user, simulate_webhoo
     expected_spent = first_report_cost + third_report_cost
     assert total_spent == expected_spent, f"Expected to spend {expected_spent}, spent {total_spent}"
 
-    # === STEP 14: Generate one more report - should be BLOCKED (duplicate) ===
-    # Get fresh selections (should have no fresh options)
+    # === STEP 14: Generate one more report - should succeed (no duplicate blocking) ===
     compare4_response = client.get(
         f"/reports/api/v1/groups/{group_id}/compare",
         headers=auth_headers,
@@ -281,18 +284,20 @@ def test_complete_report_user_flow(client, create_verified_user, simulate_webhoo
     compare4 = compare4_response.json()
     selections4 = _build_selections_from_compare(compare4)
 
-    # Attempt to generate duplicate report - should be rejected with 409
     report4_response = client.post(
         f"/reports/api/v1/groups/{group_id}/generate",
         json={"selections": selections4},
         headers=auth_headers,
     )
-    assert report4_response.status_code == 409, \
-        f"Expected 409 Conflict for duplicate report, got {report4_response.status_code}"
-    assert "identical" in report4_response.json()["detail"].lower(), \
-        f"Expected duplicate error message, got: {report4_response.json()['detail']}"
+    assert report4_response.status_code == 200, \
+        f"Expected 200 for regenerated report, got {report4_response.status_code}"
 
-    # Balance should remain unchanged (no duplicate report was generated)
+    # All evaluations already consumed, so no additional charge
+    report4 = report4_response.json()
+    assert Decimal(str(report4["total_cost"])) == Decimal("0"), \
+        f"Expected 0 cost, got {report4['total_cost']}"
+
+    # Balance should remain unchanged (no fresh evaluations)
     balance_response = client.get("/billing/api/v1/balance", headers=auth_headers)
     final_balance_confirmed = Decimal(str(balance_response.json()["available_balance"]))
     assert final_balance_confirmed == final_balance, \
