@@ -241,17 +241,20 @@ async def get_report_data(
         )
 
     # Check if generating a report now would be a duplicate
-    # (same evaluation IDs as the latest report for this country)
+    # (same evaluation IDs AND same prompt composition as the latest report)
     would_be_duplicate = False
     current_eval_ids = {
         e.id for e in latest_eval_by_prompt.values()
     }
     if current_eval_ids:
         latest_report_eval_ids = await comparison_service.get_latest_report_evaluation_ids(
-            group_id, current_user.id, country_id=country_id
+            group_id, current_user.id, assistant_id=assistant_id, country_id=country_id,
         )
-        if latest_report_eval_ids is not None:
-            would_be_duplicate = current_eval_ids == latest_report_eval_ids
+        if latest_report_eval_ids is not None and current_eval_ids == latest_report_eval_ids:
+            latest_report_prompt_ids = await comparison_service.get_latest_report_prompt_ids(
+                group_id, current_user.id, assistant_id=assistant_id, country_id=country_id,
+            )
+            would_be_duplicate = set(prompt_ids) == latest_report_prompt_ids
 
     return ReportDataResponse(
         group_id=group_id,
